@@ -38,6 +38,12 @@ fn main() {
     let result5 = i.__as_float();
     println!("{:?}", result5);
 
+    let s1: StoredData = StoredData::StringStored("Hello".to_string());
+    let s2: StoredData = StoredData::StringStored("World".to_string());
+
+    let result6 = s1.__add(&s2);
+    println!("{:?}", result6);
+
     let gc: Arc<Mutex<GarbageCollector>> = Arc::new(Mutex::new(GarbageCollector::new()));
 
     test_gc(Arc::clone(&gc));

@@ -1,3 +1,4 @@
+use std::num::ParseIntError;
 use crate::core::data::live::{FloatLive, IntLive, LiveData, StringLive};
 use crate::core::{ExecResult, Type};
 use crate::core::data::stored::StoredData;
@@ -7,11 +8,11 @@ impl LiveData for StringLive {
         Type::String
     }
     fn as_int(&self) -> Option<ExecResult<IntLive>> {
-        todo!()
+        Some(self.parse::<IntLive>().map_err(|_| "Error parsing int from string"))
     }
 
     fn as_float(&self) -> Option<ExecResult<FloatLive>> {
-        todo!()
+        Some(self.parse::<FloatLive>().map_err(|_| "Error parsing float from string"))
     }
 
     fn as_string(&self) -> Option<ExecResult<StringLive>> {
@@ -19,18 +20,18 @@ impl LiveData for StringLive {
     }
 
     fn op_add(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
-        todo!()
-    }
+        // concat
+        match rhs {
+            StoredData::StringStored(rhs) => {
+                Some(Ok(StoredData::StringStored(self.clone() + rhs)))
+            }
+            _ => {
+                let cast_result: Option<ExecResult<StringLive>> = rhs.as_live().as_string();
 
-    fn op_sub(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
-        todo!()
-    }
-
-    fn op_mul(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
-        todo!()
-    }
-
-    fn op_div(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
-        todo!()
+                cast_result.map(|rhs| {
+                    Ok(StoredData::StringStored(self.clone() + &rhs?))
+                })
+            }
+        }
     }
 }
