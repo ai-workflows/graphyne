@@ -2,5 +2,6 @@
 /// Note: there may not be a one-to-one correspondence between this, rust-types, and stored-types.
 pub enum Type {
     Integer,
-    Float
+    Float,
+    String,
 }

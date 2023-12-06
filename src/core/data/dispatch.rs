@@ -1,5 +1,5 @@
 use crate::core::{ExecResult, Type};
-use crate::core::data::live::{IntLive, FloatLive, LiveData};
+use crate::core::data::live::{IntLive, FloatLive, StringLive, LiveData};
 use crate::core::data::stored::StoredData;
 
 /// New type wrapper for StoredData that implements LiveData using enum-based static dispatch.
@@ -26,6 +26,7 @@ macro_rules! static_dispatch {
             match self.0 {
                 StoredData::IntStored(value) => <IntLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::FloatStored(value) => <FloatLive as LiveData>::$name(value, $( $arg ),* ),
+                StoredData::StringStored(value) => <StringLive as LiveData>::$name(value, $( $arg ),* ),
             }
         }
     };
