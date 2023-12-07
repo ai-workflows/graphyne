@@ -4,8 +4,9 @@ use std::sync::{Arc, Mutex};
 use crate::core::gc::{GarbageCollectable, GCObject, GCPointer};
 
 /// A garbage collector that manages the lifetimes of objects.
+#[derive(Debug)]
 pub struct GarbageCollector {
-    objects: HashMap<usize, GCObject>,
+    pub objects: HashMap<usize, GCObject>,
     next_id: usize,
 }
 
@@ -58,6 +59,7 @@ impl GarbageCollector {
 }
 
 impl<T> GCPointer<T> where T: GarbageCollectable {
+    /// Allocates an object in the garbage collector and returns a pointer to it.
     pub fn new(value: T, gc: Arc<Mutex<GarbageCollector>>) -> Self where T: GarbageCollectable {
         let id = gc.lock().unwrap().allocate(value);
         gc.lock().unwrap().increment_ref(id);

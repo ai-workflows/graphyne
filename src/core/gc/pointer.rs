@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use crate::core::gc::{GarbageCollectable, GarbageCollector};
 
 /// Represents a pointer to a value that is being managed by the garbage collector.
+#[derive(Debug)]
 pub struct GCPointer<T> where T: GarbageCollectable {
     pub id: usize,
     pub gc: Arc<Mutex<GarbageCollector>>,

@@ -5,6 +5,7 @@ use crate::core::data::stored::StoredData;
 pub type IntLive = i64;
 pub type FloatLive = f64;
 pub type StringLive = String;
+// pub type ListLive = Vec<GcPointer<StoredData>>;
 
 
 /// Represents data that is currently usable for performing operations.
