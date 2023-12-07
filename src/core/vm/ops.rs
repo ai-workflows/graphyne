@@ -6,8 +6,8 @@ use crate::core::gc::GCPointer;
 /// Each operation contains a pointer to the data for its operands.
 #[derive(Debug)]
 pub enum Operation {
-    /// Stores a literal value.
-    StoreLiteral(StoredData),
+    /// Stores a literal value in memory.
+    StoreInput(StoredData),
 
     /// Converts a value to an integer.
     AsInt(GCPointer<StoredData>),

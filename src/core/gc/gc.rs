@@ -56,6 +56,16 @@ impl GarbageCollector {
     pub fn ref_count(&self, id: usize) -> Option<usize> {
         self.objects.get(&id).map(|object| object.ref_count)
     }
+
+    pub fn clear(&mut self) {
+        self.objects.clear();
+        self.next_id = 0;
+    }
+
+    /// returns the number of objects in the garbage collector
+    pub fn len(&self) -> usize {
+        self.objects.len()
+    }
 }
 
 impl<T> GCPointer<T> where T: GarbageCollectable {

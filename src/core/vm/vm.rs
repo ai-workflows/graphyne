@@ -41,9 +41,19 @@ impl VM {
         }
     }
 
+    /// Reset the VM state, clearing all stored data
+    pub fn reset(&mut self) {
+        self.state.lock().unwrap().clear();
+    }
+
+    /// Returns the number of objects currently stored in the VM
+    pub fn object_count(&self) -> usize {
+        self.state.lock().unwrap().len()
+    }
+
     pub fn execute_op(&self, operation: Operation) -> ExecResult<GCPointer<StoredData>> {
         match operation {
-            Operation::StoreLiteral(data) => Ok(GCPointer::new(data, self.state.clone())),
+            Operation::StoreInput(data) => Ok(GCPointer::new(data, self.state.clone())),
             Operation::AsInt(arg) => self.execute_as_int(arg),
             Operation::AsFloat(arg) => self.execute_as_float(arg),
             Operation::AsString(arg) => self.execute_as_string(arg),
