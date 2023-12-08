@@ -31,7 +31,7 @@ macro_rules! execute_arithmetic_op {
 }
 
 pub struct VM {
-    pub state: Arc<Mutex<GarbageCollector>>,
+    pub state: Arc<Mutex<GarbageCollector<StoredData>>>,
 }
 
 impl VM {
@@ -57,6 +57,7 @@ impl VM {
             Operation::AsInt(arg) => self.execute_as_int(arg),
             Operation::AsFloat(arg) => self.execute_as_float(arg),
             Operation::AsString(arg) => self.execute_as_string(arg),
+            Operation::AsPointer(arg) => self.execute_as_pointer(arg),
             Operation::Add(lhs, rhs) => self.execute_add(lhs, rhs),
             Operation::Sub(lhs, rhs) => self.execute_sub(lhs, rhs),
             Operation::Mul(lhs, rhs) => self.execute_mul(lhs, rhs),
@@ -74,6 +75,10 @@ impl VM {
 
     fn execute_as_string(&self, arg: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
         execute_cast_op!(self, arg, as_string, StringStored, "Cannot cast to string")
+    }
+
+    fn execute_as_pointer(&self, arg: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
+        execute_cast_op!(self, arg, as_pointer, PointerStored, "Cannot cast to pointer")
     }
 
     fn execute_add(&self, lhs: GCPointer<StoredData>, rhs: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {

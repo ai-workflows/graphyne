@@ -1,5 +1,5 @@
 use crate::core::{ExecResult, Type};
-use crate::core::data::live::{IntLive, FloatLive, StringLive, LiveData};
+use crate::core::data::live::{IntLive, FloatLive, StringLive, PointerLive, LiveData};
 use crate::core::data::stored::StoredData;
 
 /// New type wrapper for StoredData that implements LiveData using enum-based static dispatch.
@@ -27,6 +27,8 @@ macro_rules! static_dispatch {
                 StoredData::IntStored(value) => <IntLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::FloatStored(value) => <FloatLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::StringStored(value) => <StringLive as LiveData>::$name(value, $( $arg ),* ),
+                StoredData::PointerStored(value) => <PointerLive as LiveData>::$name(value, $( $arg ),* ),
+                // StoredData::ListStored(value) => <ListLive as LiveData>::$name(value, $( $arg ),* ),
             }
         }
     };
@@ -40,6 +42,7 @@ impl LiveData for LiveDispatch<'_> {
     static_dispatch!{ fn as_int() -> Option<ExecResult<IntLive>> }
     static_dispatch!{ fn as_float() -> Option<ExecResult<FloatLive>> }
     static_dispatch!{ fn as_string() -> Option<ExecResult<StringLive>> }
+    static_dispatch!{ fn as_pointer() -> Option<ExecResult<PointerLive>> }
     static_dispatch!{ fn op_add(rhs: &StoredData) -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_sub(rhs: &StoredData) -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_mul(rhs: &StoredData) -> Option<ExecResult<StoredData>> }

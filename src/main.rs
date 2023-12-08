@@ -1,5 +1,5 @@
 use crate::core::data::stored::StoredData;
-use crate::core::data::live::LiveData;
+use crate::core::data::live::{LiveData, PointerLive};
 use crate::core::vm::ops::Operation;
 use crate::core::vm::VM;
 
@@ -33,7 +33,7 @@ fn test_add_nums(vm: &mut VM, num1: i64, num2: i64) {
 
     let live_sum = sum_value.as_live();
 
-    assert_eq!(live_sum.as_int().unwrap(), Ok(num1 + num2 as i64));
+    assert_eq!(live_sum.as_int().unwrap(), Ok(num1 + num2));
 
     // There should be 3 objects in the VM: the two ints and the sum
     assert_eq!(vm.object_count(), 3);
@@ -60,6 +60,33 @@ fn test_concat_strings(vm: &mut VM, str1: &str, str2: &str) {
     assert_eq!(vm.object_count(), 3);
 }
 
+fn test_store_pointer_helper(vm: &mut VM, value: &str) -> PointerLive {
+    let ptr = vm.execute_op(Operation::StoreInput(StoredData::StringStored(value.to_string()))).unwrap();
+    let meta_ptr = vm.execute_op(Operation::StoreInput(StoredData::PointerStored(ptr.clone()))).unwrap();
+
+    println!("{:?}", meta_ptr.get().unwrap().as_live().as_pointer().unwrap());
+
+    assert_eq!(meta_ptr.get().unwrap().as_live().as_pointer().unwrap(), Ok(ptr.clone()));
+
+    // There should be 2 objects in the VM: the string and the pointer
+    assert_eq!(vm.object_count(), 2);
+
+    assert_eq!(ptr.ref_count().unwrap(), 2);
+
+    ptr
+}
+
+fn test_store_pointer(vm: &mut VM, value: &str) {
+    vm.reset();
+
+    let ptr = test_store_pointer_helper(vm, value);
+
+    assert_eq!(ptr.ref_count().unwrap(), 1);
+
+    // There should be 1 object in the VM: the pointer
+    assert_eq!(vm.object_count(), 1);
+}
+
 
 fn main() {
     let mut vm = VM::new();
@@ -74,6 +101,10 @@ fn main() {
     assert_eq!(vm.object_count(), 0);
 
     test_concat_strings(&mut vm, "Hello", "World");
+
+    assert_eq!(vm.object_count(), 0);
+
+    test_store_pointer(&mut vm, "Hello World");
 
     assert_eq!(vm.object_count(), 0);
 }

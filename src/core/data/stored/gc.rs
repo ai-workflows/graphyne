@@ -1,40 +1,55 @@
+use std::marker::PhantomData;
 use crate::core::data::live::{FloatLive, IntLive};
 use crate::core::data::stored::StoredData;
-use crate::core::gc::{GarbageCollectable, GCObject, GCObjectType};
+use crate::core::gc::{GarbageCollectable, GCObject, GCObjectData, GCObjectType};
 
-impl GarbageCollectable for StoredData {
-    fn from_gc_object(object: &GCObject) -> Option<Self> {
+impl GarbageCollectable<StoredData> for StoredData {
+    fn from_gc_object(object: &GCObject<StoredData>) -> Option<Self> {
         match object.data_type {
             GCObjectType::Integer => object.to_int().ok().and_then(|int_data| StoredData::IntStored(int_data as IntLive).into()),
             GCObjectType::Float => object.to_float().ok().and_then(|float_data| StoredData::FloatStored(float_data as FloatLive).into()),
             GCObjectType::String => object.to_string().ok().and_then(|string_data| StoredData::StringStored(string_data).into()),
+            GCObjectType::Pointer => object.to_pointer().ok().and_then(|pointer_data| StoredData::PointerStored(pointer_data).into()),
+            // GCObjectType::List => todo!()
         }
     }
 
-    fn to_gc_object(&self) -> GCObject {
+    fn to_gc_object(&self) -> GCObject<StoredData> {
         match self {
             StoredData::IntStored(int_live) => {
-                let data = int_live.to_ne_bytes().to_vec();
+                let data = GCObjectData::Int(*int_live);
                 GCObject {
                     data_type: GCObjectType::Integer,
                     data,
                     ref_count: 0,
+                    phantom: PhantomData
                 }
             }
             StoredData::FloatStored(float_live) => {
-                let data = float_live.to_ne_bytes().to_vec();
+                let data = GCObjectData::Float(*float_live);
                 GCObject {
                     data_type: GCObjectType::Float,
                     data,
                     ref_count: 0,
+                    phantom: PhantomData
                 }
             }
             StoredData::StringStored(string_live) => {
-                let data = string_live.as_bytes().to_vec();
+                let data = GCObjectData::String(string_live.clone());
                 GCObject {
                     data_type: GCObjectType::String,
                     data,
                     ref_count: 0,
+                    phantom: PhantomData
+                }
+            }
+            StoredData::PointerStored(gc_pointer) => {
+                let data = GCObjectData::Pointer(gc_pointer.clone());
+                GCObject {
+                    data_type: GCObjectType::Pointer,
+                    data,
+                    ref_count: 0,
+                    phantom: PhantomData
                 }
             }
         }

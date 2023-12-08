@@ -4,4 +4,6 @@ pub enum Type {
     Integer,
     Float,
     String,
+    Pointer,
+    List,
 }

@@ -1,30 +1,39 @@
-use crate::core::data::live::{FloatLive, IntLive};
+use std::marker::PhantomData;
+use crate::core::data::live::{FloatLive, IntLive, StringLive};
+use crate::core::data::stored::StoredData;
+use crate::core::gc::{GCPointer};
 
 #[derive(PartialEq, Debug)]
 pub enum GCObjectType {
     Integer,
     Float,
-    String
+    String,
+    Pointer,
+    // List,
 }
 
 #[derive(Debug)]
-pub struct GCObject {
-    pub data_type: GCObjectType,
-    pub data: Vec<u8>,
-    pub ref_count: usize,
+pub enum GCObjectData {
+    Int(IntLive),
+    Float(FloatLive),
+    String(StringLive),
+    Pointer(GCPointer<StoredData>),
 }
 
-impl GCObject {
+#[derive(Debug)]
+pub struct GCObject<T> {
+    pub data_type: GCObjectType,
+    pub data: GCObjectData,
+    pub ref_count: usize,
+    pub phantom: PhantomData<T>,
+}
+
+impl<T> GCObject<T> {
     pub fn to_int(&self) -> Result<IntLive, &'static str> {
         if self.data_type == GCObjectType::Integer {
-            if self.data.len() == 4 {
-                Ok(i32::from_ne_bytes(self.data.clone().try_into().unwrap()) as IntLive)
-            }
-            else if self.data.len() == 8 {
-                Ok(i64::from_ne_bytes(self.data.clone().try_into().unwrap()) as IntLive)
-            }
-            else {
-                Err("Invalid byte length for integer")
+            match &self.data {
+                GCObjectData::Int(value) => Ok(*value),
+                _ => Err("Invalid data type"),
             }
         } else {
             Err("Invalid data type")
@@ -33,23 +42,32 @@ impl GCObject {
 
     pub fn to_float(&self) -> Result<FloatLive, &'static str> {
         if self.data_type == GCObjectType::Float {
-            if self.data.len() == 4 {
-                Ok(f32::from_ne_bytes(self.data.clone().try_into().unwrap()).clone() as FloatLive)
-            }
-            else if self.data.len() == 8 {
-                Ok(f64::from_ne_bytes(self.data.clone().try_into().unwrap()) as FloatLive)
-            }
-            else {
-                Err("Invalid byte length for float")
+            match &self.data {
+                GCObjectData::Float(value) => Ok(*value),
+                _ => Err("Invalid data type"),
             }
         } else {
             Err("Invalid data type")
         }
     }
 
-    pub fn to_string(&self) -> Result<String, &'static str> {
+    pub fn to_string(&self) -> Result<StringLive, &'static str> {
         if self.data_type == GCObjectType::String {
-            Ok(String::from_utf8(self.data.clone()).unwrap())
+            match &self.data {
+                GCObjectData::String(value) => Ok(value.clone()),
+                _ => Err("Invalid data type"),
+            }
+        } else {
+            Err("Invalid data type")
+        }
+    }
+
+    pub fn to_pointer(&self) -> Result<GCPointer<StoredData>, &'static str> {
+        if self.data_type == GCObjectType::Pointer {
+            match &self.data {
+                GCObjectData::Pointer(value) => Ok(value.clone()),
+                _ => Err("Invalid data type"),
+            }
         } else {
             Err("Invalid data type")
         }

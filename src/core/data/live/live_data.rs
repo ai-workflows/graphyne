@@ -1,11 +1,13 @@
 use crate::core::{ExecResult, Type};
 use crate::core::data::stored::StoredData;
+use crate::core::gc::GCPointer;
 
 /// Live data types. These are interoperable with rust types and can be used to perform operations.
 pub type IntLive = i64;
 pub type FloatLive = f64;
 pub type StringLive = String;
-// pub type ListLive = Vec<GcPointer<StoredData>>;
+pub type PointerLive = GCPointer<StoredData>;
+pub type ListLive = Vec<GCPointer<StoredData>>;
 
 
 /// Represents data that is currently usable for performing operations.
@@ -20,6 +22,8 @@ pub trait LiveData {
             Type::Integer => 0,
             Type::Float => 1,
             Type::String => 2,
+            Type::Pointer => 3,
+            Type::List => 4,
         })
     }
 
@@ -29,6 +33,8 @@ pub trait LiveData {
     fn as_int(&self) -> Option<ExecResult<IntLive>> {None}
     fn as_float(&self) -> Option<ExecResult<FloatLive>> {None}
     fn as_string(&self) -> Option<ExecResult<StringLive>> {None}
+    fn as_pointer(&self) -> Option<ExecResult<PointerLive>> {None}
+    fn as_list(&self) -> Option<ExecResult<ListLive>> {None}
 
     /// Operations for this data.
     /// Casts stored data args to the appropriate live data type and performs the operation.

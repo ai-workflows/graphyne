@@ -1,4 +1,5 @@
-use crate::core::data::live::{FloatLive, IntLive, StringLive};
+use crate::core::data::live::{FloatLive, IntLive, StringLive, ListLive};
+use crate::core::gc::GCPointer;
 
 /// Represents data that is currently being stored in memory.
 /// This data must be converted to its live counterpart before it can be used.
@@ -7,6 +8,8 @@ pub enum StoredData {
     IntStored(IntLive),
     FloatStored(FloatLive),
     StringStored(StringLive),
+    // ListStored(ListLive),
+    PointerStored(GCPointer<StoredData>),
 }
 
 // Convert from live data to stored data.
@@ -25,5 +28,17 @@ impl From<FloatLive> for StoredData {
 impl From<StringLive> for StoredData {
     fn from(value: StringLive) -> Self {
         StoredData::StringStored(value)
+    }
+}
+
+// impl From<ListLive> for StoredData {
+//     fn from(value: ListLive) -> Self {
+//         StoredData::ListStored(value)
+//     }
+// }
+
+impl From<GCPointer<StoredData>> for StoredData {
+    fn from(value: GCPointer<StoredData>) -> Self {
+        StoredData::PointerStored(value)
     }
 }
