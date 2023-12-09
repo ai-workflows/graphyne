@@ -1,7 +1,8 @@
 use std::marker::PhantomData;
+use std::sync::{Arc, Mutex, MutexGuard};
 use crate::core::data::live::{FloatLive, IntLive};
 use crate::core::data::stored::StoredData;
-use crate::core::gc::{GarbageCollectable, GCObject, GCObjectData, GCObjectType};
+use crate::core::gc::{GarbageCollectable, GarbageCollector, GCObject, GCObjectData, GCObjectType};
 
 impl GarbageCollectable<StoredData> for StoredData {
     fn from_gc_object(object: &GCObject<StoredData>) -> Option<Self> {
@@ -10,7 +11,7 @@ impl GarbageCollectable<StoredData> for StoredData {
             GCObjectType::Float => object.to_float().ok().and_then(|float_data| StoredData::FloatStored(float_data as FloatLive).into()),
             GCObjectType::String => object.to_string().ok().and_then(|string_data| StoredData::StringStored(string_data).into()),
             GCObjectType::Pointer => object.to_pointer().ok().and_then(|pointer_data| StoredData::PointerStored(pointer_data).into()),
-            // GCObjectType::List => todo!()
+            GCObjectType::List => object.to_list().ok().and_then(|list_data| StoredData::ListStored(list_data).into()),
         }
     }
 
@@ -47,6 +48,15 @@ impl GarbageCollectable<StoredData> for StoredData {
                 let data = GCObjectData::Pointer(gc_pointer.clone());
                 GCObject {
                     data_type: GCObjectType::Pointer,
+                    data,
+                    ref_count: 0,
+                    phantom: PhantomData
+                }
+            }
+            StoredData::ListStored(list_live) => {
+                let data = GCObjectData::List(list_live.clone());
+                GCObject {
+                    data_type: GCObjectType::List,
                     data,
                     ref_count: 0,
                     phantom: PhantomData

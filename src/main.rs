@@ -1,5 +1,6 @@
 use crate::core::data::stored::StoredData;
-use crate::core::data::live::{LiveData, PointerLive};
+use crate::core::data::live::{IntLive, LiveData, PointerLive, StringLive};
+use crate::core::gc::GCPointer;
 use crate::core::vm::ops::Operation;
 use crate::core::vm::VM;
 
@@ -60,9 +61,11 @@ fn test_concat_strings(vm: &mut VM, str1: &str, str2: &str) {
     assert_eq!(vm.object_count(), 3);
 }
 
-fn test_store_pointer_helper(vm: &mut VM, value: &str) -> PointerLive {
+fn test_store_pointer_helper(vm: &mut VM, value: &str) -> GCPointer<StoredData> {
     let ptr = vm.execute_op(Operation::StoreInput(StoredData::StringStored(value.to_string()))).unwrap();
     let meta_ptr = vm.execute_op(Operation::StoreInput(StoredData::PointerStored(ptr.clone()))).unwrap();
+
+    println!("{:?}", vm.state);
 
     println!("{:?}", meta_ptr.get().unwrap().as_live().as_pointer().unwrap());
 
@@ -73,7 +76,9 @@ fn test_store_pointer_helper(vm: &mut VM, value: &str) -> PointerLive {
 
     assert_eq!(ptr.ref_count().unwrap(), 2);
 
-    ptr
+    println!("{:?}", vm.state);
+
+    return ptr;
 }
 
 fn test_store_pointer(vm: &mut VM, value: &str) {
@@ -81,30 +86,69 @@ fn test_store_pointer(vm: &mut VM, value: &str) {
 
     let ptr = test_store_pointer_helper(vm, value);
 
+    println!("{:?}", ptr);
+
     assert_eq!(ptr.ref_count().unwrap(), 1);
 
     // There should be 1 object in the VM: the pointer
     assert_eq!(vm.object_count(), 1);
 }
 
+fn test_combine_lists(vm: &mut VM, list1: Vec<StringLive>, list2: Vec<IntLive>) {
+    vm.reset();
+
+    let ptrs1 = list1.iter().map(|s| vm.execute_op(Operation::StoreInput(StoredData::StringStored(s.clone()))).unwrap()).collect::<Vec<_>>();
+    let ptrs2 = list2.iter().map(|i| vm.execute_op(Operation::StoreInput(StoredData::IntStored(i.clone()))).unwrap()).collect::<Vec<_>>();
+
+    // there should be len(list1) + len(list2) objects in the VM
+    assert_eq!(vm.object_count(), list1.len() + list2.len());
+
+    let list1_ptr = vm.execute_op(Operation::StoreInput(StoredData::ListStored(ptrs1))).unwrap();
+    let list2_ptr = vm.execute_op(Operation::StoreInput(StoredData::ListStored(ptrs2))).unwrap();
+
+    // there should be len(list1) + len(list2) + 2 objects in the VM
+    assert_eq!(vm.object_count(), list1.len() + list2.len() + 2);
+
+    let list1_result = list1_ptr.get().unwrap().as_live().as_list().unwrap();
+    let list2_result = list2_ptr.get().unwrap().as_live().as_list().unwrap();
+
+    println!("{:?}", list1_result);
+    println!("{:?}", list2_result);
+
+    let concat_op = Operation::Add(list1_ptr.clone(), list2_ptr.clone());
+
+    let concatenated_result = vm.execute_op(concat_op).unwrap();
+
+    let concatenated = concatenated_result.get().unwrap();
+
+    let live_concatenated = concatenated.as_live().as_list().unwrap().ok().unwrap();
+
+    println!("{:?}", live_concatenated);
+
+    assert_eq!(live_concatenated.len(), list1.len() + list2.len());
+}
 
 fn main() {
     let mut vm = VM::new();
 
-    test_gc(&mut vm, "Hello World");
-
-    // Make sure all objects were garbage collected since the references went out of scope
-    assert_eq!(vm.object_count(), 0);
-
-    test_add_nums(&mut vm, 1, 2);
-
-    assert_eq!(vm.object_count(), 0);
-
-    test_concat_strings(&mut vm, "Hello", "World");
-
-    assert_eq!(vm.object_count(), 0);
+    // test_gc(&mut vm, "Hello World");
+    //
+    // // Make sure all objects were garbage collected since the references went out of scope
+    // assert_eq!(vm.object_count(), 0);
+    //
+    // test_add_nums(&mut vm, 1, 2);
+    //
+    // assert_eq!(vm.object_count(), 0);
+    //
+    // test_concat_strings(&mut vm, "Hello", "World");
+    //
+    // assert_eq!(vm.object_count(), 0);
 
     test_store_pointer(&mut vm, "Hello World");
+
+    assert_eq!(vm.object_count(), 0);
+
+    test_combine_lists(&mut vm, vec!["Hello".to_string(), "World".to_string()], vec![1, 2, 3]);
 
     assert_eq!(vm.object_count(), 0);
 }

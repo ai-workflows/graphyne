@@ -1,5 +1,6 @@
+use std::fmt::Debug;
 use std::marker::PhantomData;
-use crate::core::data::live::{FloatLive, IntLive, StringLive};
+use crate::core::data::live::{FloatLive, IntLive, ListLive, PointerLive, StringLive};
 use crate::core::data::stored::StoredData;
 use crate::core::gc::{GCPointer};
 
@@ -9,7 +10,7 @@ pub enum GCObjectType {
     Float,
     String,
     Pointer,
-    // List,
+    List,
 }
 
 #[derive(Debug)]
@@ -17,15 +18,25 @@ pub enum GCObjectData {
     Int(IntLive),
     Float(FloatLive),
     String(StringLive),
-    Pointer(GCPointer<StoredData>),
+    Pointer(PointerLive),
+    List(ListLive)
 }
 
-#[derive(Debug)]
 pub struct GCObject<T> {
     pub data_type: GCObjectType,
     pub data: GCObjectData,
     pub ref_count: usize,
     pub phantom: PhantomData<T>,
+}
+
+impl<T> Debug for GCObject<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GCObject")
+            .field("data_type", &self.data_type)
+            .field("data", &self.data)
+            .field("ref_count", &self.ref_count)
+            .finish()
+    }
 }
 
 impl<T> GCObject<T> {
@@ -65,7 +76,35 @@ impl<T> GCObject<T> {
     pub fn to_pointer(&self) -> Result<GCPointer<StoredData>, &'static str> {
         if self.data_type == GCObjectType::Pointer {
             match &self.data {
-                GCObjectData::Pointer(value) => Ok(value.clone()),
+                GCObjectData::Pointer(value) => {
+                    let cloned = value.clone_unsafe();
+                    return Ok(cloned)
+                }
+                _ => Err("Invalid data type"),
+            }
+        } else {
+            Err("Invalid data type")
+        }
+    }
+
+    /// Returns a reference to the pointer data that allows for mutation
+    pub fn as_pointer(&mut self) -> Result<&mut GCPointer<StoredData>, &'static str> {
+        if self.data_type == GCObjectType::Pointer {
+            match &mut self.data {
+                GCObjectData::Pointer(value) => {
+                    return Ok(value)
+                }
+                _ => Err("Invalid data type"),
+            }
+        } else {
+            Err("Invalid data type")
+        }
+    }
+
+    pub fn to_list(&self) -> Result<ListLive, &'static str> {
+        if self.data_type == GCObjectType::List {
+            match &self.data {
+                GCObjectData::List(value) => Ok(value.clone()),
                 _ => Err("Invalid data type"),
             }
         } else {

@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use crate::core::data::live::{LiveData};
 use crate::core::data::stored::StoredData;
 use crate::core::ExecResult;
@@ -31,24 +31,24 @@ macro_rules! execute_arithmetic_op {
 }
 
 pub struct VM {
-    pub state: Arc<Mutex<GarbageCollector<StoredData>>>,
+    pub state: Arc<RwLock<GarbageCollector<StoredData>>>,
 }
 
 impl VM {
     pub fn new() -> Self {
         VM {
-            state: Arc::new(Mutex::new(GarbageCollector::new())),
+            state: Arc::new(RwLock::new(GarbageCollector::new())),
         }
     }
 
     /// Reset the VM state, clearing all stored data
     pub fn reset(&mut self) {
-        self.state.lock().unwrap().clear();
+        self.state.write().unwrap().clear();
     }
 
     /// Returns the number of objects currently stored in the VM
     pub fn object_count(&self) -> usize {
-        self.state.lock().unwrap().len()
+        self.state.read().unwrap().len()
     }
 
     pub fn execute_op(&self, operation: Operation) -> ExecResult<GCPointer<StoredData>> {
@@ -58,6 +58,7 @@ impl VM {
             Operation::AsFloat(arg) => self.execute_as_float(arg),
             Operation::AsString(arg) => self.execute_as_string(arg),
             Operation::AsPointer(arg) => self.execute_as_pointer(arg),
+            Operation::AsList(arg) => self.execute_as_list(arg),
             Operation::Add(lhs, rhs) => self.execute_add(lhs, rhs),
             Operation::Sub(lhs, rhs) => self.execute_sub(lhs, rhs),
             Operation::Mul(lhs, rhs) => self.execute_mul(lhs, rhs),
@@ -79,6 +80,10 @@ impl VM {
 
     fn execute_as_pointer(&self, arg: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
         execute_cast_op!(self, arg, as_pointer, PointerStored, "Cannot cast to pointer")
+    }
+
+    fn execute_as_list(&self, arg: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
+        execute_cast_op!(self, arg, as_list, ListStored, "Cannot cast to list")
     }
 
     fn execute_add(&self, lhs: GCPointer<StoredData>, rhs: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {

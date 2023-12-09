@@ -21,6 +21,9 @@ pub enum Operation {
     /// Converts a value to a pointer.
     AsPointer(GCPointer<StoredData>),
 
+    /// Converts a value to a list.
+    AsList(GCPointer<StoredData>),
+
     /// Adds two values together.
     Add(GCPointer<StoredData>, GCPointer<StoredData>),
 
