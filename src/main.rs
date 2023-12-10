@@ -139,7 +139,68 @@ fn test_combine_lists(vm: &mut VM, list1: Vec<StringLive>, list2: Vec<IntLive>) 
             assert_eq!(item.as_live().as_int().unwrap(), Ok(list2[i - list1.len()].clone()));
         }
     }
+}
 
+fn test_list_ops(vm: &mut VM, list: Vec<StringLive>) {
+    vm.reset();
+
+    let ptrs = list.iter().map(|s| vm.execute_op(Operation::StoreInput(StoredData::StringStored(s.clone()))).unwrap()).collect::<Vec<_>>();
+
+    // there should be len(list) objects in the VM
+    assert_eq!(vm.object_count(), list.len());
+
+    let list_ptr = vm.execute_op(Operation::StoreInput(StoredData::ListStored(ptrs))).unwrap();
+
+    // there should be len(list) + 1 objects in the VM
+    assert_eq!(vm.object_count(), list.len() + 1);
+
+    // test list length
+    let len_op = Operation::Length(list_ptr.clone());
+
+    let len = vm.execute_op(len_op).unwrap().get().unwrap().as_live().as_int().unwrap().ok().unwrap();
+
+    assert_eq!(len as usize, list.len());
+
+    // test list get
+    for (i, item) in list.iter().enumerate() {
+        let index: GCPointer<StoredData> = vm.execute_op(Operation::StoreInput(StoredData::IntStored(i as i64))).unwrap();
+        let get_op = Operation::GetItem(list_ptr.clone(), index);
+
+        let get_result = vm.execute_op(get_op).unwrap().get().unwrap().as_live().as_string().unwrap().ok().unwrap();
+
+        assert_eq!(get_result, item.clone());
+    }
+
+    // test list set
+    let index: GCPointer<StoredData> = vm.execute_op(Operation::StoreInput(StoredData::IntStored(0))).unwrap();
+    let new_value: GCPointer<StoredData> = vm.execute_op(Operation::StoreInput(StoredData::StringStored("Hello World".to_string()))).unwrap();
+    let set_op = Operation::SetItem(list_ptr.clone(), index.clone(), new_value.clone());
+    let new_list = vm.execute_op(set_op).unwrap().get().unwrap().as_live().as_list().unwrap().ok().unwrap();
+
+    assert_eq!(new_list[0].get().unwrap().as_live().as_string().unwrap().ok().unwrap(), "Hello World".to_string());
+
+    // test list push
+    let push_op = Operation::Push(list_ptr.clone(), new_value.clone());
+    let new_list = vm.execute_op(push_op).unwrap().get().unwrap().as_live().as_list().unwrap().ok().unwrap();
+
+    assert_eq!(new_list.len(), list.len() + 1);
+    assert_eq!(new_list[list.len()].get().unwrap().as_live().as_string().unwrap().ok().unwrap(), "Hello World".to_string());
+
+    // test list remove
+    let remove_op = Operation::Remove(list_ptr.clone(), index.clone());
+    let new_list = vm.execute_op(remove_op).unwrap().get().unwrap().as_live().as_list().unwrap().ok().unwrap();
+
+    assert_eq!(new_list.len(), list.len() - 1);
+
+    for (i, item) in new_list.iter().enumerate() {
+        let item = item.get().unwrap();
+
+        if i < index.get().unwrap().as_live().as_int().unwrap().ok().unwrap() as usize {
+            assert_eq!(item.as_live().as_string().unwrap(), Ok(list[i].clone()));
+        } else {
+            assert_eq!(item.as_live().as_string().unwrap(), Ok(list[i + 1].clone()));
+        }
+    }
 }
 
 fn main() {
@@ -163,6 +224,10 @@ fn main() {
     assert_eq!(vm.object_count(), 0);
 
     test_combine_lists(&mut vm, vec!["Hello".to_string(), "World".to_string()], vec![1, 2, 3]);
+
+    assert_eq!(vm.object_count(), 0);
+
+    test_list_ops(&mut vm, vec!["Hello".to_string(), "World".to_string(), "Foo".to_string(), "Bar".to_string()]);
 
     assert_eq!(vm.object_count(), 0);
 }

@@ -3,7 +3,7 @@ use crate::core::gc::GCPointer;
 
 /// Represents data that is currently being stored in memory.
 /// This data must be converted to its live counterpart before it can be used.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum StoredData {
     IntStored(IntLive),
     FloatStored(FloatLive),

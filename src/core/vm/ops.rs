@@ -24,6 +24,21 @@ pub enum Operation {
     /// Converts a value to a list.
     AsList(GCPointer<StoredData>),
 
+    /// Gets the length of a collection.
+    Length(GCPointer<StoredData>),
+
+    /// Gets the value at a given index
+    GetItem(GCPointer<StoredData>, GCPointer<StoredData>),
+
+    /// Sets the value at a given index
+    SetItem(GCPointer<StoredData>, GCPointer<StoredData>, GCPointer<StoredData>),
+
+    /// Pushes a value onto a list
+    Push(GCPointer<StoredData>, GCPointer<StoredData>),
+
+    /// Removes a value from a list at a given index
+    Remove(GCPointer<StoredData>, GCPointer<StoredData>),
+
     /// Adds two values together.
     Add(GCPointer<StoredData>, GCPointer<StoredData>),
 

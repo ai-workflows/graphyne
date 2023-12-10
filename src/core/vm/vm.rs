@@ -63,6 +63,11 @@ impl VM {
             Operation::Sub(lhs, rhs) => self.execute_sub(lhs, rhs),
             Operation::Mul(lhs, rhs) => self.execute_mul(lhs, rhs),
             Operation::Div(lhs, rhs) => self.execute_div(lhs, rhs),
+            Operation::Length(list) => self.execute_length(list),
+            Operation::GetItem(list, index) => self.execute_get_item(list, index),
+            Operation::SetItem(list, index, value) => self.execute_set_item(list, index, value),
+            Operation::Push(list, value) => self.execute_push(list, value),
+            Operation::Remove(list, index) => self.execute_remove(list, index),
         }
     }
 
@@ -84,6 +89,59 @@ impl VM {
 
     fn execute_as_list(&self, arg: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
         execute_cast_op!(self, arg, as_list, ListStored, "Cannot cast to list")
+    }
+
+    fn execute_length(&self, list: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
+        let list_value = list.get().ok_or("Null pointer exception")?;
+
+        if let Some(result) = list_value.as_live().op_len() {
+            return result.map(|live| GCPointer::new(StoredData::IntStored(live), self.state.clone()));
+        }
+
+        Err("Cannot get length")
+    }
+
+    fn execute_get_item(&self, list: GCPointer<StoredData>, index: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
+        let list_value = list.get().ok_or("Null pointer exception")?;
+        let index_value = index.get().ok_or("Null pointer exception")?;
+
+        if let Some(result) = list_value.as_live().op_get_item(&index_value) {
+            return result.map(|live| GCPointer::new(live, self.state.clone()));
+        }
+
+        Err("Cannot get item")
+    }
+
+    fn execute_set_item(&self, list: GCPointer<StoredData>, index: GCPointer<StoredData>, value: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
+        let list_value = list.get().ok_or("Null pointer exception")?;
+        let index_value = index.get().ok_or("Null pointer exception")?;
+
+        if let Some(result) = list_value.as_live().op_set_item(&index_value, value) {
+            return result.map(|live| GCPointer::new(live, self.state.clone()));
+        }
+
+        Err("Cannot set item")
+    }
+
+    fn execute_push(&self, list: GCPointer<StoredData>, value: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
+        let list_value = list.get().ok_or("Null pointer exception")?;
+
+        if let Some(result) = list_value.as_live().op_push(value) {
+            return result.map(|live| GCPointer::new(live, self.state.clone()));
+        }
+
+        Err("Cannot push")
+    }
+
+    fn execute_remove(&self, list: GCPointer<StoredData>, index: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
+        let list_value = list.get().ok_or("Null pointer exception")?;
+        let index_value = index.get().ok_or("Null pointer exception")?;
+
+        if let Some(result) = list_value.as_live().op_remove(&index_value) {
+            return result.map(|live| GCPointer::new(live, self.state.clone()));
+        }
+
+        Err("Cannot remove")
     }
 
     fn execute_add(&self, lhs: GCPointer<StoredData>, rhs: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {

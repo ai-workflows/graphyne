@@ -1,6 +1,7 @@
 use crate::core::{ExecResult, Type};
 use crate::core::data::live::{IntLive, FloatLive, StringLive, PointerLive, ListLive, LiveData};
 use crate::core::data::stored::StoredData;
+use crate::core::gc::GCPointer;
 
 /// New type wrapper for StoredData that implements LiveData using enum-based static dispatch.
 struct LiveDispatch<'a>(&'a StoredData);
@@ -44,6 +45,11 @@ impl LiveData for LiveDispatch<'_> {
     static_dispatch!{ fn as_string() -> Option<ExecResult<StringLive>> }
     static_dispatch!{ fn as_pointer() -> Option<ExecResult<PointerLive>> }
     static_dispatch!{ fn as_list() -> Option<ExecResult<ListLive>> }
+    static_dispatch!{ fn op_len() -> Option<ExecResult<IntLive>> }
+    static_dispatch!{ fn op_get_item(index: &StoredData) -> Option<ExecResult<StoredData>> }
+    static_dispatch!{ fn op_set_item(index: &StoredData, value: GCPointer<StoredData>) -> Option<ExecResult<StoredData>> }
+    static_dispatch!{ fn op_push(value: GCPointer<StoredData>) -> Option<ExecResult<StoredData>> }
+    static_dispatch!{ fn op_remove(index: &StoredData) -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_add(rhs: &StoredData) -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_sub(rhs: &StoredData) -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_mul(rhs: &StoredData) -> Option<ExecResult<StoredData>> }

@@ -36,6 +36,13 @@ pub trait LiveData {
     fn as_pointer(&self) -> Option<ExecResult<PointerLive>> {None}
     fn as_list(&self) -> Option<ExecResult<ListLive>> {None}
 
+    /// Collection operations
+    fn op_len(&self) -> Option<ExecResult<IntLive>> {None}
+    fn op_get_item(&self, index: &StoredData) -> Option<ExecResult<StoredData>> {None}
+    fn op_set_item(&self, index: &StoredData, value: GCPointer<StoredData>) -> Option<ExecResult<StoredData>> {None}
+    fn op_push(&self, value: GCPointer<StoredData>) -> Option<ExecResult<StoredData>> {None}
+    fn op_remove(&self, index: &StoredData) -> Option<ExecResult<StoredData>> {None}
+
     /// Operations for this data.
     /// Casts stored data args to the appropriate live data type and performs the operation.
     fn op_add(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
