@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use crate::core::data::live::{FloatLive, IntLive, ListLive, PointerLive, StringLive};
+use crate::core::data::live::{DictLive, FloatLive, IntLive, ListLive, PointerLive, StringLive};
 use crate::core::data::stored::StoredData;
 use crate::core::gc::{GCPointer};
 
@@ -11,6 +11,7 @@ pub enum GCObjectType {
     String,
     Pointer,
     List,
+    Dict
 }
 
 #[derive(Debug)]
@@ -19,7 +20,8 @@ pub enum GCObjectData {
     Float(FloatLive),
     String(StringLive),
     Pointer(PointerLive),
-    List(ListLive)
+    List(ListLive),
+    Dict(DictLive),
 }
 
 pub struct GCObject<T> {
@@ -111,11 +113,33 @@ impl<T> GCObject<T> {
             Err("Invalid data type")
         }
     }
-    
+
     pub fn as_list(&mut self) -> Result<&mut ListLive, &'static str> {
         if self.data_type == GCObjectType::List {
             match &mut self.data {
                 GCObjectData::List(value) => Ok(value),
+                _ => Err("Invalid data type"),
+            }
+        } else {
+            Err("Invalid data type")
+        }
+    }
+
+    pub fn to_dict(&self) -> Result<DictLive, &'static str> {
+        if self.data_type == GCObjectType::Dict {
+            match &self.data {
+                GCObjectData::Dict(value) => Ok(value.iter().map(|(key, ptr)| (key.clone(), ptr.clone_unsafe())).collect()),
+                _ => Err("Invalid data type"),
+            }
+        } else {
+            Err("Invalid data type")
+        }
+    }
+
+    pub fn as_dict(&mut self) -> Result<&mut DictLive, &'static str> {
+        if self.data_type == GCObjectType::Dict {
+            match &mut self.data {
+                GCObjectData::Dict(value) => Ok(value),
                 _ => Err("Invalid data type"),
             }
         } else {

@@ -12,6 +12,7 @@ impl GarbageCollectable<StoredData> for StoredData {
             GCObjectType::String => object.to_string().ok().and_then(|string_data| StoredData::StringStored(string_data).into()),
             GCObjectType::Pointer => object.to_pointer().ok().and_then(|pointer_data| StoredData::PointerStored(pointer_data).into()),
             GCObjectType::List => object.to_list().ok().and_then(|list_data| StoredData::ListStored(list_data).into()),
+            GCObjectType::Dict => object.to_dict().ok().and_then(|dict_data| StoredData::DictStored(dict_data).into()),
         }
     }
 
@@ -57,6 +58,15 @@ impl GarbageCollectable<StoredData> for StoredData {
                 let data = GCObjectData::List(list_live.clone());
                 GCObject {
                     data_type: GCObjectType::List,
+                    data,
+                    ref_count: 0,
+                    phantom: PhantomData
+                }
+            }
+            StoredData::DictStored(dict_live) => {
+                let data = GCObjectData::Dict(dict_live.clone());
+                GCObject {
+                    data_type: GCObjectType::Dict,
                     data,
                     ref_count: 0,
                     phantom: PhantomData

@@ -59,6 +59,7 @@ impl VM {
             Operation::AsString(arg) => self.execute_as_string(arg),
             Operation::AsPointer(arg) => self.execute_as_pointer(arg),
             Operation::AsList(arg) => self.execute_as_list(arg),
+            Operation::AsDictionary(arg) => self.execute_as_dict(arg),
             Operation::Add(lhs, rhs) => self.execute_add(lhs, rhs),
             Operation::Sub(lhs, rhs) => self.execute_sub(lhs, rhs),
             Operation::Mul(lhs, rhs) => self.execute_mul(lhs, rhs),
@@ -91,6 +92,10 @@ impl VM {
         execute_cast_op!(self, arg, as_list, ListStored, "Cannot cast to list")
     }
 
+    fn execute_as_dict(&self, arg: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
+        execute_cast_op!(self, arg, as_dict, DictStored, "Cannot cast to dict")
+    }
+
     fn execute_length(&self, list: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
         let list_value = list.get().ok_or("Null pointer exception")?;
 
@@ -101,22 +106,22 @@ impl VM {
         Err("Cannot get length")
     }
 
-    fn execute_get_item(&self, list: GCPointer<StoredData>, index: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        let list_value = list.get().ok_or("Null pointer exception")?;
+    fn execute_get_item(&self, collection: GCPointer<StoredData>, index: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
+        let collection_value = collection.get().ok_or("Null pointer exception")?;
         let index_value = index.get().ok_or("Null pointer exception")?;
 
-        if let Some(result) = list_value.as_live().op_get_item(&index_value) {
+        if let Some(result) = collection_value.as_live().op_get_item(&index_value) {
             return result.map(|live| GCPointer::new(live, self.state.clone()));
         }
 
         Err("Cannot get item")
     }
 
-    fn execute_set_item(&self, list: GCPointer<StoredData>, index: GCPointer<StoredData>, value: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        let list_value = list.get().ok_or("Null pointer exception")?;
+    fn execute_set_item(&self, collection: GCPointer<StoredData>, index: GCPointer<StoredData>, value: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
+        let collection_value = collection.get().ok_or("Null pointer exception")?;
         let index_value = index.get().ok_or("Null pointer exception")?;
 
-        if let Some(result) = list_value.as_live().op_set_item(&index_value, value) {
+        if let Some(result) = collection_value.as_live().op_set_item(&index_value, value) {
             return result.map(|live| GCPointer::new(live, self.state.clone()));
         }
 

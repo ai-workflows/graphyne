@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use maplit::hashmap;
+
 use crate::core::data::stored::StoredData;
 use crate::core::data::live::{IntLive, LiveData, PointerLive, StringLive};
 use crate::core::gc::GCPointer;
@@ -203,6 +206,61 @@ fn test_list_ops(vm: &mut VM, list: Vec<StringLive>) {
     }
 }
 
+fn test_dict(vm: &mut VM, dict: HashMap<StringLive, StringLive>) {
+    vm.reset();
+
+    // store the values in the VM
+    let new_dict: HashMap<StringLive, GCPointer<StoredData>> = dict.iter().map(|(k, v)| {
+        let v_ptr = vm.execute_op(Operation::StoreInput(StoredData::StringStored(v.clone()))).unwrap();
+
+        (k.clone(), v_ptr)
+    }).collect();
+
+    // there should be len(dict) objects in the VM
+    assert_eq!(vm.object_count(), dict.len() );
+
+    let dict_ptr = vm.execute_op(Operation::StoreInput(StoredData::DictStored(new_dict))).unwrap();
+
+    // there should be len(dict) + 1 objects in the VM
+    assert_eq!(vm.object_count(), dict.len() + 1);
+
+    // test dict length
+    let len_op = Operation::Length(dict_ptr.clone());
+
+    let len = vm.execute_op(len_op).unwrap().get().unwrap().as_live().as_int().unwrap().ok().unwrap();
+
+    assert_eq!(len as usize, dict.len());
+
+    // test dict get
+    for (k, v) in dict.iter() {
+        let key_ptr = vm.execute_op(Operation::StoreInput(StoredData::StringStored(k.clone()))).unwrap();
+        let get_op = Operation::GetItem(dict_ptr.clone(), key_ptr);
+
+        let get_result = vm.execute_op(get_op).unwrap().get().unwrap().as_live().as_string().unwrap().ok().unwrap();
+
+        assert_eq!(get_result, v.clone());
+    }
+
+    // test dict set
+    let key_ptr = vm.execute_op(Operation::StoreInput(StoredData::StringStored("Hello".to_string()))).unwrap();
+    let new_value: GCPointer<StoredData> = vm.execute_op(Operation::StoreInput(StoredData::StringStored("Hello World".to_string()))).unwrap();
+    let set_op = Operation::SetItem(dict_ptr.clone(), key_ptr.clone(), new_value.clone());
+
+    let set_result = vm.execute_op(set_op).unwrap();
+    let set_result_value = set_result.get().unwrap();
+    let set_result_live = set_result_value.as_live();
+    let set_result_dict_result = set_result_live.as_dict().unwrap();
+    let set_result_dict = set_result_dict_result.ok().unwrap();
+
+    let key_string = key_ptr.get().unwrap().as_live().as_string().unwrap().ok().unwrap();
+
+    assert_eq!(set_result_dict.get(&key_string).unwrap().get().unwrap().as_live().as_string().unwrap().ok().unwrap(), "Hello World".to_string());
+
+    drop(set_result);
+    drop(set_result_live);
+    drop(set_result_dict);
+}
+
 fn main() {
     let mut vm = VM::new();
 
@@ -228,6 +286,13 @@ fn main() {
     assert_eq!(vm.object_count(), 0);
 
     test_list_ops(&mut vm, vec!["Hello".to_string(), "World".to_string(), "Foo".to_string(), "Bar".to_string()]);
+
+    assert_eq!(vm.object_count(), 0);
+
+    test_dict(&mut vm, hashmap!{
+        "Hello".to_string() => "World".to_string(),
+        "Foo".to_string() => "Bar".to_string()
+    });
 
     assert_eq!(vm.object_count(), 0);
 }

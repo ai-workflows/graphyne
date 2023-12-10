@@ -24,6 +24,9 @@ pub enum Operation {
     /// Converts a value to a list.
     AsList(GCPointer<StoredData>),
 
+    /// Converts a value to a dictionary.
+    AsDictionary(GCPointer<StoredData>),
+
     /// Gets the length of a collection.
     Length(GCPointer<StoredData>),
 

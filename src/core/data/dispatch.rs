@@ -1,5 +1,5 @@
 use crate::core::{ExecResult, Type};
-use crate::core::data::live::{IntLive, FloatLive, StringLive, PointerLive, ListLive, LiveData};
+use crate::core::data::live::{IntLive, FloatLive, StringLive, PointerLive, ListLive, LiveData, DictLive};
 use crate::core::data::stored::StoredData;
 use crate::core::gc::GCPointer;
 
@@ -30,6 +30,7 @@ macro_rules! static_dispatch {
                 StoredData::StringStored(value) => <StringLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::PointerStored(value) => <PointerLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::ListStored(value) => <ListLive as LiveData>::$name(value, $( $arg ),* ),
+                StoredData::DictStored(value) => <DictLive as LiveData>::$name(value, $( $arg ),* )
             }
         }
     };
@@ -45,6 +46,7 @@ impl LiveData for LiveDispatch<'_> {
     static_dispatch!{ fn as_string() -> Option<ExecResult<StringLive>> }
     static_dispatch!{ fn as_pointer() -> Option<ExecResult<PointerLive>> }
     static_dispatch!{ fn as_list() -> Option<ExecResult<ListLive>> }
+    static_dispatch!{ fn as_dict() -> Option<ExecResult<DictLive>> }
     static_dispatch!{ fn op_len() -> Option<ExecResult<IntLive>> }
     static_dispatch!{ fn op_get_item(index: &StoredData) -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_set_item(index: &StoredData, value: GCPointer<StoredData>) -> Option<ExecResult<StoredData>> }

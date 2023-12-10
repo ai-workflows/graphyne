@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::core::{ExecResult, Type};
 use crate::core::data::stored::StoredData;
 use crate::core::gc::GCPointer;
@@ -8,6 +9,7 @@ pub type FloatLive = f64;
 pub type StringLive = String;
 pub type PointerLive = GCPointer<StoredData>;
 pub type ListLive = Vec<GCPointer<StoredData>>;
+pub type DictLive = HashMap<StringLive, GCPointer<StoredData>>;
 
 
 /// Represents data that is currently usable for performing operations.
@@ -24,6 +26,7 @@ pub trait LiveData {
             Type::String => 2,
             Type::Pointer => 3,
             Type::List => 4,
+            Type::Dictionary => 5,
         })
     }
 
@@ -35,6 +38,7 @@ pub trait LiveData {
     fn as_string(&self) -> Option<ExecResult<StringLive>> {None}
     fn as_pointer(&self) -> Option<ExecResult<PointerLive>> {None}
     fn as_list(&self) -> Option<ExecResult<ListLive>> {None}
+    fn as_dict(&self) -> Option<ExecResult<DictLive>> {None}
 
     /// Collection operations
     fn op_len(&self) -> Option<ExecResult<IntLive>> {None}

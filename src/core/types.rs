@@ -7,4 +7,5 @@ pub enum Type {
     String,
     Pointer,
     List,
+    Dictionary,
 }

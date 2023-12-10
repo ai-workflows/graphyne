@@ -59,6 +59,14 @@ impl<T> GarbageCollector<T> where T: GarbageCollectable<T> {
                         ids_to_decrement.push(pointer.id);
                     }
                 }
+                else if object.data_type == GCObjectType::Dict {
+                    let dict: &mut HashMap<String, GCPointer<StoredData>> = object.as_dict().unwrap();
+
+                    for pointer in dict.values_mut() {
+                        pointer.counted = false;
+                        ids_to_decrement.push(pointer.id);
+                    }
+                }
                 else {
                     continue;
                 }
