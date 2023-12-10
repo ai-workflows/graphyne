@@ -43,6 +43,7 @@ impl LiveData for LiveDispatch<'_> {
     static_dispatch!{ fn as_float() -> Option<ExecResult<FloatLive>> }
     static_dispatch!{ fn as_string() -> Option<ExecResult<StringLive>> }
     static_dispatch!{ fn as_pointer() -> Option<ExecResult<PointerLive>> }
+    static_dispatch!{ fn as_list() -> Option<ExecResult<ListLive>> }
     static_dispatch!{ fn op_add(rhs: &StoredData) -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_sub(rhs: &StoredData) -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_mul(rhs: &StoredData) -> Option<ExecResult<StoredData>> }

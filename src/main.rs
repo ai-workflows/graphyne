@@ -103,11 +103,15 @@ fn test_combine_lists(vm: &mut VM, list1: Vec<StringLive>, list2: Vec<IntLive>) 
     // there should be len(list1) + len(list2) objects in the VM
     assert_eq!(vm.object_count(), list1.len() + list2.len());
 
+    println!("{:?}", vm.state);
+
     let list1_ptr = vm.execute_op(Operation::StoreInput(StoredData::ListStored(ptrs1))).unwrap();
     let list2_ptr = vm.execute_op(Operation::StoreInput(StoredData::ListStored(ptrs2))).unwrap();
 
     // there should be len(list1) + len(list2) + 2 objects in the VM
     assert_eq!(vm.object_count(), list1.len() + list2.len() + 2);
+
+    println!("{:?}", vm.state);
 
     let list1_result = list1_ptr.get().unwrap().as_live().as_list().unwrap();
     let list2_result = list2_ptr.get().unwrap().as_live().as_list().unwrap();
@@ -117,32 +121,42 @@ fn test_combine_lists(vm: &mut VM, list1: Vec<StringLive>, list2: Vec<IntLive>) 
 
     let concat_op = Operation::Add(list1_ptr.clone(), list2_ptr.clone());
 
-    let concatenated_result = vm.execute_op(concat_op).unwrap();
+    let concatenated = vm.execute_op(concat_op).unwrap();
 
-    let concatenated = concatenated_result.get().unwrap();
+    let live_concatenated = concatenated.get().unwrap().as_live().as_list().unwrap().ok().unwrap();
 
-    let live_concatenated = concatenated.as_live().as_list().unwrap().ok().unwrap();
-
-    println!("{:?}", live_concatenated);
+    println!("CONCATENATED: {:?}", live_concatenated);
+    println!("{:?}", vm.state);
 
     assert_eq!(live_concatenated.len(), list1.len() + list2.len());
+
+    for (i, item) in live_concatenated.iter().enumerate() {
+        let item = item.get().unwrap();
+
+        if i < list1.len() {
+            assert_eq!(item.as_live().as_string().unwrap(), Ok(list1[i].clone()));
+        } else {
+            assert_eq!(item.as_live().as_int().unwrap(), Ok(list2[i - list1.len()].clone()));
+        }
+    }
+
 }
 
 fn main() {
     let mut vm = VM::new();
 
-    // test_gc(&mut vm, "Hello World");
-    //
-    // // Make sure all objects were garbage collected since the references went out of scope
-    // assert_eq!(vm.object_count(), 0);
-    //
-    // test_add_nums(&mut vm, 1, 2);
-    //
-    // assert_eq!(vm.object_count(), 0);
-    //
-    // test_concat_strings(&mut vm, "Hello", "World");
-    //
-    // assert_eq!(vm.object_count(), 0);
+    test_gc(&mut vm, "Hello World");
+
+    // Make sure all objects were garbage collected since the references went out of scope
+    assert_eq!(vm.object_count(), 0);
+
+    test_add_nums(&mut vm, 1, 2);
+
+    assert_eq!(vm.object_count(), 0);
+
+    test_concat_strings(&mut vm, "Hello", "World");
+
+    assert_eq!(vm.object_count(), 0);
 
     test_store_pointer(&mut vm, "Hello World");
 

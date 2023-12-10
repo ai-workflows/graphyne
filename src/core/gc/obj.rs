@@ -104,7 +104,18 @@ impl<T> GCObject<T> {
     pub fn to_list(&self) -> Result<ListLive, &'static str> {
         if self.data_type == GCObjectType::List {
             match &self.data {
-                GCObjectData::List(value) => Ok(value.clone()),
+                GCObjectData::List(value) => Ok(value.iter().map(|ptr| ptr.clone_unsafe()).collect()),
+                _ => Err("Invalid data type"),
+            }
+        } else {
+            Err("Invalid data type")
+        }
+    }
+    
+    pub fn as_list(&mut self) -> Result<&mut ListLive, &'static str> {
+        if self.data_type == GCObjectType::List {
+            match &mut self.data {
+                GCObjectData::List(value) => Ok(value),
                 _ => Err("Invalid data type"),
             }
         } else {

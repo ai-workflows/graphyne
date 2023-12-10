@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, RwLock};
 use crate::core::gc::{GarbageCollectable, GCObject, GCObjectData, GCObjectType, GCPointer};
 use uuid::Uuid;
+use crate::core::data::live::ListLive;
 use crate::core::data::stored::StoredData;
 
 /// A garbage collector that manages the lifetimes of objects.
@@ -29,15 +30,16 @@ impl<T> GarbageCollector<T> where T: GarbageCollectable<T> {
     pub fn decrement_ref(&mut self, id: usize)  {
         let mut to_remove: Vec<usize> = Vec::new();
 
-        let mut current_id = id;
+        let mut ids_to_decrement: Vec<usize> = Vec::new();
+        ids_to_decrement.push(id);
 
-        loop {
-            let object: &mut GCObject<T> = self.get_obj_mut(current_id).unwrap();
+        while ids_to_decrement.len() > 0 {
+            let id = ids_to_decrement.pop().unwrap();
+            let object: &mut GCObject<T> = self.get_obj_mut(id).unwrap();
 
             object.ref_count = object.ref_count.saturating_sub(1);
 
             if object.ref_count == 0 {
-                println!("Removing object ({obj:?}) with id {id}", obj=object, id=id);
                 to_remove.push(id);
 
                 if object.data_type == GCObjectType::Pointer {
@@ -47,14 +49,22 @@ impl<T> GarbageCollector<T> where T: GarbageCollectable<T> {
                     // this is because we are manually decrementing the ref count of the object it points to
                     // if we didn't do this, the pointer would try to decrement when dropped and cause a deadlock
                     pointer.counted = false;
-                    current_id = pointer.id;
+                    ids_to_decrement.push(pointer.id);
+                }
+                else if object.data_type == GCObjectType::List {
+                    let list: &mut ListLive = object.as_list().unwrap();
+
+                    for pointer in list.iter_mut() {
+                        pointer.counted = false;
+                        ids_to_decrement.push(pointer.id);
+                    }
                 }
                 else {
-                    break;
+                    continue;
                 }
             }
             else {
-                break;
+                continue;
             }
         }
 
@@ -70,7 +80,6 @@ impl<T> GarbageCollector<T> where T: GarbageCollectable<T> {
         let object_id = self.next_id;
         self.objects.insert(object_id, object);
         self.next_id += 1;
-        println!("Allocated object with id {}", object_id);
         object_id
     }
 
@@ -124,8 +133,6 @@ impl<T> GCPointer<T> where T: GarbageCollectable<T> {
 
 impl<T> Drop for GCPointer<T> where T: GarbageCollectable<T> {
     fn drop(&mut self) {
-        println!("Dropping pointer: {id}", id=self.id);
-
         // If the pointer is not counted, then there is no need to decrement the reference count.
         if !self.counted {
             return;
