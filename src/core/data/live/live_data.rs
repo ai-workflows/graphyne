@@ -7,6 +7,7 @@ use crate::core::gc::GCPointer;
 pub type IntLive = i64;
 pub type FloatLive = f64;
 pub type StringLive = String;
+pub type BoolLive = bool;
 pub type PointerLive = GCPointer<StoredData>;
 pub type ListLive = Vec<GCPointer<StoredData>>;
 pub type DictLive = HashMap<StringLive, GCPointer<StoredData>>;
@@ -19,15 +20,16 @@ pub trait LiveData {
     fn type_tag(&self) -> Type;
 
     /// Returns the "language" type code of this data.
-    fn type_code(&self) -> ExecResult<IntLive> {
+    fn type_code(&self) -> ExecResult<StringLive> {
         Ok(match self.type_tag() {
-            Type::Integer => 0,
-            Type::Float => 1,
-            Type::String => 2,
-            Type::Pointer => 3,
-            Type::List => 4,
-            Type::Dictionary => 5,
-        })
+            Type::Integer => "int",
+            Type::Float => "float",
+            Type::String => "string",
+            Type::Pointer => "pointer",
+            Type::List => "list",
+            Type::Dictionary => "dict",
+            Type::Boolean => "bool",
+        }.to_string())
     }
 
     /// Operations return None if they are not Implemented
@@ -36,9 +38,22 @@ pub trait LiveData {
     fn as_int(&self) -> Option<ExecResult<IntLive>> {None}
     fn as_float(&self) -> Option<ExecResult<FloatLive>> {None}
     fn as_string(&self) -> Option<ExecResult<StringLive>> {None}
+    fn as_bool(&self) -> Option<ExecResult<BoolLive>> {None}
     fn as_pointer(&self) -> Option<ExecResult<PointerLive>> {None}
     fn as_list(&self) -> Option<ExecResult<ListLive>> {None}
     fn as_dict(&self) -> Option<ExecResult<DictLive>> {None}
+
+    /// Boolean operations
+    fn op_if(&self, then: &StoredData, otherwise: &StoredData) -> Option<ExecResult<StoredData>> {None}
+    fn op_not(&self) -> Option<ExecResult<StoredData>> {None}
+    fn op_and(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
+    fn op_or(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
+    
+    /// Comparison operations
+    fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
+    fn op_lt(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
+    fn op_gt(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
+
 
     /// Collection operations
     fn op_len(&self) -> Option<ExecResult<IntLive>> {None}

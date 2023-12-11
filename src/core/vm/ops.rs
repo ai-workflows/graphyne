@@ -5,6 +5,7 @@ use crate::core::gc::GCPointer;
 /// Represents an operation that can be performed on data.
 /// Each operation contains a pointer to the data for its operands.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum Operation {
     /// Stores a literal value in memory.
     StoreInput(StoredData),
@@ -18,6 +19,9 @@ pub enum Operation {
     /// Converts a value to a string.
     AsString(GCPointer<StoredData>),
 
+    /// Converts a value to a boolean.
+    AsBool(GCPointer<StoredData>),
+
     /// Converts a value to a pointer.
     AsPointer(GCPointer<StoredData>),
 
@@ -26,6 +30,27 @@ pub enum Operation {
 
     /// Converts a value to a dictionary.
     AsDictionary(GCPointer<StoredData>),
+
+    /// Returns the second value if the first value is true, otherwise returns the third value.
+    If(GCPointer<StoredData>, GCPointer<StoredData>, GCPointer<StoredData>),
+
+    /// Inverts a boolean value.
+    Not(GCPointer<StoredData>),
+
+    /// Returns a bool indicating whether both values are true.
+    And(GCPointer<StoredData>, GCPointer<StoredData>),
+
+    /// Returns a bool indicating whether either value is true.
+    Or(GCPointer<StoredData>, GCPointer<StoredData>),
+
+    /// Returns a bool indicating whether two values are equal.
+    Equal(GCPointer<StoredData>, GCPointer<StoredData>),
+
+    /// Returns true if the first value is less than the second value.
+    LessThan(GCPointer<StoredData>, GCPointer<StoredData>),
+
+    /// Returns true if the first value is greater than the second value.
+    GreaterThan(GCPointer<StoredData>, GCPointer<StoredData>),
 
     /// Gets the length of a collection.
     Length(GCPointer<StoredData>),

@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use crate::core::data::live::{DictLive, FloatLive, IntLive, ListLive, PointerLive, StringLive};
+use crate::core::data::live::live_data::BoolLive;
 use crate::core::data::stored::StoredData;
 use crate::core::gc::{GCPointer};
 
@@ -9,6 +10,7 @@ pub enum GCObjectType {
     Integer,
     Float,
     String,
+    Bool,
     Pointer,
     List,
     Dict
@@ -19,6 +21,7 @@ pub enum GCObjectData {
     Int(IntLive),
     Float(FloatLive),
     String(StringLive),
+    Bool(BoolLive),
     Pointer(PointerLive),
     List(ListLive),
     Dict(DictLive),
@@ -68,6 +71,17 @@ impl<T> GCObject<T> {
         if self.data_type == GCObjectType::String {
             match &self.data {
                 GCObjectData::String(value) => Ok(value.clone()),
+                _ => Err("Invalid data type"),
+            }
+        } else {
+            Err("Invalid data type")
+        }
+    }
+
+    pub fn to_bool(&self) -> Result<BoolLive, &'static str> {
+        if self.data_type == GCObjectType::Bool {
+            match &self.data {
+                GCObjectData::Bool(value) => Ok(*value),
                 _ => Err("Invalid data type"),
             }
         } else {

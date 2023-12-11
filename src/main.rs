@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use maplit::hashmap;
 
 use crate::core::data::stored::StoredData;
-use crate::core::data::live::{IntLive, LiveData, PointerLive, StringLive};
+use crate::core::data::live::{IntLive, LiveData, StringLive};
 use crate::core::gc::GCPointer;
 use crate::core::vm::ops::Operation;
 use crate::core::vm::VM;
@@ -31,7 +31,7 @@ fn test_add_nums(vm: &mut VM, num1: i64, num2: i64) {
 
     let sum = vm.execute_op(add).unwrap();
 
-    println!("{:?}", sum.get());
+    // println!("{:?}", sum.get());
 
     let sum_value = sum.get().unwrap();
 
@@ -52,7 +52,7 @@ fn test_concat_strings(vm: &mut VM, str1: &str, str2: &str) {
 
     let concatenated = vm.execute_op(concat_op).unwrap();
 
-    println!("{:?}", concatenated.get());
+    // println!("{:?}", concatenated.get());
 
     let concatenated_value = concatenated.get().unwrap();
 
@@ -68,9 +68,9 @@ fn test_store_pointer_helper(vm: &mut VM, value: &str) -> GCPointer<StoredData> 
     let ptr = vm.execute_op(Operation::StoreInput(StoredData::StringStored(value.to_string()))).unwrap();
     let meta_ptr = vm.execute_op(Operation::StoreInput(StoredData::PointerStored(ptr.clone()))).unwrap();
 
-    println!("{:?}", vm.state);
+    // println!("{:?}", vm.state);
 
-    println!("{:?}", meta_ptr.get().unwrap().as_live().as_pointer().unwrap());
+    // println!("{:?}", meta_ptr.get().unwrap().as_live().as_pointer().unwrap());
 
     assert_eq!(meta_ptr.get().unwrap().as_live().as_pointer().unwrap(), Ok(ptr.clone()));
 
@@ -79,7 +79,7 @@ fn test_store_pointer_helper(vm: &mut VM, value: &str) -> GCPointer<StoredData> 
 
     assert_eq!(ptr.ref_count().unwrap(), 2);
 
-    println!("{:?}", vm.state);
+    // println!("{:?}", vm.state);
 
     return ptr;
 }
@@ -89,7 +89,7 @@ fn test_store_pointer(vm: &mut VM, value: &str) {
 
     let ptr = test_store_pointer_helper(vm, value);
 
-    println!("{:?}", ptr);
+    // println!("{:?}", ptr);
 
     assert_eq!(ptr.ref_count().unwrap(), 1);
 
@@ -106,7 +106,7 @@ fn test_combine_lists(vm: &mut VM, list1: Vec<StringLive>, list2: Vec<IntLive>) 
     // there should be len(list1) + len(list2) objects in the VM
     assert_eq!(vm.object_count(), list1.len() + list2.len());
 
-    println!("{:?}", vm.state);
+    // println!("{:?}", vm.state);
 
     let list1_ptr = vm.execute_op(Operation::StoreInput(StoredData::ListStored(ptrs1))).unwrap();
     let list2_ptr = vm.execute_op(Operation::StoreInput(StoredData::ListStored(ptrs2))).unwrap();
@@ -114,13 +114,13 @@ fn test_combine_lists(vm: &mut VM, list1: Vec<StringLive>, list2: Vec<IntLive>) 
     // there should be len(list1) + len(list2) + 2 objects in the VM
     assert_eq!(vm.object_count(), list1.len() + list2.len() + 2);
 
-    println!("{:?}", vm.state);
+    // println!("{:?}", vm.state);
 
     let list1_result = list1_ptr.get().unwrap().as_live().as_list().unwrap();
     let list2_result = list2_ptr.get().unwrap().as_live().as_list().unwrap();
 
-    println!("{:?}", list1_result);
-    println!("{:?}", list2_result);
+    // println!("{:?}", list1_result);
+    // println!("{:?}", list2_result);
 
     let concat_op = Operation::Add(list1_ptr.clone(), list2_ptr.clone());
 
@@ -128,8 +128,8 @@ fn test_combine_lists(vm: &mut VM, list1: Vec<StringLive>, list2: Vec<IntLive>) 
 
     let live_concatenated = concatenated.get().unwrap().as_live().as_list().unwrap().ok().unwrap();
 
-    println!("CONCATENATED: {:?}", live_concatenated);
-    println!("{:?}", vm.state);
+    // println!("CONCATENATED: {:?}", live_concatenated);
+    // println!("{:?}", vm.state);
 
     assert_eq!(live_concatenated.len(), list1.len() + list2.len());
 
@@ -261,6 +261,63 @@ fn test_dict(vm: &mut VM, dict: HashMap<StringLive, StringLive>) {
     drop(set_result_dict);
 }
 
+fn test_bool(vm: &mut VM) {
+    vm.reset();
+
+    let true_ptr = vm.execute_op(Operation::StoreInput(StoredData::BoolStored(true))).unwrap();
+    let false_ptr = vm.execute_op(Operation::StoreInput(StoredData::BoolStored(false))).unwrap();
+
+    // test bool not
+    let not_op = Operation::Not(true_ptr.clone());
+    let not_result = vm.execute_op(not_op).unwrap().get().unwrap().as_live().as_bool().unwrap().ok().unwrap();
+
+    assert_eq!(not_result, false);
+
+    // test bool and
+    let and_op = Operation::And(true_ptr.clone(), false_ptr.clone());
+    let and_result = vm.execute_op(and_op).unwrap().get().unwrap().as_live().as_bool().unwrap().ok().unwrap();
+
+    assert_eq!(and_result, false);
+
+    // test bool or
+    let or_op = Operation::Or(true_ptr.clone(), false_ptr.clone());
+    let or_result = vm.execute_op(or_op).unwrap().get().unwrap().as_live().as_bool().unwrap().ok().unwrap();
+
+    assert_eq!(or_result, true);
+
+    // test bool eq
+    let eq_op = Operation::Equal(true_ptr.clone(), false_ptr.clone());
+    let eq_result = vm.execute_op(eq_op).unwrap().get().unwrap().as_live().as_bool().unwrap().ok().unwrap();
+
+    assert_eq!(eq_result, false);
+
+    // test greater than
+    let five_ptr = vm.execute_op(Operation::StoreInput(StoredData::IntStored(5))).unwrap();
+    let ten_ptr = vm.execute_op(Operation::StoreInput(StoredData::IntStored(10))).unwrap();
+
+    let gt_op = Operation::GreaterThan(ten_ptr.clone(), five_ptr.clone());
+    let gt_result = vm.execute_op(gt_op).unwrap().get().unwrap().as_live().as_bool().unwrap().ok().unwrap();
+
+    assert_eq!(gt_result, true);
+
+    // test less than
+    let lt_op = Operation::LessThan(ten_ptr.clone(), five_ptr.clone());
+    let lt_result = vm.execute_op(lt_op).unwrap().get().unwrap().as_live().as_bool().unwrap().ok().unwrap();
+
+    assert_eq!(lt_result, false);
+
+    // test if
+    let if_op = Operation::If(true_ptr.clone(), ten_ptr.clone(), five_ptr.clone());
+    let if_result = vm.execute_op(if_op).unwrap().get().unwrap().as_live().as_int().unwrap().ok().unwrap();
+
+    assert_eq!(if_result, 10);
+
+    let if_op = Operation::If(false_ptr.clone(), ten_ptr.clone(), five_ptr.clone());
+    let if_result = vm.execute_op(if_op).unwrap().get().unwrap().as_live().as_int().unwrap().ok().unwrap();
+
+    assert_eq!(if_result, 5);
+}
+
 fn main() {
     let mut vm = VM::new();
 
@@ -293,6 +350,10 @@ fn main() {
         "Hello".to_string() => "World".to_string(),
         "Foo".to_string() => "Bar".to_string()
     });
+
+    assert_eq!(vm.object_count(), 0);
+
+    test_bool(&mut vm);
 
     assert_eq!(vm.object_count(), 0);
 }

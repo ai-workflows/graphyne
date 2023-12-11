@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use crate::core::data::live::{LiveData};
 use crate::core::data::stored::StoredData;
 use crate::core::ExecResult;
@@ -69,6 +69,14 @@ impl VM {
             Operation::SetItem(list, index, value) => self.execute_set_item(list, index, value),
             Operation::Push(list, value) => self.execute_push(list, value),
             Operation::Remove(list, index) => self.execute_remove(list, index),
+            Operation::AsBool(arg) => self.execute_as_bool(arg),
+            Operation::If(condition, then, otherwise) => self.execute_if(condition, then, otherwise),
+            Operation::Not(arg) => self.execute_not(arg),
+            Operation::And(lhs, rhs) => self.execute_and(lhs, rhs),
+            Operation::Or(lhs, rhs) => self.execute_or(lhs, rhs),
+            Operation::Equal(lhs, rhs) => self.execute_equal(lhs, rhs),
+            Operation::LessThan(lhs, rhs) => self.execute_less_than(lhs, rhs),
+            Operation::GreaterThan(lhs, rhs) => self.execute_greater_than(lhs, rhs),
         }
     }
 
@@ -84,6 +92,10 @@ impl VM {
         execute_cast_op!(self, arg, as_string, StringStored, "Cannot cast to string")
     }
 
+    fn execute_as_bool(&self, arg: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
+        execute_cast_op!(self, arg, as_bool, BoolStored, "Cannot cast to bool")
+    }
+
     fn execute_as_pointer(&self, arg: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
         execute_cast_op!(self, arg, as_pointer, PointerStored, "Cannot cast to pointer")
     }
@@ -94,6 +106,83 @@ impl VM {
 
     fn execute_as_dict(&self, arg: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
         execute_cast_op!(self, arg, as_dict, DictStored, "Cannot cast to dict")
+    }
+
+    fn execute_if(&self, condition: GCPointer<StoredData>, then: GCPointer<StoredData>, otherwise: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
+        let condition_value = condition.get().ok_or("Null pointer exception")?;
+        let then_value = then.get().ok_or("Null pointer exception")?;
+        let otherwise_value = otherwise.get().ok_or("Null pointer exception")?;
+
+        if let Some(result) = condition_value.as_live().op_if(&then_value, &otherwise_value) {
+            return result.map(|live| GCPointer::new(live, self.state.clone()));
+        }
+
+        Err("Failed to execute if")
+    }
+
+    fn execute_not(&self, arg: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
+        let arg_value = arg.get().ok_or("Null pointer exception")?;
+
+        if let Some(result) = arg_value.as_live().op_not() {
+            return result.map(|live| GCPointer::new(live, self.state.clone()));
+        }
+
+        Err("Failed to execute not")
+    }
+
+    fn execute_and(&self, lhs: GCPointer<StoredData>, rhs: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
+        let lhs_value = lhs.get().ok_or("Null pointer exception")?;
+        let rhs_value = rhs.get().ok_or("Null pointer exception")?;
+
+        if let Some(result) = lhs_value.as_live().op_and(&rhs_value) {
+            return result.map(|live| GCPointer::new(live, self.state.clone()));
+        }
+
+        Err("Failed to execute and")
+    }
+
+    fn execute_or(&self, lhs: GCPointer<StoredData>, rhs: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
+        let lhs_value = lhs.get().ok_or("Null pointer exception")?;
+        let rhs_value = rhs.get().ok_or("Null pointer exception")?;
+
+        if let Some(result) = lhs_value.as_live().op_or(&rhs_value) {
+            return result.map(|live| GCPointer::new(live, self.state.clone()));
+        }
+
+        Err("Failed to execute or")
+    }
+
+    fn execute_equal(&self, lhs: GCPointer<StoredData>, rhs: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
+        let lhs_value = lhs.get().ok_or("Null pointer exception")?;
+        let rhs_value = rhs.get().ok_or("Null pointer exception")?;
+
+        if let Some(result) = lhs_value.as_live().op_eq(&rhs_value) {
+            return result.map(|live| GCPointer::new(live, self.state.clone()));
+        }
+
+        Err("Failed to execute equal")
+    }
+
+    fn execute_less_than(&self, lhs: GCPointer<StoredData>, rhs: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
+        let lhs_value = lhs.get().ok_or("Null pointer exception")?;
+        let rhs_value = rhs.get().ok_or("Null pointer exception")?;
+
+        if let Some(result) = lhs_value.as_live().op_lt(&rhs_value) {
+            return result.map(|live| GCPointer::new(live, self.state.clone()));
+        }
+
+        Err("Failed to execute less than")
+    }
+
+    fn execute_greater_than(&self, lhs: GCPointer<StoredData>, rhs: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
+        let lhs_value = lhs.get().ok_or("Null pointer exception")?;
+        let rhs_value = rhs.get().ok_or("Null pointer exception")?;
+
+        if let Some(result) = lhs_value.as_live().op_gt(&rhs_value) {
+            return result.map(|live| GCPointer::new(live, self.state.clone()));
+        }
+
+        Err("Failed to execute greater than")
     }
 
     fn execute_length(&self, list: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {

@@ -18,6 +18,17 @@ impl LiveData for StringLive {
         Some(Ok(self.clone()))
     }
 
+    fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
+        match rhs {
+            StoredData::StringStored(rhs) => Some(Ok(StoredData::BoolStored(*self == *rhs))),
+            _ => {
+                let cast_result: Option<ExecResult<StringLive>> = rhs.as_live().as_string();
+
+                cast_result.map(|rhs| Ok(StoredData::BoolStored(*self == rhs?)))
+            }
+        }
+    }
+
     fn op_add(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         // concat
         match rhs {

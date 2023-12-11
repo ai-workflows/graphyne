@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::sync::{Arc, Mutex, RwLock};
-use crate::core::gc::{GarbageCollectable, GCObject, GCObjectData, GCObjectType, GCPointer};
-use uuid::Uuid;
+use std::sync::{Arc, RwLock};
+use crate::core::gc::{GarbageCollectable, GCObject, GCObjectType, GCPointer};
 use crate::core::data::live::ListLive;
 use crate::core::data::stored::StoredData;
 

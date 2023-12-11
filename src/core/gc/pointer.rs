@@ -1,8 +1,7 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
-use crate::core::data::stored::StoredData;
-use crate::core::gc::{GarbageCollectable, GarbageCollector, GCObject};
+use std::sync::{Arc, RwLock};
+use crate::core::gc::{GarbageCollectable, GarbageCollector};
 
 /// Represents a pointer to a value that is being managed by the garbage collector.
 pub struct GCPointer<T> where T: GarbageCollectable<T> {

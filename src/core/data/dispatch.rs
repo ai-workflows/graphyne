@@ -1,5 +1,5 @@
 use crate::core::{ExecResult, Type};
-use crate::core::data::live::{IntLive, FloatLive, StringLive, PointerLive, ListLive, LiveData, DictLive};
+use crate::core::data::live::{IntLive, FloatLive, StringLive, PointerLive, ListLive, LiveData, DictLive, BoolLive};
 use crate::core::data::stored::StoredData;
 use crate::core::gc::GCPointer;
 
@@ -16,7 +16,7 @@ impl StoredData {
         self.as_live().type_tag()
     }
 
-    pub fn type_code(&self) -> ExecResult<IntLive> {
+    pub fn type_code(&self) -> ExecResult<StringLive> {
         self.as_live().type_code()
     }
 }
@@ -28,6 +28,7 @@ macro_rules! static_dispatch {
                 StoredData::IntStored(value) => <IntLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::FloatStored(value) => <FloatLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::StringStored(value) => <StringLive as LiveData>::$name(value, $( $arg ),* ),
+                StoredData::BoolStored(value) => <BoolLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::PointerStored(value) => <PointerLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::ListStored(value) => <ListLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::DictStored(value) => <DictLive as LiveData>::$name(value, $( $arg ),* )
@@ -40,13 +41,21 @@ macro_rules! static_dispatch {
 /// Implement LiveData for LiveDispatch.
 impl LiveData for LiveDispatch<'_> {
     static_dispatch!{ fn type_tag() -> Type }
-    static_dispatch!{ fn type_code() -> ExecResult<IntLive> }
+    static_dispatch!{ fn type_code() -> ExecResult<StringLive> }
     static_dispatch!{ fn as_int() -> Option<ExecResult<IntLive>> }
     static_dispatch!{ fn as_float() -> Option<ExecResult<FloatLive>> }
     static_dispatch!{ fn as_string() -> Option<ExecResult<StringLive>> }
+    static_dispatch!{ fn as_bool() -> Option<ExecResult<BoolLive>> }
     static_dispatch!{ fn as_pointer() -> Option<ExecResult<PointerLive>> }
     static_dispatch!{ fn as_list() -> Option<ExecResult<ListLive>> }
     static_dispatch!{ fn as_dict() -> Option<ExecResult<DictLive>> }
+    static_dispatch!{ fn op_if(then: &StoredData, otherwise: &StoredData) -> Option<ExecResult<StoredData>> }
+    static_dispatch!{ fn op_not() -> Option<ExecResult<StoredData>> }
+    static_dispatch!{ fn op_and(rhs: &StoredData) -> Option<ExecResult<StoredData>>}
+    static_dispatch!{ fn op_or(rhs: &StoredData) -> Option<ExecResult<StoredData>> }
+    static_dispatch!{ fn op_eq(rhs: &StoredData) -> Option<ExecResult<StoredData>> }
+    static_dispatch!{ fn op_lt(rhs: &StoredData) -> Option<ExecResult<StoredData>> }
+    static_dispatch!{ fn op_gt(rhs: &StoredData) -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_len() -> Option<ExecResult<IntLive>> }
     static_dispatch!{ fn op_get_item(index: &StoredData) -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_set_item(index: &StoredData, value: GCPointer<StoredData>) -> Option<ExecResult<StoredData>> }

@@ -37,6 +37,39 @@ impl LiveData for IntLive {
         Some(Ok(*self as FloatLive))
     }
 
+    fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
+        match rhs {
+            StoredData::IntStored(rhs) => Some(Ok(StoredData::BoolStored(*self == *rhs))),
+            _ => {
+                let cast_result: Option<ExecResult<IntLive>> = rhs.as_live().as_int();
+
+                cast_result.map(|rhs| Ok(StoredData::BoolStored(*self == rhs?)))
+            }
+        }
+    }
+
+    fn op_lt(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
+        match rhs {
+            StoredData::IntStored(rhs) => Some(Ok(StoredData::BoolStored(*self < *rhs))),
+            _ => {
+                let cast_result: Option<ExecResult<IntLive>> = rhs.as_live().as_int();
+
+                cast_result.map(|rhs| Ok(StoredData::BoolStored(*self < rhs?)))
+            }
+        }
+    }
+
+    fn op_gt(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
+        match rhs {
+            StoredData::IntStored(rhs) => Some(Ok(StoredData::BoolStored(*self > *rhs))),
+            _ => {
+                let cast_result: Option<ExecResult<IntLive>> = rhs.as_live().as_int();
+
+                cast_result.map(|rhs| Ok(StoredData::BoolStored(*self > rhs?)))
+            }
+        }
+    }
+
     fn op_add(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         checked_arithmetic_int_op!(self, rhs, +, checked_add)
     }
