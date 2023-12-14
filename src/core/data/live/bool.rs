@@ -9,7 +9,7 @@ impl LiveData for BoolLive {
     }
 
     fn as_bool(&self) -> Option<ExecResult<BoolLive>> {
-        Some(Ok(*self))
+        Some(Ok(self.clone()))
     }
 
     fn op_if(&self, then: &StoredData, otherwise: &StoredData) -> Option<ExecResult<StoredData>> {

@@ -1,5 +1,5 @@
 use crate::core::data::live::live_data::ListLive;
-use crate::core::data::live::{IntLive, LiveData};
+use crate::core::data::live::{IntLive, LiveData, PointerLive};
 use crate::core::{ExecResult, Type};
 use crate::core::data::stored::StoredData;
 use crate::core::gc::{GCPointer};
@@ -20,32 +20,32 @@ impl LiveData for ListLive {
     fn op_get_item(&self, index: &StoredData) -> Option<ExecResult<StoredData>> {
         let index = match index.as_live().as_int() {
             Some(Ok(index)) => index as usize,
-            _ => return Some(Err("Index must be an integer")),
+            _ => return Some(Err("Index must be an integer".to_string())),
         };
 
         if index >= self.len() {
-            return Some(Err("Index out of bounds"));
+            return Some(Err("Index out of bounds".to_string()));
         }
 
-        match self.get(index) {
-            Some(ptr) => ptr.get().map(Ok),
-            None => Some(Err("Index out of bounds")),
-        }
+        Some(match self.get(index) {
+            Some(ptr) => Ok(StoredData::PointerStored(ptr.clone())),
+            None => Err("Index out of bounds".to_string()),
+        })
     }
 
-    fn op_set_item(&self, index: &StoredData, value: GCPointer<StoredData>) -> Option<ExecResult<StoredData>> {
+    fn op_set_item(&self, index: &StoredData, value: PointerLive) -> Option<ExecResult<StoredData>> {
         // copy the list
         let mut list = self.clone();
 
         let index = match index.as_live().as_int() {
             Some(Ok(index)) => index as usize,
-            _ => return Some(Err("Index must be an integer")),
+            _ => return Some(Err("Index must be an integer".to_string())),
         };
 
         // get the pointer at the index
-        let ptr: &GCPointer<StoredData> = match list.get(index) {
+        match list.get(index) {
             Some(ptr) => ptr,
-            None => return Some(Err("Index out of bounds")),
+            None => return Some(Err("Index out of bounds".to_string())),
         };
 
         // replace the pointer at the index with the new pointer
@@ -66,13 +66,13 @@ impl LiveData for ListLive {
 
         let index = match index.as_live().as_int() {
             Some(Ok(index)) => index as usize,
-            _ => return Some(Err("Index must be an integer")),
+            _ => return Some(Err("Index must be an integer".to_string())),
         };
 
         // get the pointer at the index
-        let ptr: &GCPointer<StoredData> = match list.get(index) {
+        match list.get(index) {
             Some(ptr) => ptr,
-            None => return Some(Err("Index out of bounds")),
+            None => return Some(Err("Index out of bounds".to_string())),
         };
 
         // remove the pointer at the index

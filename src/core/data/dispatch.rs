@@ -1,5 +1,5 @@
 use crate::core::{ExecResult, Type};
-use crate::core::data::live::{IntLive, FloatLive, StringLive, PointerLive, ListLive, LiveData, DictLive, BoolLive};
+use crate::core::data::live::{IntLive, FloatLive, StringLive, PointerLive, ListLive, LiveData, DictLive, BoolLive, FuncLive, FuncValLive, FuncOpLive};
 use crate::core::data::stored::StoredData;
 use crate::core::gc::GCPointer;
 
@@ -12,6 +12,7 @@ impl StoredData {
         LiveDispatch(self)
     }
 
+    #[allow(dead_code)]
     pub fn type_tag(&self) -> Type {
         self.as_live().type_tag()
     }
@@ -25,13 +26,17 @@ macro_rules! static_dispatch {
     { fn $name:tt ( $( $arg:tt : $argty:ty ),* ) -> $ret:ty } => {
         fn $name (&self, $( $arg : $argty ),* ) -> $ret {
             match self.0 {
+                StoredData::NullStored => panic!("Cannot perform operation on null data."),
                 StoredData::IntStored(value) => <IntLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::FloatStored(value) => <FloatLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::StringStored(value) => <StringLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::BoolStored(value) => <BoolLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::PointerStored(value) => <PointerLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::ListStored(value) => <ListLive as LiveData>::$name(value, $( $arg ),* ),
-                StoredData::DictStored(value) => <DictLive as LiveData>::$name(value, $( $arg ),* )
+                StoredData::DictStored(value) => <DictLive as LiveData>::$name(value, $( $arg ),* ),
+                StoredData::FuncStored(value) => <FuncLive as LiveData>::$name(value, $( $arg ),* ),
+                StoredData::FuncValStored(value) => <FuncValLive as LiveData>::$name(value, $( $arg ),* ),
+                StoredData::FuncOpStored(value) => <FuncOpLive as LiveData>::$name(value, $( $arg ),* ),
             }
         }
     };
@@ -49,6 +54,9 @@ impl LiveData for LiveDispatch<'_> {
     static_dispatch!{ fn as_pointer() -> Option<ExecResult<PointerLive>> }
     static_dispatch!{ fn as_list() -> Option<ExecResult<ListLive>> }
     static_dispatch!{ fn as_dict() -> Option<ExecResult<DictLive>> }
+    static_dispatch!{ fn as_func() -> Option<ExecResult<FuncLive>> }
+    static_dispatch!{ fn as_func_val() -> Option<ExecResult<FuncValLive>> }
+    static_dispatch!{ fn as_func_op() -> Option<ExecResult<FuncOpLive>> }
     static_dispatch!{ fn op_if(then: &StoredData, otherwise: &StoredData) -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_not() -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_and(rhs: &StoredData) -> Option<ExecResult<StoredData>>}
@@ -65,4 +73,5 @@ impl LiveData for LiveDispatch<'_> {
     static_dispatch!{ fn op_sub(rhs: &StoredData) -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_mul(rhs: &StoredData) -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_div(rhs: &StoredData) -> Option<ExecResult<StoredData>> }
+    static_dispatch!{ fn op_call(args: &StoredData) -> Option<ExecResult<StoredData>> }
 }

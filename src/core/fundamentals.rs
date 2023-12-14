@@ -1,2 +1,1 @@
-pub type ExecResult<T> = Result<T, &'static str>;
-
+pub type ExecResult<T> = Result<T, String>;

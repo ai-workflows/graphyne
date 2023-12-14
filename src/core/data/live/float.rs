@@ -28,17 +28,21 @@ impl LiveData for FloatLive {
     }
 
     fn as_int(&self) -> Option<ExecResult<IntLive>> {
-        Some(Ok(*self as IntLive))
+        Some(Ok(self.clone() as IntLive))
+    }
+
+    fn as_float(&self) -> Option<ExecResult<FloatLive>> {
+        Some(Ok(self.clone()))
     }
 
     fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
-            StoredData::FloatStored(rhs) => Some(Ok(StoredData::BoolStored(*self == *rhs))),
+            StoredData::FloatStored(rhs) => Some(Ok(StoredData::BoolStored(self.clone() == *rhs))),
             _ => {
                 let cast_result: Option<ExecResult<FloatLive>> = rhs.as_live().as_float();
 
                 cast_result.map(|rhs| {
-                    Ok(StoredData::BoolStored(*self == rhs?))
+                    Ok(StoredData::BoolStored(self.clone() == rhs?))
                 })
             }
         }
@@ -46,12 +50,12 @@ impl LiveData for FloatLive {
 
     fn op_lt(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
-            StoredData::FloatStored(rhs) => Some(Ok(StoredData::BoolStored(*self < *rhs))),
+            StoredData::FloatStored(rhs) => Some(Ok(StoredData::BoolStored(self.clone() < *rhs))),
             _ => {
                 let cast_result: Option<ExecResult<FloatLive>> = rhs.as_live().as_float();
 
                 cast_result.map(|rhs| {
-                    Ok(StoredData::BoolStored(*self < rhs?))
+                    Ok(StoredData::BoolStored(self.clone() < rhs?))
                 })
             }
         }
@@ -59,19 +63,15 @@ impl LiveData for FloatLive {
 
     fn op_gt(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
-            StoredData::FloatStored(rhs) => Some(Ok(StoredData::BoolStored(*self > *rhs))),
+            StoredData::FloatStored(rhs) => Some(Ok(StoredData::BoolStored(self.clone() > *rhs))),
             _ => {
                 let cast_result: Option<ExecResult<FloatLive>> = rhs.as_live().as_float();
 
                 cast_result.map(|rhs| {
-                    Ok(StoredData::BoolStored(*self > rhs?))
+                    Ok(StoredData::BoolStored(self.clone() > rhs?))
                 })
             }
         }
-    }
-
-    fn as_float(&self) -> Option<ExecResult<FloatLive>> {
-        Some(Ok(*self))
     }
 
     fn op_add(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {

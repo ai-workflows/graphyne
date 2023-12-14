@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::sync::{Arc, RwLock};
 use crate::core::gc::{GarbageCollectable, GCObject, GCObjectType, GCPointer};
-use crate::core::data::live::ListLive;
 use crate::core::data::stored::StoredData;
+use crate::core::ExecResult;
 
 /// A garbage collector that manages the lifetimes of objects.
 #[derive(Debug)]
@@ -20,98 +19,181 @@ impl<T> GarbageCollector<T> where T: GarbageCollectable<T> {
         }
     }
 
-    pub fn increment_ref(&mut self, id: usize) {
-        if let Some(object) = self.objects.get_mut(&id) {
-            object.ref_count += 1;
+    /// Allocates a new value in the garbage collector and returns a pointer to it.
+    pub fn allocate(&mut self, data: T) -> ExecResult<GCPointer<T>> where T: GarbageCollectable<T> {
+        let mut obj = T::to_gc_object(data);
+        let object_id = self.next_id;
+
+        let mut ptr = GCPointer {
+            id: object_id,
+            counted: false,
+            phantom: PhantomData,
+        };
+
+        // check if the obj has any child pointers
+        let child_ptrs = obj.get_pointers();
+
+        for child_ptr in child_ptrs {
+            // if the pointer is uncounted, count it
+            if !child_ptr.counted {
+                self.count_ptr_by_id(child_ptr.id)?;
+                child_ptr.counted = true;
+            }
         }
+
+        // count the pointer itself
+        self.objects.insert(object_id, obj);
+        self.next_id += 1;
+        self.count_pointer(&mut ptr).map(|_| ptr)
     }
 
-    pub fn decrement_ref(&mut self, id: usize)  {
+    /// Counts a pointer in the garbage collector.
+    pub fn count_pointer(&mut self, ptr: &mut GCPointer<T>) -> ExecResult<StoredData> {
+        // If the pointer is already counted, it does not need to be counted again.
+        if ptr.counted {
+            return Err("Pointer is already counted.".to_string());
+        }
+
+        // Get the object that the pointer points to.
+        let obj_result = self.get_obj_mut(ptr.id);
+
+        // If the object does not exist, return an error.
+        let obj = match obj_result {
+            Some(obj) => obj,
+            None => return Err("Pointer does not point to a valid object.".to_string()),
+        };
+
+        // increment the ref count of the object. And mark the pointer as counted.
+        obj.ref_count += 1;
+        ptr.counted = true;
+
+        // Note: if the object has child pointers, we do not increment their ref counts.
+        // The existence of the object will always only count as one reference.
+
+        Ok(StoredData::NullStored)
+    }
+
+    fn count_ptr_by_id(&mut self, id: usize) -> ExecResult<StoredData> {
+        let mut ptr = GCPointer {
+            id,
+            counted: false,
+            phantom: PhantomData,
+        };
+
+        self.count_pointer(&mut ptr)
+    }
+
+    pub fn drop_pointer(&mut self, ptr: &mut GCPointer<T>) -> ExecResult<StoredData> {
+        if !ptr.counted {
+            return Err("Cannot drop a pointer that is not counted.".to_string());
+        }
+        ptr.counted = false;
+
         let mut to_remove: Vec<usize> = Vec::new();
+        let mut to_process: Vec<usize> = Vec::new();
+        to_process.push(ptr.id);
 
-        let mut ids_to_decrement: Vec<usize> = Vec::new();
-        ids_to_decrement.push(id);
+        while !to_process.is_empty() {
+            let id = to_process.pop().unwrap();
 
-        while ids_to_decrement.len() > 0 {
-            let id = ids_to_decrement.pop().unwrap();
-            let object: &mut GCObject<T> = self.get_obj_mut(id).unwrap();
+            // Get the object that the pointer points to.
+            let obj_result = self.get_obj_mut(id);
+            let obj = match obj_result {
+                Some(obj) => obj,
+                None => return Err("Pointer does not point to a valid object.".to_string()),
+            };
 
-            object.ref_count = object.ref_count.saturating_sub(1);
+            // Decrement the ref count of the object.
+            obj.ref_count = obj.ref_count.saturating_sub(1);
 
-            if object.ref_count == 0 {
+            // If the ref count is 0, add it to the list of objects to remove.
+            if obj.ref_count == 0 {
                 to_remove.push(id);
 
-                if object.data_type == GCObjectType::Pointer {
-                    let pointer: &mut GCPointer<StoredData> = object.as_pointer().unwrap();
+                // if the obj is being removed, check if it has any child pointers.
+                // We will need to decrement each child's ref count since their parent obj is being removed.
+                let child_ptrs = obj.get_pointers();
 
-                    // set the pointer to no longer being counted
-                    // this is because we are manually decrementing the ref count of the object it points to
-                    // if we didn't do this, the pointer would try to decrement when dropped and cause a deadlock
-                    pointer.counted = false;
-                    ids_to_decrement.push(pointer.id);
-                }
-                else if object.data_type == GCObjectType::List {
-                    let list: &mut ListLive = object.as_list().unwrap();
-
-                    for pointer in list.iter_mut() {
-                        pointer.counted = false;
-                        ids_to_decrement.push(pointer.id);
+                for child_ptr in child_ptrs {
+                    if child_ptr.counted {
+                        to_process.push(child_ptr.id);
+                        child_ptr.counted = false;
                     }
                 }
-                else if object.data_type == GCObjectType::Dict {
-                    let dict: &mut HashMap<String, GCPointer<StoredData>> = object.as_dict().unwrap();
-
-                    for pointer in dict.values_mut() {
-                        pointer.counted = false;
-                        ids_to_decrement.push(pointer.id);
-                    }
-                }
-                else {
-                    continue;
-                }
-            }
-            else {
-                continue;
             }
         }
 
-        // remove in backwards order to properly handle drop propagation
         to_remove.reverse();
         for id in to_remove {
             self.objects.remove(&id);
         }
+
+        Ok(StoredData::NullStored)
     }
 
-    pub fn allocate(&mut self, data: GCObject<T>) -> usize where T: GarbageCollectable<T> {
-        let object = data;
-        let object_id = self.next_id;
-        self.objects.insert(object_id, object);
-        self.next_id += 1;
-        object_id
+    /// Fills the value of a buffer.
+    pub fn fill_buffer(&mut self, ptr: &GCPointer<T>, data: T) -> ExecResult<StoredData> where T: GarbageCollectable<T> {
+        // If the pointer is not counted, it cannot be filled.
+        if !ptr.counted {
+            return Err("Cannot fill a pointer that is not counted.".to_string());
+        }
+
+        let obj = self.get_obj(ptr.id);
+
+        if obj.is_none() {
+            return Err("Buffer not found.".to_string());
+        }
+
+        if obj.unwrap().data_type != GCObjectType::Buffer {
+            return Err("Buffer id is not a buffer.".to_string());
+        }
+
+        let mut data_obj = T::to_gc_object(data);
+
+        // if the new object has any child pointers, count them
+        let child_ptrs = data_obj.get_pointers();
+
+        for child_ptr in child_ptrs {
+            // if the pointer is uncounted, count it
+            if !child_ptr.counted {
+                self.count_ptr_by_id(child_ptr.id)?;
+                child_ptr.counted = true;
+            }
+        }
+
+        self.objects.insert(ptr.id, data_obj);
+
+        Ok(StoredData::NullStored)
     }
 
-    pub fn get_obj(&self, id: usize) -> Option<&GCObject<T>> where T: GarbageCollectable<T> {
+    /// Gets the value that a pointer points to.
+    pub fn get(&self, ptr: &GCPointer<T>) -> ExecResult<T> where T: GarbageCollectable<T> {
+        // If the pointer is not counted, it cannot be dereferenced.
+        // This implies that it has not been fully initialized.
+        if !ptr.counted {
+            return Err("Cannot dereference a pointer that is not counted.".to_string());
+        }
+
+        // Get the object that the pointer points to.
+        let obj_result = self.get_obj(ptr.id);
+        let obj = match obj_result {
+            Some(obj) => obj,
+            None => return Err("Pointer does not point to a valid object.".to_string()),
+        };
+
+        // Get the value of the object (automatically clones the value).
+        let value = T::from_gc_object(obj);
+
+        return value.map(|value| value);
+    }
+
+    fn get_obj(&self, id: usize) -> Option<&GCObject<T>> where T: GarbageCollectable<T> {
         self.objects.get(&id).map(|object| object)
     }
 
     fn get_obj_mut(&mut self, id: usize) -> Option<&mut GCObject<T>> where T: GarbageCollectable<T> {
         self.objects.get_mut(&id).map(|object| object)
     }
-
-    pub fn get(&self, id: usize) -> Option<T> where T: GarbageCollectable<T> {
-        self.objects.get(&id).and_then(|object| {
-            let result = T::from_gc_object(object);
-            return result
-        })
-    }
-
-    // pub fn set(&mut self, id: usize, new_value: T) where T: GarbageCollectable<T> {
-    //     let ref_count: usize = self.ref_count(id).unwrap_or(0);
-    //     if let Some(object) = self.objects.get_mut(&id) {
-    //         *object = new_value.to_gc_object(self);
-    //         object.ref_count = ref_count;
-    //     }
-    // }
 
     pub fn ref_count(&self, id: usize) -> Option<usize> {
         self.objects.get(&id).map(|object| object.ref_count)
@@ -126,53 +208,200 @@ impl<T> GarbageCollector<T> where T: GarbageCollectable<T> {
     pub fn len(&self) -> usize {
         self.objects.len()
     }
+
+    // pub fn get(&self, id: usize) -> Option<T> where T: GarbageCollectable<T> {
+    //     let obj = self.get_obj(id);
+    //
+    //     if obj.is_none() {
+    //         return None;
+    //     }
+    //
+    //     let result: Option<T> = T::from_gc_object(obj.unwrap());
+    //
+    //     if result.is_none() {
+    //         return None;
+    //     }
+    //
+    //     let result_val: T = result.unwrap();
+    //
+    //     // // Increment the ref count of all child pointers
+    //     // let ptrs = result_val.get_pointers();
+    //     //
+    //     // for ptr in ptrs {
+    //     //     if ptr.counted {
+    //     //         panic!("Deserializing a GCObject cannot create counted pointers. All pointer data inside of a GCObject must be cloned unsafely and not counted. Pointer counts will be incremented automatically.")
+    //     //     }
+    //     //
+    //     //     self.increment_ref(ptr.id);
+    //     //     ptr.counted = true;
+    //     // }
+    //
+    //     Some(result_val)
+    // }
+
+    // pub fn set(&mut self, id: usize, value: T) where T: GarbageCollectable<T> {
+    //     let ref_count: usize = self.ref_count(id).unwrap_or(0);
+    //     if let Some(object) = self.objects.get_mut(&id) {
+    //         *object = value.to_gc_object();
+    //         object.ref_count = ref_count;
+    //     }
+    // }
+
+    // fn increment_ref(&mut self, id: usize) {
+    //     let mut ids_to_increment: Vec<usize> = Vec::new();
+    //     ids_to_increment.push(id);
+    //
+    //     while ids_to_increment.len() > 0 {
+    //         let id = ids_to_increment.pop().unwrap();
+    //
+    //         if let Some(object) = self.objects.get_mut(&id) {
+    //             // Increment the ref count
+    //             object.ref_count += 1;
+    //
+    //             // If the object has any uncounted child pointers, also increment their ref counts
+    //             let ptrs = object.get_pointers();
+    //
+    //             for ptr in ptrs {
+    //                 if !ptr.counted {
+    //                     ids_to_increment.push(ptr.id);
+    //                     ptr.counted = true;
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
+
+    // fn decrement_ref(&mut self, id: usize)  {
+    //     let mut to_remove: Vec<usize> = Vec::new();
+    //
+    //     let mut ids_to_decrement: Vec<usize> = Vec::new();
+    //     ids_to_decrement.push(id);
+    //
+    //     while ids_to_decrement.len() > 0 {
+    //         let id = ids_to_decrement.pop().unwrap();
+    //         let object: &mut GCObject<T> = self.get_obj_mut(id).unwrap();
+    //
+    //         // Subtract 1 from the ref count
+    //         object.ref_count = object.ref_count.saturating_sub(1);
+    //
+    //         if object.data_type == GCObjectType::Pointer {
+    //             // If the object is a pointer, decrement the ref count of the object it points to
+    //             let ptr = object.as_pointer().unwrap();
+    //
+    //             ids_to_decrement.push(ptr.id);
+    //
+    //             ptr.counted = false;
+    //         }
+    //
+    //         // If the ref count is 0, add it to the list of objects to remove
+    //         if object.ref_count == 0 {
+    //             to_remove.push(id);
+    //         }
+    //     }
+    //
+    //     // remove in backwards order to properly handle drop propagation
+    //     to_remove.reverse();
+    //     for id in to_remove {
+    //         self.objects.remove(&id);
+    //     }
+    // }
 }
 
-impl<T> GCPointer<T> where T: GarbageCollectable<T> {
-    /// Allocates an object in the garbage collector and returns a pointer to it.
-    pub fn new(value: T, gc: Arc<RwLock<GarbageCollector<T>>>) -> Self where T: GarbageCollectable<T> {
-        let gc_object = value.to_gc_object();
-        let id = gc.write().unwrap().allocate(gc_object);
-        gc.write().unwrap().increment_ref(id);
-        GCPointer { id, gc, phantom: PhantomData, counted: true }
-    }
-}
+// impl<T> GCPointer<T> where T: GarbageCollectable<T> {
+//     /// Allocates an object in the garbage collector and returns a pointer to it.
+//     pub fn allocate(value: T, gc: Arc<RwLock<GarbageCollector<T>>>) -> Self where T: GarbageCollectable<T> {
+//         let gc_object = value.to_gc_object();
+//         let id = gc.write().unwrap().allocate(gc_object);
+//         gc.write().unwrap().increment_ref(id);
+//         GCPointer { id, gc, phantom: PhantomData, counted: true }
+//     }
+//
+//     /// Creates a new buffer, a pointer that does not have a value associated with it.
+//     pub fn alloc_buffer(gc: Arc<RwLock<GarbageCollector<T>>>) -> Self where T: GarbageCollectable<T> {
+//         let buffer: GCObject<T> = GCObject {
+//             data_type: GCObjectType::Buffer,
+//             ref_count: 0,
+//             data: GCObjectData::Null,
+//             phantom: PhantomData
+//         };
+//
+//         let id = gc.write().unwrap().allocate(buffer);
+//         gc.write().unwrap().increment_ref(id);
+//         GCPointer { id, gc, phantom: PhantomData, counted: true }
+//     }
+//
+//     /// Sets the value of a buffer
+//     pub fn fill_buffer(&mut self, new_value: T) -> ExecResult<StoredData> {
+//         let mut gc_object = new_value.to_gc_object();
+//
+//         let ref_count = self.gc.read().unwrap().ref_count(self.id).unwrap_or(0);
+//         gc_object.ref_count = ref_count;
+//
+//         let mut gc = match self.gc.try_write() {
+//             Ok(val) => val,
+//             Err(_) => return Err("Could not get write lock on garbage collector")
+//         };
+//         let res = gc.set_buffer(self.id, gc_object);
+//
+//         res.map(|_| {
+//             StoredData::NullStored
+//         })
+//     }
+// }
 
-impl<T> Drop for GCPointer<T> where T: GarbageCollectable<T> {
-    fn drop(&mut self) {
-        // If the pointer is not counted, then there is no need to decrement the reference count.
-        if !self.counted {
-            return;
-        }
-        self.gc.write().unwrap().decrement_ref(self.id);
-    }
-}
+// impl<T> Drop for GCPointer<T> where T: GarbageCollectable<T> {
+//     fn drop(&mut self) {
+//         // If the pointer is not counted, then there is no need to decrement the reference count.
+//         if !self.counted {
+//             return;
+//         }
+//
+//         let mut gc = match self.gc.try_write() {
+//             Ok(val) => val,
+//             Err(_) => panic!("Could not get write lock on garbage collector")
+//         };
+//
+//         gc.decrement_ref(self.id);
+//
+//         self.counted = false;
+//     }
+// }
 
 impl<T> Clone for GCPointer<T> where T: GarbageCollectable<T> {
-    fn clone(&self) -> Self {
-        let mut gc = match self.gc.try_write() {
-            Ok(val) => val,
-            Err(_) => panic!("Could not get write lock on garbage collector")
-        };
+    // fn clone(&self) -> Self {
+    //     let mut gc = match self.gc.try_write() {
+    //         Ok(val) => val,
+    //         Err(_) => panic!("Could not get write lock on garbage collector")
+    //     };
+    //
+    //     gc.increment_ref(self.id);
+    //
+    //     GCPointer {
+    //         id: self.id,
+    //         gc: self.gc.clone(),
+    //         phantom: PhantomData,
+    //         counted: true,
+    //     }
+    // }
 
-        gc.increment_ref(self.id);
-        GCPointer {
-            id: self.id,
-            gc: self.gc.clone(),
-            phantom: PhantomData,
-            counted: true,
-        }
-    }
-}
-
-impl<T> GCPointer<T> where T: GarbageCollectable<T> {
     /// Clones the pointer without incrementing the reference count.
-    pub fn clone_unsafe(&self) -> Self {
+    fn clone(&self) -> Self {
         GCPointer {
             id: self.id,
-            gc: self.gc.clone(),
             phantom: PhantomData,
             counted: false,
         }
     }
 }
+//
+// impl<T> GCPointer<T> where T: GarbageCollectable<T> {
+//     /// Clones the pointer without incrementing the reference count.
+//     pub fn clone_unsafe(&self) -> Self {
+//         GCPointer {
+//             id: self.id,
+//             gc: self.gc.clone(),
+//             phantom: PhantomData,
+//             counted: false,
+//         }
+//     }
+// }

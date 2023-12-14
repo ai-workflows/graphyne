@@ -9,4 +9,7 @@ pub enum Type {
     Pointer,
     List,
     Dictionary,
+    Function,
+    FunctionVal,
+    FunctionOp,
 }

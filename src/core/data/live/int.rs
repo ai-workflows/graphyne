@@ -9,7 +9,7 @@ macro_rules! checked_arithmetic_int_op {
             StoredData::IntStored(rhs) => {
                 Some(match $self.$op_name(*rhs) {
                     Some(value) => Ok(StoredData::IntStored(value)),
-                    None => Err("Overflow Error"),
+                    None => Err("Overflow Error".to_string()),
                 })
             }
             _ => {
@@ -17,7 +17,7 @@ macro_rules! checked_arithmetic_int_op {
 
                 cast_result.map(|rhs| match $self.$op_name(rhs?) {
                     Some(value) => Ok(StoredData::IntStored(value)),
-                    None => Err("Overflow Error"),
+                    None => Err("Overflow Error".to_string()),
                 })
             }
         }
@@ -30,42 +30,42 @@ impl LiveData for IntLive {
     }
 
     fn as_int(&self) -> Option<ExecResult<IntLive>> {
-        Some(Ok(*self))
+        Some(Ok(self.clone()))
     }
 
     fn as_float(&self) -> Option<ExecResult<FloatLive>> {
-        Some(Ok(*self as FloatLive))
+        Some(Ok(self.clone() as FloatLive))
     }
 
     fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
-            StoredData::IntStored(rhs) => Some(Ok(StoredData::BoolStored(*self == *rhs))),
+            StoredData::IntStored(rhs) => Some(Ok(StoredData::BoolStored(self.clone() == *rhs))),
             _ => {
                 let cast_result: Option<ExecResult<IntLive>> = rhs.as_live().as_int();
 
-                cast_result.map(|rhs| Ok(StoredData::BoolStored(*self == rhs?)))
+                cast_result.map(|rhs| Ok(StoredData::BoolStored(self.clone() == rhs?)))
             }
         }
     }
 
     fn op_lt(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
-            StoredData::IntStored(rhs) => Some(Ok(StoredData::BoolStored(*self < *rhs))),
+            StoredData::IntStored(rhs) => Some(Ok(StoredData::BoolStored(self.clone() < *rhs))),
             _ => {
                 let cast_result: Option<ExecResult<IntLive>> = rhs.as_live().as_int();
 
-                cast_result.map(|rhs| Ok(StoredData::BoolStored(*self < rhs?)))
+                cast_result.map(|rhs| Ok(StoredData::BoolStored(self.clone() < rhs?)))
             }
         }
     }
 
     fn op_gt(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
-            StoredData::IntStored(rhs) => Some(Ok(StoredData::BoolStored(*self > *rhs))),
+            StoredData::IntStored(rhs) => Some(Ok(StoredData::BoolStored(self.clone() > *rhs))),
             _ => {
                 let cast_result: Option<ExecResult<IntLive>> = rhs.as_live().as_int();
 
-                cast_result.map(|rhs| Ok(StoredData::BoolStored(*self > rhs?)))
+                cast_result.map(|rhs| Ok(StoredData::BoolStored(self.clone() > rhs?)))
             }
         }
     }

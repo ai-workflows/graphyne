@@ -7,11 +7,11 @@ impl LiveData for StringLive {
         Type::String
     }
     fn as_int(&self) -> Option<ExecResult<IntLive>> {
-        Some(self.parse::<IntLive>().map_err(|_| "Error parsing int from string"))
+        Some(self.parse::<IntLive>().map_err(|_| "Error parsing int from string".to_string()))
     }
 
     fn as_float(&self) -> Option<ExecResult<FloatLive>> {
-        Some(self.parse::<FloatLive>().map_err(|_| "Error parsing float from string"))
+        Some(self.parse::<FloatLive>().map_err(|_| "Error parsing float from string".to_string()))
     }
 
     fn as_string(&self) -> Option<ExecResult<StringLive>> {

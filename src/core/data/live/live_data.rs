@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use crate::core::{ExecResult, Type};
+use crate::core::data::functions::{FuncOp, FuncSig, FuncVal};
 use crate::core::data::stored::StoredData;
 use crate::core::gc::GCPointer;
 
@@ -11,6 +12,11 @@ pub type BoolLive = bool;
 pub type PointerLive = GCPointer<StoredData>;
 pub type ListLive = Vec<GCPointer<StoredData>>;
 pub type DictLive = HashMap<StringLive, GCPointer<StoredData>>;
+
+// Live function types
+pub type FuncLive = FuncSig;
+pub type FuncValLive = FuncVal;
+pub type FuncOpLive = FuncOp;
 
 
 /// Represents data that is currently usable for performing operations.
@@ -29,6 +35,9 @@ pub trait LiveData {
             Type::List => "list",
             Type::Dictionary => "dict",
             Type::Boolean => "bool",
+            Type::Function => "function",
+            Type::FunctionVal => "function-val",
+            Type::FunctionOp => "function-op",
         }.to_string())
     }
 
@@ -42,13 +51,16 @@ pub trait LiveData {
     fn as_pointer(&self) -> Option<ExecResult<PointerLive>> {None}
     fn as_list(&self) -> Option<ExecResult<ListLive>> {None}
     fn as_dict(&self) -> Option<ExecResult<DictLive>> {None}
+    fn as_func(&self) -> Option<ExecResult<FuncLive>> {None}
+    fn as_func_val(&self) -> Option<ExecResult<FuncValLive>> {None}
+    fn as_func_op(&self) -> Option<ExecResult<FuncOpLive>> {None}
 
     /// Boolean operations
     fn op_if(&self, then: &StoredData, otherwise: &StoredData) -> Option<ExecResult<StoredData>> {None}
     fn op_not(&self) -> Option<ExecResult<StoredData>> {None}
     fn op_and(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
     fn op_or(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
-    
+
     /// Comparison operations
     fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
     fn op_lt(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
@@ -58,8 +70,8 @@ pub trait LiveData {
     /// Collection operations
     fn op_len(&self) -> Option<ExecResult<IntLive>> {None}
     fn op_get_item(&self, index: &StoredData) -> Option<ExecResult<StoredData>> {None}
-    fn op_set_item(&self, index: &StoredData, value: GCPointer<StoredData>) -> Option<ExecResult<StoredData>> {None}
-    fn op_push(&self, value: GCPointer<StoredData>) -> Option<ExecResult<StoredData>> {None}
+    fn op_set_item(&self, index: &StoredData, value: PointerLive) -> Option<ExecResult<StoredData>> {None}
+    fn op_push(&self, value: PointerLive) -> Option<ExecResult<StoredData>> {None}
     fn op_remove(&self, index: &StoredData) -> Option<ExecResult<StoredData>> {None}
 
     /// Operations for this data.
@@ -68,4 +80,7 @@ pub trait LiveData {
     fn op_sub(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
     fn op_mul(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
     fn op_div(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
+
+    /// Functions operations
+    fn op_call(&self, args: &StoredData) -> Option<ExecResult<StoredData>> {None}
 }

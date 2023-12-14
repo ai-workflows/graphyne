@@ -1,33 +1,72 @@
 use std::sync::{Arc, RwLock};
-use crate::core::data::live::{LiveData};
+use crate::core::data::functions::{FuncOp, FuncSig, FuncVal};
+use crate::core::data::live::{LiveData, StringLive};
 use crate::core::data::stored::StoredData;
 use crate::core::ExecResult;
 use crate::core::gc::{GarbageCollector, GCPointer};
 use crate::core::vm::ops::Operation;
+use crate::core::vm::value_ref::ValueReference;
 
 macro_rules! execute_cast_op {
-    ($self:ident, $arg:expr, $op:ident, $stored_type:ident, $error_msg:expr) => {{
-        let arg_value = $arg.get().ok_or("Null pointer exception")?;
+    ($self:ident, $arg:ident, $cast_fn:ident, $store_variant:path) => {
+        {
+            let arg_value: StoredData = $self.get_ref_value($arg).map_err(|msg| msg)?;
 
-        if let Some(result) = arg_value.as_live().$op() {
-            return result.map(|live| GCPointer::new(StoredData::$stored_type(live), $self.state.clone()));
+            arg_value.clone().as_live().$cast_fn().map_or_else(
+                || {
+                    let arg_type: StringLive = arg_value.as_live().type_code().unwrap_or_else(|_| "unknown".to_string());
+                    Err(format!("Cannot cast {} to target type, operation not supported", arg_type))
+                },
+                |result| {
+                    let result_value = result?;
+                    let stored_result = $store_variant(result_value);
+                    $self.execute_store_value(stored_result)
+                }
+            )
         }
-
-        Err($error_msg)
-    }};
+    };
 }
 
-macro_rules! execute_arithmetic_op {
-    ($self:ident, $lhs:expr, $rhs:expr, $op:ident, $error_msg:expr) => {{
-        let lhs_value = $lhs.get().ok_or("Null pointer exception, LHS")?;
-        let rhs_value = $rhs.get().ok_or("Null pointer exception, RHS")?;
+macro_rules! execute_one_arg_op {
+    ($self:ident, $op:ident, $arg:ident) => {
+        {
+            let arg_value = $self.get_ref_value($arg)?;
 
-        if let Some(result) = lhs_value.as_live().$op(&rhs_value) {
-            return result.map(|live| GCPointer::new(live, $self.state.clone()));
+            arg_value.clone().as_live().$op().map_or_else(
+                || $self.handle_op_null_result(arg_value, stringify!($op)),
+                |result| $self.handle_op_result(result)
+            )
         }
+    };
+}
 
-        Err($error_msg)
-    }};
+macro_rules! execute_two_arg_op {
+    ($self:ident, $op:ident, $lhs:ident, $rhs:ident) => {
+        {
+            let lhs_value = $self.get_ref_value($lhs)?;
+            let rhs_value = $self.get_ref_value($rhs)?;
+
+            lhs_value.clone().as_live().$op(&rhs_value).map_or_else(
+                || $self.handle_op_null_result(lhs_value, stringify!($op)),
+                |result| $self.handle_op_result(result)
+            )
+        }
+    };
+}
+
+macro_rules! execute_three_arg_op {
+    ($self:ident, $op:ident, $arg1:ident, $arg2:ident, $arg3:ident) => {
+        {
+            let arg1_value = $self.get_ref_value($arg1)?;
+            let arg2_value = $self.get_ref_value($arg2)?;
+            let arg3_value = $self.get_ref_value($arg3)?;
+
+            arg1_value.clone().as_live().$op(&arg2_value, &arg3_value).map_or_else(
+                || $self.handle_op_null_result(arg1_value, stringify!($op)),
+                |result| $self.handle_op_result(result)
+            )
+        }
+    };
 }
 
 pub struct VM {
@@ -51,9 +90,24 @@ impl VM {
         self.state.read().unwrap().len()
     }
 
-    pub fn execute_op(&self, operation: Operation) -> ExecResult<GCPointer<StoredData>> {
+    pub fn execute_op(&self, operation: Operation) -> ExecResult<Vec<ValueReference>> {
+        match &operation {
+            Operation::StoreInt(value) => return self.execute_store_value(operation.get_stored_data().unwrap()),
+            Operation::StoreFloat(value) => return self.execute_store_value(operation.get_stored_data().unwrap()),
+            Operation::StoreString(value) => return self.execute_store_value(operation.get_stored_data().unwrap()),
+            Operation::StoreBool(value) => return self.execute_store_value(operation.get_stored_data().unwrap()),
+            Operation::StorePointer(value) => return self.execute_store_value(operation.get_stored_data().unwrap()),
+            Operation::StoreList(value) => return self.execute_store_value(operation.get_stored_data().unwrap()),
+            Operation::StoreDict(value) => return self.execute_store_value(operation.get_stored_data().unwrap()),
+            Operation::StoreFunction(input_vals, output_vals) => return self.execute_store_value(operation.get_stored_data().unwrap()),
+            Operation::StoreFunctionVal(value) => return self.execute_store_value(operation.get_stored_data().unwrap()),
+            Operation::StoreFunctionOp(op_code, input_vals, output_val) => return  self.execute_store_value(operation.get_stored_data().unwrap()),
+            _ => {}
+        }
+
         match operation {
-            Operation::StoreInput(data) => Ok(GCPointer::new(data, self.state.clone())),
+            Operation::CreateBuffer => self.execute_store_value(StoredData::NullStored),
+            Operation::SetBuffer(buffer, value) => self.execute_fill_buffer(buffer, value),
             Operation::AsInt(arg) => self.execute_as_int(arg),
             Operation::AsFloat(arg) => self.execute_as_float(arg),
             Operation::AsString(arg) => self.execute_as_string(arg),
@@ -77,180 +131,265 @@ impl VM {
             Operation::Equal(lhs, rhs) => self.execute_equal(lhs, rhs),
             Operation::LessThan(lhs, rhs) => self.execute_less_than(lhs, rhs),
             Operation::GreaterThan(lhs, rhs) => self.execute_greater_than(lhs, rhs),
+            _ => Err("Unknown operation".to_string()),
         }
     }
 
-    fn execute_as_int(&self, arg: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        execute_cast_op!(self, arg, as_int, IntStored, "Cannot cast to int")
-    }
-
-    fn execute_as_float(&self, arg: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        execute_cast_op!(self, arg, as_float, FloatStored, "Cannot cast to float")
-    }
-
-    fn execute_as_string(&self, arg: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        execute_cast_op!(self, arg, as_string, StringStored, "Cannot cast to string")
-    }
-
-    fn execute_as_bool(&self, arg: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        execute_cast_op!(self, arg, as_bool, BoolStored, "Cannot cast to bool")
-    }
-
-    fn execute_as_pointer(&self, arg: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        execute_cast_op!(self, arg, as_pointer, PointerStored, "Cannot cast to pointer")
-    }
-
-    fn execute_as_list(&self, arg: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        execute_cast_op!(self, arg, as_list, ListStored, "Cannot cast to list")
-    }
-
-    fn execute_as_dict(&self, arg: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        execute_cast_op!(self, arg, as_dict, DictStored, "Cannot cast to dict")
-    }
-
-    fn execute_if(&self, condition: GCPointer<StoredData>, then: GCPointer<StoredData>, otherwise: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        let condition_value = condition.get().ok_or("Null pointer exception")?;
-        let then_value = then.get().ok_or("Null pointer exception")?;
-        let otherwise_value = otherwise.get().ok_or("Null pointer exception")?;
-
-        if let Some(result) = condition_value.as_live().op_if(&then_value, &otherwise_value) {
-            return result.map(|live| GCPointer::new(live, self.state.clone()));
+    /// Gets a copy of the stored data referenced by the given value reference.
+    pub fn get_ref_value(&self, arg: &ValueReference) -> ExecResult<StoredData> {
+        if !arg.is_alive() {
+            return Err("Cannot use dead reference as an argument".to_string());
         }
 
-        Err("Failed to execute if")
+        let gc = match self.state.try_read() {
+            Ok(value) => value,
+            Err(_) => return Err("Could not get read lock on VM state".to_string()),
+        };
+
+        let get_result = gc.get(&arg.pointer);
+
+        get_result.map(|value| value)
     }
 
-    fn execute_not(&self, arg: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        let arg_value = arg.get().ok_or("Null pointer exception")?;
-
-        if let Some(result) = arg_value.as_live().op_not() {
-            return result.map(|live| GCPointer::new(live, self.state.clone()));
+    pub fn ref_count(&self, arg: &ValueReference) -> ExecResult<usize> {
+        if !arg.is_alive() {
+            return Err("Cannot use dead reference as an argument".to_string());
         }
 
-        Err("Failed to execute not")
+        let gc = match self.state.try_read() {
+            Ok(value) => value,
+            Err(_) => return Err("Could not get read lock on VM state".to_string()),
+        };
+
+        match gc.ref_count(arg.pointer.id) {
+            Some(count) => Ok(count),
+            None => Err("Could not get reference count".to_string()),
+        }
     }
 
-    fn execute_and(&self, lhs: GCPointer<StoredData>, rhs: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        let lhs_value = lhs.get().ok_or("Null pointer exception")?;
-        let rhs_value = rhs.get().ok_or("Null pointer exception")?;
+    /// Converts a pointer into a value reference that can be used by the VM's caller.
+    /// Counts the pointer if it is uncounted.
+    fn value_ref_from_ptr(&self, mut ptr: GCPointer<StoredData>) -> ExecResult<ValueReference> {
+        // if the pointer is uncounted, we need to manually count it
+        if !ptr.counted {
+            let mut gc = match self.state.try_write() {
+                Ok(value) => value,
+                Err(_) => return Err("Could not get write lock on VM state".to_string()),
+            };
 
-        if let Some(result) = lhs_value.as_live().op_and(&rhs_value) {
-            return result.map(|live| GCPointer::new(live, self.state.clone()));
+            match gc.count_pointer(&mut ptr) {
+                Ok(_) => {},
+                Err(_) => return Err("Could not count pointer".to_string()),
+            }
         }
 
-        Err("Failed to execute and")
+        let result = ValueReference::new(ptr, &self);
+
+        return Ok(result)
     }
 
-    fn execute_or(&self, lhs: GCPointer<StoredData>, rhs: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        let lhs_value = lhs.get().ok_or("Null pointer exception")?;
-        let rhs_value = rhs.get().ok_or("Null pointer exception")?;
+    /// Stores a value in the VM's state, returning a reference to the stored value
+    fn execute_store_value(&self, value: StoredData) -> ExecResult<Vec<ValueReference>> {
+        // try to get write lock
+        let mut gc = match self.state.try_write() {
+            Ok(value) => value,
+            Err(_) => return Err("Could not get write lock on VM state".to_string()),
+        };
 
-        if let Some(result) = lhs_value.as_live().op_or(&rhs_value) {
-            return result.map(|live| GCPointer::new(live, self.state.clone()));
+        // allocate value
+        let ptr = match gc.allocate(value) {
+            Ok(ptr) => ptr,
+            Err(msg) => return Err(format!("Could not allocate value: {}", msg).to_string()),
+        };
+
+        // create value reference
+        return match self.value_ref_from_ptr(ptr) {
+            Ok(value_ref) => Ok(vec![value_ref]),
+            Err(msg) => Err(format!("Could not create value reference: {}", msg).to_string()),
+        }
+    }
+
+    /// Drops a reference to a value from the VM's state, decrementing the reference count.
+    pub fn drop_reference(&self, reference: &mut ValueReference) {
+        let mut gc = match self.state.try_write() {
+            Ok(value) => value,
+            Err(_) => panic!("Could not get write lock on VM state"),
+        };
+
+        let drop_result = gc.drop_pointer(&mut reference.pointer);
+
+        if let Err(msg) = drop_result {
+            panic!("Could not drop pointer: {}", msg);
+        }
+    }
+
+    /// Clones a value reference, incrementing the reference count.
+    pub fn clone_reference(&self, reference: &ValueReference) -> ExecResult<ValueReference> {
+        let mut cloned_ptr = reference.pointer.clone();
+
+        let mut gc = match self.state.try_write() {
+            Ok(value) => value,
+            Err(_) => return Err("Could not get write lock on VM state".to_string()),
+        };
+
+        match gc.count_pointer(&mut cloned_ptr) {
+            Ok(_) => {}
+            Err(msg) => return Err(msg),
         }
 
-        Err("Failed to execute or")
+        let new_reference = ValueReference::new(cloned_ptr, self);
+
+        return Ok(new_reference)
     }
 
-    fn execute_equal(&self, lhs: GCPointer<StoredData>, rhs: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        let lhs_value = lhs.get().ok_or("Null pointer exception")?;
-        let rhs_value = rhs.get().ok_or("Null pointer exception")?;
+    /// Fills a buffer with the given value
+    fn execute_fill_buffer(&self, buffer: &ValueReference, value: StoredData) -> ExecResult<Vec<ValueReference>> {
+        let mut gc = match self.state.try_write() {
+            Ok(value) => value,
+            Err(_) => return Err("Could not get write lock on VM state".to_string()),
+        };
 
-        if let Some(result) = lhs_value.as_live().op_eq(&rhs_value) {
-            return result.map(|live| GCPointer::new(live, self.state.clone()));
+        let fill_result = gc.fill_buffer(&buffer.pointer, value);
+
+        if let Err(msg) = fill_result {
+            return Err(msg);
         }
 
-        Err("Failed to execute equal")
+        return Ok(vec![])
     }
 
-    fn execute_less_than(&self, lhs: GCPointer<StoredData>, rhs: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        let lhs_value = lhs.get().ok_or("Null pointer exception")?;
-        let rhs_value = rhs.get().ok_or("Null pointer exception")?;
+    fn handle_op_null_result(&self, operand: StoredData, op: &str) -> ExecResult<Vec<ValueReference>> {
+        let arg_type: StringLive = operand.as_live().type_code().unwrap_or_else(|_| "unknown".to_string());
+        Err(format!("Cannot execute {} on type {}, operation not supported", op, arg_type))
+    }
 
-        if let Some(result) = lhs_value.as_live().op_lt(&rhs_value) {
-            return result.map(|live| GCPointer::new(live, self.state.clone()));
+    fn handle_op_result(&self, result: ExecResult<StoredData>) -> ExecResult<Vec<ValueReference>> {
+        match result {
+            // If the result is a pointer, we can convert it directly to a value reference (but it needs to be counted)
+            Ok(StoredData::PointerStored(ptr)) => self.value_ref_from_ptr(ptr).map(|value_ref| vec![value_ref]),
+            // Otherwise, we need to store the result value and return a reference to it
+            Ok(result) => self.execute_store_value(result),
+            Err(msg) => Err(msg)
         }
-
-        Err("Failed to execute less than")
     }
 
-    fn execute_greater_than(&self, lhs: GCPointer<StoredData>, rhs: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        let lhs_value = lhs.get().ok_or("Null pointer exception")?;
-        let rhs_value = rhs.get().ok_or("Null pointer exception")?;
-
-        if let Some(result) = lhs_value.as_live().op_gt(&rhs_value) {
-            return result.map(|live| GCPointer::new(live, self.state.clone()));
-        }
-
-        Err("Failed to execute greater than")
+    fn execute_as_int(&self, arg: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_cast_op!(self, arg, as_int, StoredData::IntStored)
     }
 
-    fn execute_length(&self, list: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        let list_value = list.get().ok_or("Null pointer exception")?;
 
-        if let Some(result) = list_value.as_live().op_len() {
-            return result.map(|live| GCPointer::new(StoredData::IntStored(live), self.state.clone()));
-        }
-
-        Err("Cannot get length")
+    fn execute_as_float(&self, arg: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_cast_op!(self, arg, as_float, StoredData::FloatStored)
     }
 
-    fn execute_get_item(&self, collection: GCPointer<StoredData>, index: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        let collection_value = collection.get().ok_or("Null pointer exception")?;
-        let index_value = index.get().ok_or("Null pointer exception")?;
-
-        if let Some(result) = collection_value.as_live().op_get_item(&index_value) {
-            return result.map(|live| GCPointer::new(live, self.state.clone()));
-        }
-
-        Err("Cannot get item")
+    fn execute_as_string(&self, arg: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_cast_op!(self, arg, as_string, StoredData::StringStored)
     }
 
-    fn execute_set_item(&self, collection: GCPointer<StoredData>, index: GCPointer<StoredData>, value: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        let collection_value = collection.get().ok_or("Null pointer exception")?;
-        let index_value = index.get().ok_or("Null pointer exception")?;
-
-        if let Some(result) = collection_value.as_live().op_set_item(&index_value, value) {
-            return result.map(|live| GCPointer::new(live, self.state.clone()));
-        }
-
-        Err("Cannot set item")
+    fn execute_as_bool(&self, arg: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_cast_op!(self, arg, as_bool, StoredData::BoolStored)
     }
 
-    fn execute_push(&self, list: GCPointer<StoredData>, value: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        let list_value = list.get().ok_or("Null pointer exception")?;
-
-        if let Some(result) = list_value.as_live().op_push(value) {
-            return result.map(|live| GCPointer::new(live, self.state.clone()));
-        }
-
-        Err("Cannot push")
+    fn execute_as_pointer(&self, arg: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_cast_op!(self, arg, as_pointer, StoredData::PointerStored)
     }
 
-    fn execute_remove(&self, list: GCPointer<StoredData>, index: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        let list_value = list.get().ok_or("Null pointer exception")?;
-        let index_value = index.get().ok_or("Null pointer exception")?;
-
-        if let Some(result) = list_value.as_live().op_remove(&index_value) {
-            return result.map(|live| GCPointer::new(live, self.state.clone()));
-        }
-
-        Err("Cannot remove")
+    fn execute_as_list(&self, arg: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_cast_op!(self, arg, as_list, StoredData::ListStored)
     }
 
-    fn execute_add(&self, lhs: GCPointer<StoredData>, rhs: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        execute_arithmetic_op!(self, lhs, rhs, op_add, "Cannot add")
+    fn execute_as_dict(&self, arg: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_cast_op!(self, arg, as_dict, StoredData::DictStored)
     }
 
-    fn execute_sub(&self, lhs: GCPointer<StoredData>, rhs: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        execute_arithmetic_op!(self, lhs, rhs, op_sub, "Cannot subtract")
+    fn execute_add(&self, lhs: &ValueReference, rhs: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_two_arg_op!(self, op_add, lhs, rhs)
     }
 
-    fn execute_mul(&self, lhs: GCPointer<StoredData>, rhs: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        execute_arithmetic_op!(self, lhs, rhs, op_mul, "Cannot multiply")
+    fn execute_sub(&self, lhs: &ValueReference, rhs: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_two_arg_op!(self, op_sub, lhs, rhs)
     }
 
-    fn execute_div(&self, lhs: GCPointer<StoredData>, rhs: GCPointer<StoredData>) -> ExecResult<GCPointer<StoredData>> {
-        execute_arithmetic_op!(self, lhs, rhs, op_div, "Cannot divide")
+    fn execute_mul(&self, lhs: &ValueReference, rhs: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_two_arg_op!(self, op_mul, lhs, rhs)
+    }
+
+    fn execute_div(&self, lhs: &ValueReference, rhs: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_two_arg_op!(self, op_div, lhs, rhs)
+    }
+
+    fn execute_if(&self, condition: &ValueReference, then: &ValueReference, otherwise: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_three_arg_op!(self, op_if, condition, then, otherwise)
+    }
+
+    fn execute_not(&self, arg: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_one_arg_op!(self, op_not, arg)
+    }
+
+    fn execute_and(&self, lhs: &ValueReference, rhs: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_two_arg_op!(self, op_and, lhs, rhs)
+    }
+
+    fn execute_or(&self, lhs: &ValueReference, rhs: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_two_arg_op!(self, op_or, lhs, rhs)
+    }
+
+    fn execute_equal(&self, lhs: &ValueReference, rhs: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_two_arg_op!(self, op_eq, lhs, rhs)
+    }
+
+    fn execute_less_than(&self, lhs: &ValueReference, rhs: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_two_arg_op!(self, op_lt, lhs, rhs)
+    }
+
+    fn execute_greater_than(&self, lhs: &ValueReference, rhs: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_two_arg_op!(self, op_gt, lhs, rhs)
+    }
+
+    fn execute_length(&self, list: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        let list_value: StoredData = self.get_ref_value(list).map_err(|msg| msg)?;
+
+        list_value.clone().as_live().op_len().map_or_else(
+            || {
+                let arg_type: StringLive = list_value.as_live().type_code().unwrap_or_else(|_| "unknown".to_string());
+                Err(format!("Cannot execute op_len on type {}, operation not supported", arg_type))
+            },
+            |result| {
+                let result_value = result?;
+                let stored_result = StoredData::IntStored(result_value);
+                self.execute_store_value(stored_result)
+            }
+        )
+    }
+
+    fn execute_get_item(&self, collection: &ValueReference, index: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_two_arg_op!(self, op_get_item, collection, index)
+    }
+
+    fn execute_set_item(&self, collection: &ValueReference, index: &ValueReference, value: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        let collection_val = self.get_ref_value(collection)?;
+        let index_val = self.get_ref_value(index)?;
+        // The gc will automatically count the cloned pointer once we allocate the new list.
+        let val_ptr = value.pointer.clone();
+
+        collection_val.clone().as_live().op_set_item(&index_val, val_ptr).map_or_else(
+            || self.handle_op_null_result(collection_val, stringify!($op)),
+            |result| self.handle_op_result(result)
+        )
+    }
+
+    fn execute_push(&self, list: &ValueReference, value: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        let list_val = self.get_ref_value(list)?;
+        // The gc will automatically count the cloned pointer once we allocate the new list.
+        let val_ptr = value.pointer.clone();
+
+        list_val.clone().as_live().op_push(val_ptr).map_or_else(
+            || self.handle_op_null_result(list_val, stringify!($op)),
+            |result| self.handle_op_result(result)
+        )
+    }
+
+    fn execute_remove(&self, list: &ValueReference, index: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_two_arg_op!(self, op_remove, list, index)
     }
 }

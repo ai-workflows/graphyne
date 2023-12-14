@@ -1,4 +1,4 @@
-use crate::core::data::live::{FloatLive, IntLive, StringLive, ListLive, PointerLive, DictLive};
+use crate::core::data::live::{FloatLive, IntLive, StringLive, ListLive, PointerLive, DictLive, FuncLive, FuncValLive, FuncOpLive};
 use crate::core::data::live::live_data::BoolLive;
 use crate::core::gc::GCPointer;
 
@@ -6,13 +6,17 @@ use crate::core::gc::GCPointer;
 /// This data must be converted to its live counterpart before it can be used.
 #[derive(Debug, Clone)]
 pub enum StoredData {
+    NullStored,
     IntStored(IntLive),
     FloatStored(FloatLive),
     StringStored(StringLive),
     BoolStored(BoolLive),
     PointerStored(PointerLive),
     ListStored(ListLive),
-    DictStored(DictLive)
+    DictStored(DictLive),
+    FuncStored(FuncLive),
+    FuncValStored(FuncValLive),
+    FuncOpStored(FuncOpLive),
 }
 
 // Convert from live data to stored data.
@@ -55,5 +59,23 @@ impl From<GCPointer<StoredData>> for StoredData {
 impl From<DictLive> for StoredData {
     fn from(value: DictLive) -> Self {
         StoredData::DictStored(value)
+    }
+}
+
+impl From<FuncLive> for StoredData {
+    fn from(value: FuncLive) -> Self {
+        StoredData::FuncStored(value)
+    }
+}
+
+impl From<FuncValLive> for StoredData {
+    fn from(value: FuncValLive) -> Self {
+        StoredData::FuncValStored(value)
+    }
+}
+
+impl From<FuncOpLive> for StoredData {
+    fn from(value: FuncOpLive) -> Self {
+        StoredData::FuncOpStored(value)
     }
 }

@@ -8,6 +8,6 @@ impl LiveData for PointerLive {
     }
 
     fn as_pointer(&self) -> Option<ExecResult<PointerLive>> {
-        Some(Ok(self.clone_unsafe()))
+        Some(Ok(self.clone()))
     }
 }

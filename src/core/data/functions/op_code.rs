@@ -1,0 +1,27 @@
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OpCode {
+    AsInt,
+    AsFloat,
+    AsString,
+    AsBool,
+    AsPointer,
+    AsList,
+    AsDictionary,
+    If,
+    Not,
+    And,
+    Or,
+    Equal,
+    LessThan,
+    GreaterThan,
+    Length,
+    GetItem,
+    SetItem,
+    Push,
+    Remove,
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
