@@ -478,7 +478,23 @@ fn test_func_build(vm: &mut VM) {
 
     // println!("state: {:#?}", vm.state);
 
-    drop(st_add_buffer_result);
+    // test calling the func op
+    let mut context: HashMap<StringLive, ValueReference> = HashMap::new();
+    let arg1_guid = vm.get_ref_value(arg1_ref).unwrap().as_live().as_func_val().unwrap().ok().unwrap().guid;
+    let arg2_guid = vm.get_ref_value(arg2_ref).unwrap().as_live().as_func_val().unwrap().ok().unwrap().guid;
+    let st_arg1_result = vm.execute_op(Operation::StoreInt(5)).unwrap();
+    let st_arg2_result = vm.execute_op(Operation::StoreInt(10)).unwrap();
+    context.insert(arg1_guid, st_arg1_result.get(0).unwrap().clone());
+    context.insert(arg2_guid, st_arg2_result.get(0).unwrap().clone());
+
+    let add_op_val = vm.get_ref_value(add_op_ref).unwrap().as_live().as_func_op().unwrap().ok().unwrap();
+    let call_func_op_rst = vm.handle_call_function_op(&add_op_val, &context);
+    println!("call_func_op_rst: {:#?}", call_func_op_rst);
+    let call_func_op_rst = call_func_op_rst.unwrap();
+    assert_eq!(call_func_op_rst.len(), 1);
+    let call_func_op_rst = call_func_op_rst.get(0).unwrap();
+    let call_func_op_rst = vm.get_ref_value(call_func_op_rst).unwrap().as_live().as_int().unwrap().ok().unwrap();
+    assert_eq!(call_func_op_rst, 15);
 }
 
 fn main() {

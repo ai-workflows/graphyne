@@ -173,9 +173,11 @@ impl<T> GarbageCollector<T> where T: GarbageCollectable<T> {
     pub fn get(&self, ptr: &GCPointer<T>) -> ExecResult<T> where T: GarbageCollectable<T> {
         // If the pointer is not counted, it cannot be dereferenced.
         // This implies that it has not been fully initialized.
-        if !ptr.counted {
-            return Err("Cannot dereference a pointer that is not counted.".to_string());
-        }
+        // TODO: add back this check. Removed for now because func op inputs are intentionally uncounted to avoid circular references.
+        // It should still be possible to dereference them though.
+        // if !ptr.counted {
+        //     return Err("Cannot dereference a pointer that is not counted.".to_string());
+        // }
 
         // Get the object that the pointer points to.
         let obj_result = self.get_obj(ptr.id);

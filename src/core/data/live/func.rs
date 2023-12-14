@@ -10,11 +10,6 @@ impl LiveData for FuncLive {
     fn as_func(&self) -> Option<ExecResult<FuncLive>> {
         Some(Ok(self.clone()))
     }
-
-    #[allow(unused_variables)]
-    fn op_call(&self, args: &StoredData) -> Option<ExecResult<StoredData>> {
-        todo!()
-    }
 }
 
 impl LiveData for FuncValLive {

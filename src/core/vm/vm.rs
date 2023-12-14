@@ -1,6 +1,7 @@
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use crate::core::data::functions::{FuncOp, FuncSig, FuncVal};
-use crate::core::data::live::{LiveData, StringLive};
+use crate::core::data::live::{DictLive, FuncOpLive, FuncValLive, LiveData, StringLive};
 use crate::core::data::stored::StoredData;
 use crate::core::ExecResult;
 use crate::core::gc::{GarbageCollector, GCPointer};
@@ -391,5 +392,32 @@ impl VM {
 
     fn execute_remove(&self, list: &ValueReference, index: &ValueReference) -> ExecResult<Vec<ValueReference>> {
         execute_two_arg_op!(self, op_remove, list, index)
+    }
+
+    pub fn handle_call_function_op(&self, func_op: &FuncOpLive, context: &HashMap<String, ValueReference>) -> ExecResult<Vec<ValueReference>> {
+        // get each arg value from the context
+        let mut arg_values: Vec<&ValueReference> = Vec::new();
+        for arg_ptr in func_op.input_vals.iter() {
+            // get the stored data at the pointer
+            let get_result = self.state.read().unwrap().get(arg_ptr)?;
+
+            // convert it to a func value
+            let func_val = match get_result {
+                StoredData::FuncValStored(func_val) => func_val,
+                _ => return Err(format!("Function operation cannot take a non-func value as an argument"))
+            };
+            
+            // get the ref from the context by looking up the func val's guid
+            let arg_ref = context.get(&func_val.guid).ok_or_else(|| format!("Function operation cannot find argument value in context"))?;
+            
+            // add the ref to the arg values
+            arg_values.push(arg_ref);
+        }
+        
+        // get an operation using the opcode and arg values
+        let op = func_op.opcode.to_operation(&arg_values);
+        
+        // execute the operation and return its result
+        self.execute_op(op)
     }
 }

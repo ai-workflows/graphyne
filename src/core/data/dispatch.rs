@@ -73,5 +73,4 @@ impl LiveData for LiveDispatch<'_> {
     static_dispatch!{ fn op_sub(rhs: &StoredData) -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_mul(rhs: &StoredData) -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_div(rhs: &StoredData) -> Option<ExecResult<StoredData>> }
-    static_dispatch!{ fn op_call(args: &StoredData) -> Option<ExecResult<StoredData>> }
 }

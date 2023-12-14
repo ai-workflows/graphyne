@@ -80,7 +80,4 @@ pub trait LiveData {
     fn op_sub(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
     fn op_mul(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
     fn op_div(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
-
-    /// Functions operations
-    fn op_call(&self, args: &StoredData) -> Option<ExecResult<StoredData>> {None}
 }
