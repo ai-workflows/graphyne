@@ -104,10 +104,12 @@ impl<T> GCObject<T> {
             GCObjectType::FuncOp => {
                 let func_op: &mut FuncOpLive = self.as_func_op_mut().unwrap();
 
-                let inputs: &mut Vec<GCPointer<StoredData>> = &mut func_op.input_vals;
-                for pointer in inputs.iter_mut() {
-                    result.push(pointer);
-                }
+                // Do not include the inputs, as they will be stored as uncounted pointers.
+                // This is to avoid a circular reference between the FuncOp and the FuncVal that would prevent them from being collected.
+                // let inputs: &mut Vec<GCPointer<StoredData>> = &mut func_op.input_vals;
+                // for pointer in inputs.iter_mut() {
+                //     result.push(pointer);
+                // }
 
                 let output: &mut GCPointer<StoredData> = &mut func_op.output_val;
                 result.push(output);

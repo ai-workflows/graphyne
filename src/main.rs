@@ -476,7 +476,9 @@ fn test_func_build(vm: &mut VM) {
     let store_func_result = vm.execute_op(store_func_op).unwrap();
     let func_ref = store_func_result.get(0).unwrap();
 
-    println!("state: {:#?}", vm.state);
+    // println!("state: {:#?}", vm.state);
+
+    drop(st_add_buffer_result);
 }
 
 fn main() {
@@ -519,6 +521,8 @@ fn main() {
     assert_eq!(vm.object_count(), 0);
 
     test_func_build(&mut vm);
+
+    // println!("state: {:#?}", vm.state);
 
     assert_eq!(vm.object_count(), 0);
 }

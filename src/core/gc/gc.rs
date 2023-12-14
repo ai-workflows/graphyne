@@ -148,7 +148,10 @@ impl<T> GarbageCollector<T> where T: GarbageCollectable<T> {
             return Err("Buffer id is not a buffer.".to_string());
         }
 
+        let ref_count = obj.unwrap().ref_count;
+
         let mut data_obj = T::to_gc_object(data);
+        data_obj.ref_count = ref_count;
 
         // if the new object has any child pointers, count them
         let child_ptrs = data_obj.get_pointers();
