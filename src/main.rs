@@ -5,6 +5,7 @@ use crate::core::data::functions::{FuncOp, FuncVal, OpCode};
 use crate::core::data::stored::StoredData;
 use crate::core::data::live::{FuncOpLive, IntLive, LiveData, PointerLive, StringLive};
 use crate::core::gc::GCPointer;
+use crate::core::nodes::{FunctionGraph, FunctionOpNode, FunctionValueNode};
 use crate::core::vm::ops::Operation;
 use crate::core::vm::value_ref::ValueReference;
 use crate::core::vm::VM;
@@ -535,6 +536,36 @@ fn test_add_func(vm: &mut VM) {
     assert_eq!(call_result, 15);
 }
 
+fn test_load_fn(vm: &mut VM) {
+    let values: Vec<FunctionValueNode> = vec![
+        FunctionValueNode::new("num1".into()),
+        FunctionValueNode::new("num2".into()),
+        FunctionValueNode::new("sum".into()),
+    ];
+
+    let ops: Vec<FunctionOpNode> = vec![
+        FunctionOpNode::new(OpCode::Add, vec!["num1".into(), "num2".into()], "sum".into())
+    ];
+
+    let graph: FunctionGraph = FunctionGraph::new(values, ops, vec!["num1".into(), "num2".into()], vec!["sum".into()]);
+
+
+    let load_result = vm.load_function(&graph).unwrap();
+    let fn_ref = load_result.get(0).unwrap().clone();
+
+    let fn_val = vm.get_ref_value(&fn_ref).unwrap().as_live().as_func().unwrap().ok().unwrap();
+
+    let st_arg1_result = vm.execute_op(Operation::StoreInt(5)).unwrap();
+    let st_arg2_result = vm.execute_op(Operation::StoreInt(10)).unwrap();
+
+    let args: Vec<ValueReference> = vec![st_arg1_result.get(0).unwrap().clone(), st_arg2_result.get(0).unwrap().clone()];
+
+    let call_result = vm.handle_call_function(&fn_val, &args).unwrap();
+    let call_result = vm.get_ref_value(call_result.get(0).unwrap()).unwrap().as_live().as_int().unwrap().ok().unwrap();
+
+    assert_eq!(call_result, 15);
+}
+
 fn main() {
     let mut vm = VM::new();
 
@@ -581,6 +612,10 @@ fn main() {
     assert_eq!(vm.object_count(), 0);
 
     test_add_func(&mut vm);
+
+    assert_eq!(vm.object_count(), 0);
+
+    test_load_fn(&mut vm);
 
     assert_eq!(vm.object_count(), 0);
 }
