@@ -497,6 +497,44 @@ fn test_func_build(vm: &mut VM) {
     assert_eq!(call_func_op_rst, 15);
 }
 
+fn test_add_func(vm: &mut VM) {
+    vm.reset();
+
+    let st_return_val_result = vm.execute_op(Operation::StoreFunctionVal(Vec::new())).unwrap();
+    let return_val_ref = st_return_val_result.get(0).unwrap();
+
+    let st_add_buffer_result = vm.execute_op(Operation::CreateBuffer).unwrap();
+    let add_op_ref = st_add_buffer_result.get(0).unwrap();
+
+    let st_arg1_result = vm.execute_op(Operation::StoreFunctionVal(vec![add_op_ref])).unwrap();
+    let arg1_ref = st_arg1_result.get(0).unwrap();
+
+    let st_arg2_result = vm.execute_op(Operation::StoreFunctionVal(vec![add_op_ref])).unwrap();
+    let arg2_ref = st_arg2_result.get(0).unwrap();
+
+    // fill the add buffer with the add op
+    let add_op = Operation::StoreFunctionOp(OpCode::Add, vec![arg1_ref, arg2_ref], return_val_ref);
+    let fill_add_buffer = Operation::SetBuffer(add_op_ref, add_op.get_stored_data().unwrap());
+    vm.execute_op(fill_add_buffer).unwrap();
+
+    // create the function
+    let store_func_op = Operation::StoreFunction(vec![arg1_ref, arg2_ref], vec![return_val_ref]);
+    let store_func_result = vm.execute_op(store_func_op).unwrap();
+    let func_ref = store_func_result.get(0).unwrap();
+
+    let st_arg1_result = vm.execute_op(Operation::StoreInt(5)).unwrap();
+    let st_arg2_result = vm.execute_op(Operation::StoreInt(10)).unwrap();
+
+    let args: Vec<ValueReference> = vec![st_arg1_result.get(0).unwrap().clone(), st_arg2_result.get(0).unwrap().clone()];
+
+    let func_val = vm.get_ref_value(func_ref).unwrap().as_live().as_func().unwrap().ok().unwrap();
+
+    let call_result = vm.handle_call_function(&func_val, &args).unwrap();
+    let call_result = vm.get_ref_value(call_result.get(0).unwrap()).unwrap().as_live().as_int().unwrap().ok().unwrap();
+
+    assert_eq!(call_result, 15);
+}
+
 fn main() {
     let mut vm = VM::new();
 
@@ -539,6 +577,10 @@ fn main() {
     test_func_build(&mut vm);
 
     // println!("state: {:#?}", vm.state);
+
+    assert_eq!(vm.object_count(), 0);
+
+    test_add_func(&mut vm);
 
     assert_eq!(vm.object_count(), 0);
 }
