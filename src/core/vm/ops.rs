@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use crate::core::data::functions::{FuncOp, FuncSig, FuncVal, OpCode};
 use crate::core::data::live::{BoolLive, FloatLive, IntLive, StringLive};
 use crate::core::data::stored::StoredData;
+use crate::core::nodes::FunctionGraph;
 use crate::core::vm::value_ref::ValueReference;
 
 
@@ -45,6 +46,9 @@ pub enum Operation<'a> {
     /// input_vals: Reference to the func value nodes that are used as inputs for this operation.
     /// output_val: Reference to the func value node that is the output of this operation.
     StoreFunctionOp(OpCode, Vec<&'a ValueReference<'a>>, &'a ValueReference<'a>),
+    
+    /// Stores a function graph in memory.
+    StoreFunctionGraph(FunctionGraph),
     
     /// Creates a buffer in memory (a pointer to nothing).
     CreateBuffer,

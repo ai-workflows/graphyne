@@ -2,6 +2,7 @@ use crate::core::nodes::{FunctionOpNode, FunctionValueNode};
 use crate::core::nodes::fn_val::ValIdentifier;
 
 /// Represents a graph of a function's values and operations, including what values are inputs and outputs.
+#[derive(Debug)]
 pub struct FunctionGraph {
     /// List of the function value nodes that exist within the scope of this function.
     pub values: Vec<FunctionValueNode>,

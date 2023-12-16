@@ -1,6 +1,7 @@
 use crate::core::data::functions::OpCode;
 use crate::core::nodes::fn_val::ValIdentifier;
 
+#[derive(Debug)]
 pub struct FunctionOpNode {
     /// The opcode that this function call represents.
     pub opcode: OpCode,

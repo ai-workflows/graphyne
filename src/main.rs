@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use maplit::hashmap;
+use crate::api::{execute, get, store_float, store_function, store_int};
 use crate::core::data::functions::{FuncOp, FuncVal, OpCode};
 
 use crate::core::data::stored::StoredData;
@@ -12,7 +13,7 @@ use crate::core::vm::VM;
 
 mod nodes;
 mod core;
-
+mod api;
 
 
 fn test_gc(vm: &mut VM, value: &str) {
@@ -550,7 +551,7 @@ fn test_load_fn(vm: &mut VM) {
     let graph: FunctionGraph = FunctionGraph::new(values, ops, vec!["num1".into(), "num2".into()], vec!["sum".into()]);
 
 
-    let load_result = vm.load_function(&graph).unwrap();
+    let load_result = vm.store_function(&graph).unwrap();
     let fn_ref = load_result.get(0).unwrap().clone();
 
     let fn_val = vm.get_ref_value(&fn_ref).unwrap().as_live().as_func().unwrap().ok().unwrap();
@@ -564,6 +565,37 @@ fn test_load_fn(vm: &mut VM) {
     let call_result = vm.get_ref_value(call_result.get(0).unwrap()).unwrap().as_live().as_int().unwrap().ok().unwrap();
 
     assert_eq!(call_result, 15);
+}
+
+fn test_api(vm: &mut VM) {
+    vm.reset();
+    let mut symbol_table: HashMap<String, ValueReference> = HashMap::new();
+
+    // store the function
+    let values: Vec<FunctionValueNode> = vec![
+        FunctionValueNode::new("num1".into()),
+        FunctionValueNode::new("num2".into()),
+        FunctionValueNode::new("sum".into()),
+    ];
+
+    let ops: Vec<FunctionOpNode> = vec![
+        FunctionOpNode::new(OpCode::Add, vec!["num1".into(), "num2".into()], "sum".into())
+    ];
+
+    let graph: FunctionGraph = FunctionGraph::new(values, ops, vec!["num1".into(), "num2".into()], vec!["sum".into()]);
+    store_function(graph, "add".to_string(), vm, &mut symbol_table).unwrap();
+
+    // store the args
+    store_int(5, "num1".to_string(), vm, &mut symbol_table).unwrap();
+    store_float(10.0, "num2".to_string(), vm, &mut symbol_table).unwrap();
+
+    // call the function
+    execute("add".to_string(), vec!["num1".to_string(), "num2".to_string()], vec!["sum".to_string()], vm, &mut symbol_table).unwrap();
+
+    // get the result
+    let result = get("sum".to_string(), vm, &mut symbol_table).unwrap();
+
+    assert_eq!(result.as_live().as_int().unwrap(), Ok(15));
 }
 
 fn main() {
@@ -616,6 +648,10 @@ fn main() {
     assert_eq!(vm.object_count(), 0);
 
     test_load_fn(&mut vm);
+
+    assert_eq!(vm.object_count(), 0);
+
+    test_api(&mut vm);
 
     assert_eq!(vm.object_count(), 0);
 }

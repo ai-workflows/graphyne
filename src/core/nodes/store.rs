@@ -7,8 +7,8 @@ use crate::core::vm::value_ref::ValueReference;
 use crate::core::vm::VM;
 
 impl VM {
-    /// Loads a function in the VM given its graph representation.
-    pub fn load_function(&self, func: &FunctionGraph) -> ExecResult<Vec<ValueReference>> {
+    /// Stores a function in the VM given its graph representation.
+    pub fn store_function(&self, func: &FunctionGraph) -> ExecResult<Vec<ValueReference>> {
         // create buffers for each value node
         let mut values: HashMap<ValIdentifier, ValueReference> = HashMap::new();
 

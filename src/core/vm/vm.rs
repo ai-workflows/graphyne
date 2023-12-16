@@ -102,7 +102,8 @@ impl VM {
             Operation::StoreDict(_) => return self.execute_store_value(operation.get_stored_data().unwrap()),
             Operation::StoreFunction(_, _) => return self.execute_store_value(operation.get_stored_data().unwrap()),
             Operation::StoreFunctionVal(_) => return self.execute_store_value(operation.get_stored_data().unwrap()),
-            Operation::StoreFunctionOp(_, _, _) => return  self.execute_store_value(operation.get_stored_data().unwrap()),
+            Operation::StoreFunctionOp(_, _, _) => return self.execute_store_value(operation.get_stored_data().unwrap()),
+            Operation::StoreFunctionGraph(func) => return self.store_function(func),
             _ => {}
         }
 

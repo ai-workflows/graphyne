@@ -1,7 +1,7 @@
 pub(crate) mod fn_val;
 pub(crate) mod fn_op;
 mod fn_graph;
-mod load;
+mod store;
 
 
 pub(crate) use fn_val::FunctionValueNode;
