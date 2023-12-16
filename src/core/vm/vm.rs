@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use crate::core::data::functions::FuncOp;
 use crate::core::data::live::{FuncLive, FuncOpLive, FuncValLive, LiveData, PointerLive, StringLive};
 use crate::core::data::stored::StoredData;
 use crate::core::ExecResult;

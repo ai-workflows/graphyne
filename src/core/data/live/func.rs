@@ -1,6 +1,5 @@
 use crate::core::data::live::{FuncLive, FuncOpLive, FuncValLive, LiveData};
 use crate::core::{ExecResult, Type};
-use crate::core::data::stored::StoredData;
 
 impl LiveData for FuncLive {
     fn type_tag(&self) -> Type {

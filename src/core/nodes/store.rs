@@ -80,7 +80,7 @@ impl VM {
 
             // use the deps to store the func val in memory
             let store_op = Operation::StoreFunctionVal(val_deps.clone());
-            let mut stored_val_refs = self.execute_op(store_op)?;
+            let stored_val_refs = self.execute_op(store_op)?;
             let stored_val_ref = stored_val_refs[0].clone();
 
             // get the value of the func val that was just stored
