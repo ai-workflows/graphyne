@@ -3,6 +3,7 @@ use crate::core::ExecResult;
 use crate::core::nodes::fn_graph::FunctionGraph;
 use crate::core::nodes::fn_val::ValIdentifier;
 use crate::core::vm::ops::Operation;
+use crate::core::vm::store_op::StoreOp;
 use crate::core::vm::value_ref::ValueReference;
 use crate::core::vm::VM;
 
@@ -11,11 +12,20 @@ impl VM {
     pub fn store_function(&self, func: &FunctionGraph) -> ExecResult<Vec<ValueReference>> {
         // create buffers for each value node
         let mut values: HashMap<ValIdentifier, ValueReference> = HashMap::new();
+        let mut constants: HashMap<ValIdentifier, ValueReference> = HashMap::new();
+        let mut constant_vals: Vec<ValueReference> = Vec::new();
 
         for val in &func.values {
-            let val_refs = self.execute_op(Operation::CreateBuffer)?;
+            let val_refs = self.execute_store(StoreOp::CreateBuffer)?;
             let buf = val_refs[0].clone();
-            values.insert(val.guid.clone(), buf);
+            values.insert(val.guid.clone(), buf.clone());
+
+            if let Some(constant) = &val.constant {
+                let const_ref = self.store_value(constant.clone())?;
+                let const_ref = const_ref[0].clone();
+                constants.insert(val.guid.clone(), const_ref);
+                constant_vals.push(buf.clone());
+            }
         }
 
         // create a hashmap to track the ops that are dependent on each value
@@ -40,8 +50,8 @@ impl VM {
             // get the output value for this op
             let output_val_ref: &ValueReference = values.get(&op.output_val_id).unwrap();
 
-            let store_op = Operation::StoreFunctionOp(op.opcode, input_val_refs, output_val_ref);
-            let op_refs: Vec<ValueReference> = self.execute_op(store_op)?;
+            let store_op = StoreOp::StoreFunctionOp(op.opcode, input_val_refs, output_val_ref);
+            let op_refs: Vec<ValueReference> = self.execute_store(store_op)?;  // TODO: input and output refs are not being counted
             let op_ref: ValueReference = op_refs[0].clone();
             ops.push(op_ref);
 
@@ -78,9 +88,15 @@ impl VM {
                 val_deps = value_deps.get(&val_id.to_string()).unwrap();
             }
 
+            // check if the value is a constant
+            let const_ref: Option<&ValueReference> = match constants.get(&val_id.to_string()) {
+                Some(const_ref) => Some(const_ref),
+                None => None,
+            };
+
             // use the deps to store the func val in memory
-            let store_op = Operation::StoreFunctionVal(val_deps.clone());
-            let stored_val_refs = self.execute_op(store_op)?;
+            let store_op = StoreOp::StoreFunctionVal(val_deps.clone(), const_ref);
+            let stored_val_refs = self.execute_store(store_op)?;
             let stored_val_ref = stored_val_refs[0].clone();
 
             // get the value of the func val that was just stored
@@ -105,9 +121,12 @@ impl VM {
             output_val_refs.push(val_ref);
         }
 
+        // convert the constant refs to a vector
+        let constant_refs: Vec<&ValueReference> = constant_vals.iter().collect();
+
         // store the function in memory
-        let store_func_op = Operation::StoreFunction(input_val_refs, output_val_refs);
-        let stored_func_refs = self.execute_op(store_func_op)?;
+        let store_func_op = StoreOp::StoreFunction(input_val_refs, output_val_refs, constant_refs);
+        let stored_func_refs = self.execute_store(store_func_op)?;
         let stored_func_ref = stored_func_refs[0].clone();
 
         // return the reference to the function

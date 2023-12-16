@@ -4,8 +4,11 @@ use crate::api::{GraphiteApi, Symbol};
 use crate::api::interface::VmInterface;
 use crate::core::data::functions::{OpCode};
 use crate::core::data::live::{IntLive, LiveData, StringLive};
+use crate::core::data::stored::StoredData;
+use crate::core::data::stored::StoredData::IntStored;
 use crate::core::nodes::{FunctionGraph, FunctionOpNode, FunctionValueNode};
 use crate::core::vm::ops::Operation;
+use crate::core::vm::store_op::StoreOp;
 use crate::core::vm::value_ref::ValueReference;
 use crate::core::vm::VM;
 
@@ -17,7 +20,7 @@ mod api;
 fn test_gc(vm: &mut VM, value: &str) {
     vm.reset();
 
-    let mut result = vm.execute_op(Operation::StoreString(value.to_string())).unwrap();
+    let mut result = vm.execute_store(StoreOp::StoreString(value.to_string())).unwrap();
 
     let ref1 = result.get_mut(0).unwrap();
     let ref2 = ref1.clone();
@@ -45,8 +48,8 @@ fn test_gc(vm: &mut VM, value: &str) {
 fn test_add_nums(vm: &mut VM, num1: i64, num2: i64) {
     vm.reset();
 
-    let results_1: Vec<ValueReference> = vm.execute_op(Operation::StoreInt(num1)).unwrap();
-    let results_2: Vec<ValueReference> = vm.execute_op(Operation::StoreInt(num2)).unwrap();
+    let results_1: Vec<ValueReference> = vm.execute_store(StoreOp::StoreInt(num1)).unwrap();
+    let results_2: Vec<ValueReference> = vm.execute_store(StoreOp::StoreInt(num2)).unwrap();
 
     let ptr1 = results_1.get(0).unwrap();
     let ptr2 = results_2.get(0).unwrap();
@@ -74,8 +77,8 @@ fn test_add_nums(vm: &mut VM, num1: i64, num2: i64) {
 fn test_concat_strings(vm: &mut VM, str1: &str, str2: &str) {
     vm.reset();
 
-    let st_results1: Vec<ValueReference> = vm.execute_op(Operation::StoreString(str1.to_string())).unwrap();
-    let st_results2: Vec<ValueReference> = vm.execute_op(Operation::StoreString(str2.to_string())).unwrap();
+    let st_results1: Vec<ValueReference> = vm.execute_store(StoreOp::StoreString(str1.to_string())).unwrap();
+    let st_results2: Vec<ValueReference> = vm.execute_store(StoreOp::StoreString(str2.to_string())).unwrap();
 
     let ptr1 = st_results1.get(0).unwrap();
     let ptr2 = st_results2.get(0).unwrap();
@@ -101,12 +104,12 @@ fn test_concat_strings(vm: &mut VM, str1: &str, str2: &str) {
 }
 
 fn test_store_pointer_helper<'a>(vm: &'a mut VM, value: &str) -> ValueReference<'a> {
-    let st_results: Vec<ValueReference> = vm.execute_op(Operation::StoreString(value.to_string())).unwrap();
+    let st_results: Vec<ValueReference> = vm.execute_store(StoreOp::StoreString(value.to_string())).unwrap();
     let ptr = st_results.get(0).unwrap();
 
     assert_eq!(vm.ref_count(ptr).unwrap(), 1);
 
-    let st_results_meta: Vec<ValueReference> = vm.execute_op(Operation::StorePointer(ptr)).unwrap();
+    let st_results_meta: Vec<ValueReference> = vm.execute_store(StoreOp::StorePointer(ptr)).unwrap();
     let meta_ptr = st_results_meta.get(0).unwrap();
 
     assert_eq!(vm.ref_count(ptr).unwrap(), 2);
@@ -158,8 +161,8 @@ fn test_store_pointer(vm: &mut VM, value: &str) {
 fn test_combine_lists(vm: &mut VM, l1: Vec<StringLive>, l2: Vec<IntLive>) {
     vm.reset();
 
-    let results1 = l1.iter().map(|s| vm.execute_op(Operation::StoreString(s.clone())).unwrap()).collect::<Vec<_>>();
-    let results2 = l2.iter().map(|i| vm.execute_op(Operation::StoreInt(i.clone())).unwrap()).collect::<Vec<_>>();
+    let results1 = l1.iter().map(|s| vm.execute_store(StoreOp::StoreString(s.clone())).unwrap()).collect::<Vec<_>>();
+    let results2 = l2.iter().map(|i| vm.execute_store(StoreOp::StoreInt(i.clone())).unwrap()).collect::<Vec<_>>();
 
     let refs1 = results1.iter().map(|r| r.get(0).unwrap()).collect::<Vec<_>>();
     let refs2 = results2.iter().map(|r| r.get(0).unwrap()).collect::<Vec<_>>();
@@ -169,8 +172,8 @@ fn test_combine_lists(vm: &mut VM, l1: Vec<StringLive>, l2: Vec<IntLive>) {
 
     // println!("{:?}", vm.state);
 
-    let st_result1 = vm.execute_op(Operation::StoreList(refs1)).unwrap();
-    let st_result2 = vm.execute_op(Operation::StoreList(refs2)).unwrap();
+    let st_result1 = vm.execute_store(StoreOp::StoreList(refs1)).unwrap();
+    let st_result2 = vm.execute_store(StoreOp::StoreList(refs2)).unwrap();
 
     let list1_ref = st_result1.get(0).unwrap();
     let list2_ref = st_result2.get(0).unwrap();
@@ -201,7 +204,7 @@ fn test_combine_lists(vm: &mut VM, l1: Vec<StringLive>, l2: Vec<IntLive>) {
     assert_eq!(c_len, l1.len() + l2.len());
 
     for i in 0..c_len {
-        let index_result = vm.execute_op(Operation::StoreInt(i as i64)).unwrap();
+        let index_result = vm.execute_store(StoreOp::StoreInt(i as i64)).unwrap();
         let get_op = Operation::GetItem(concatenated_ref, index_result.get(0).unwrap());
         let get_result = vm.execute_op(get_op).unwrap();
         let item_ref = get_result.get(0).unwrap();
@@ -220,13 +223,13 @@ fn test_combine_lists(vm: &mut VM, l1: Vec<StringLive>, l2: Vec<IntLive>) {
 fn test_list_ops(vm: &mut VM, list: Vec<StringLive>) {
     vm.reset();
 
-    let results = list.iter().map(|s| vm.execute_op(Operation::StoreString(s.clone())).unwrap()).collect::<Vec<_>>();
+    let results = list.iter().map(|s| vm.execute_store(StoreOp::StoreString(s.clone())).unwrap()).collect::<Vec<_>>();
     let refs = results.iter().map(|r| r.get(0).unwrap()).collect::<Vec<_>>();
 
     // there should be len(list) objects in the VM
     assert_eq!(vm.object_count(), list.len());
 
-    let list_result = vm.execute_op(Operation::StoreList(refs)).unwrap();
+    let list_result = vm.execute_store(StoreOp::StoreList(refs)).unwrap();
     let list_ref = list_result.get(0).unwrap();
 
     // there should be len(list) + 1 objects in the VM
@@ -244,7 +247,7 @@ fn test_list_ops(vm: &mut VM, list: Vec<StringLive>) {
 
     // test list get
     for i in 0..list.len() {
-        let index_result = vm.execute_op(Operation::StoreInt(i as i64)).unwrap();
+        let index_result = vm.execute_store(StoreOp::StoreInt(i as i64)).unwrap();
         let get_op = Operation::GetItem(list_ref, index_result.get(0).unwrap());
         let get_result = vm.execute_op(get_op).unwrap();
         let item_ref = get_result.get(0).unwrap();
@@ -254,8 +257,8 @@ fn test_list_ops(vm: &mut VM, list: Vec<StringLive>) {
     }
 
     // test list set
-    let index_result = vm.execute_op(Operation::StoreInt(0)).unwrap();
-    let new_value_result = vm.execute_op(Operation::StoreString("new value".to_string())).unwrap();
+    let index_result = vm.execute_store(StoreOp::StoreInt(0)).unwrap();
+    let new_value_result = vm.execute_store(StoreOp::StoreString("new value".to_string())).unwrap();
     let set_op = Operation::SetItem(list_ref, index_result.get(0).unwrap(), new_value_result.get(0).unwrap());
     let set_result = vm.execute_op(set_op).unwrap();
     let new_list_ref = set_result.get(0).unwrap();
@@ -282,7 +285,7 @@ fn test_list_ops(vm: &mut VM, list: Vec<StringLive>) {
 
     assert_eq!(new_list.len(), list.len() + 1);
 
-    let last_index_result = vm.execute_op(Operation::StoreInt(list.len() as i64)).unwrap();
+    let last_index_result = vm.execute_store(StoreOp::StoreInt(list.len() as i64)).unwrap();
     let get_op = Operation::GetItem(new_list_ref, last_index_result.get(0).unwrap());
     let get_result = vm.execute_op(get_op).unwrap();
     let item_ref = get_result.get(0).unwrap();
@@ -301,7 +304,7 @@ fn test_list_ops(vm: &mut VM, list: Vec<StringLive>) {
     assert_eq!(new_list.len(), list.len() - 1);
 
     for i in 0..new_list.len() {
-        let index_result = vm.execute_op(Operation::StoreInt(i as i64)).unwrap();
+        let index_result = vm.execute_store(StoreOp::StoreInt(i as i64)).unwrap();
         let get_op = Operation::GetItem(new_list_ref, index_result.get(0).unwrap());
         let get_result = vm.execute_op(get_op).unwrap();
         let item_ref = get_result.get(0).unwrap();
@@ -317,7 +320,7 @@ fn test_dict(vm: &mut VM, dict: HashMap<StringLive, StringLive>) {
     let mut new_dict: HashMap<StringLive, &ValueReference> = HashMap::new();
 
     let results: HashMap<StringLive, Vec<ValueReference>> = dict.iter().map(|(k, v)| {
-        let v_ptr = vm.execute_op(Operation::StoreString(v.clone())).unwrap();
+        let v_ptr = vm.execute_store(StoreOp::StoreString(v.clone())).unwrap();
         (k.clone(), v_ptr)
     }).collect();
 
@@ -328,7 +331,7 @@ fn test_dict(vm: &mut VM, dict: HashMap<StringLive, StringLive>) {
     // there should be len(dict) objects in the VM
     assert_eq!(vm.object_count(), dict.len());
 
-    let st_d_result = vm.execute_op(Operation::StoreDict(new_dict.clone())).unwrap();
+    let st_d_result = vm.execute_store(StoreOp::StoreDict(new_dict.clone())).unwrap();
     let dict_ptr = st_d_result.get(0).unwrap();
 
     // there should be len(dict) + 1 objects in the VM
@@ -344,7 +347,7 @@ fn test_dict(vm: &mut VM, dict: HashMap<StringLive, StringLive>) {
 
     // test dict get
     for (k, v) in dict.iter() {
-        let st_key_result = vm.execute_op(Operation::StoreString(k.clone())).unwrap();
+        let st_key_result = vm.execute_store(StoreOp::StoreString(k.clone())).unwrap();
 
         let get_op = Operation::GetItem(dict_ptr, st_key_result.get(0).unwrap());
         let get_result = vm.execute_op(get_op).unwrap();
@@ -356,8 +359,8 @@ fn test_dict(vm: &mut VM, dict: HashMap<StringLive, StringLive>) {
     }
 
     // test dict set
-    let st_key_result = vm.execute_op(Operation::StoreString("Hello".to_string())).unwrap();
-    let new_value_result = vm.execute_op(Operation::StoreString("Hello World".to_string())).unwrap();
+    let st_key_result = vm.execute_store(StoreOp::StoreString("Hello".to_string())).unwrap();
+    let new_value_result = vm.execute_store(StoreOp::StoreString("Hello World".to_string())).unwrap();
 
     let key_ref = st_key_result.get(0).unwrap();
     let new_value_ref = new_value_result.get(0).unwrap();
@@ -377,8 +380,8 @@ fn test_dict(vm: &mut VM, dict: HashMap<StringLive, StringLive>) {
 fn test_bool(vm: &mut VM) {
     vm.reset();
 
-    let st_true_result = vm.execute_op(Operation::StoreBool(true)).unwrap();
-    let st_false_result = vm.execute_op(Operation::StoreBool(false)).unwrap();
+    let st_true_result = vm.execute_store(StoreOp::StoreBool(true)).unwrap();
+    let st_false_result = vm.execute_store(StoreOp::StoreBool(false)).unwrap();
 
     let true_ref = st_true_result.get(0).unwrap();
     let false_ref = st_false_result.get(0).unwrap();
@@ -415,8 +418,8 @@ fn test_bool(vm: &mut VM) {
     assert_eq!(eq_result, false);
 
     // test greater than
-    let st_five_result = vm.execute_op(Operation::StoreInt(5)).unwrap();
-    let st_ten_result = vm.execute_op(Operation::StoreInt(10)).unwrap();
+    let st_five_result = vm.execute_store(StoreOp::StoreInt(5)).unwrap();
+    let st_ten_result = vm.execute_store(StoreOp::StoreInt(10)).unwrap();
     let five_ref = st_five_result.get(0).unwrap();
     let ten_ref = st_ten_result.get(0).unwrap();
 
@@ -454,26 +457,26 @@ fn test_bool(vm: &mut VM) {
 fn test_func_build(vm: &mut VM) {
     vm.reset();
 
-    let st_return_val_result = vm.execute_op(Operation::StoreFunctionVal(Vec::new())).unwrap();
+    let st_return_val_result = vm.execute_store(StoreOp::StoreFunctionVal(Vec::new(), None)).unwrap();
     let return_val_ref = st_return_val_result.get(0).unwrap();
 
-    let st_add_buffer_result = vm.execute_op(Operation::CreateBuffer).unwrap();
+    let st_add_buffer_result = vm.execute_store(StoreOp::CreateBuffer).unwrap();
     let add_op_ref = st_add_buffer_result.get(0).unwrap();
 
-    let st_arg1_result = vm.execute_op(Operation::StoreFunctionVal(vec![add_op_ref])).unwrap();
+    let st_arg1_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None)).unwrap();
     let arg1_ref = st_arg1_result.get(0).unwrap();
 
-    let st_arg2_result = vm.execute_op(Operation::StoreFunctionVal(vec![add_op_ref])).unwrap();
+    let st_arg2_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None)).unwrap();
     let arg2_ref = st_arg2_result.get(0).unwrap();
 
     // fill the add buffer with the add op
-    let add_op = Operation::StoreFunctionOp(OpCode::Add, vec![arg1_ref, arg2_ref], return_val_ref);
+    let add_op = StoreOp::StoreFunctionOp(OpCode::Add, vec![arg1_ref, arg2_ref], return_val_ref);
     let fill_add_buffer = Operation::SetBuffer(add_op_ref, add_op.get_stored_data().unwrap());
     vm.execute_op(fill_add_buffer).unwrap();
 
     // create the function
-    let store_func_op = Operation::StoreFunction(vec![arg1_ref, arg2_ref], vec![return_val_ref]);
-    let store_func_result = vm.execute_op(store_func_op).unwrap();
+    let store_func_op = StoreOp::StoreFunction(vec![arg1_ref, arg2_ref], vec![return_val_ref], vec![]);
+    let store_func_result = vm.execute_store(store_func_op).unwrap();
     let _func_ref = store_func_result.get(0).unwrap();
 
     // println!("state: {:#?}", vm.state);
@@ -482,8 +485,8 @@ fn test_func_build(vm: &mut VM) {
     let mut context: HashMap<StringLive, ValueReference> = HashMap::new();
     let arg1_guid = vm.get_ref_value(arg1_ref).unwrap().as_live().as_func_val().unwrap().ok().unwrap().guid;
     let arg2_guid = vm.get_ref_value(arg2_ref).unwrap().as_live().as_func_val().unwrap().ok().unwrap().guid;
-    let st_arg1_result = vm.execute_op(Operation::StoreInt(5)).unwrap();
-    let st_arg2_result = vm.execute_op(Operation::StoreInt(10)).unwrap();
+    let st_arg1_result = vm.execute_store(StoreOp::StoreInt(5)).unwrap();
+    let st_arg2_result = vm.execute_store(StoreOp::StoreInt(10)).unwrap();
     context.insert(arg1_guid, st_arg1_result.get(0).unwrap().clone());
     context.insert(arg2_guid, st_arg2_result.get(0).unwrap().clone());
 
@@ -500,30 +503,30 @@ fn test_func_build(vm: &mut VM) {
 fn test_add_func(vm: &mut VM) {
     vm.reset();
 
-    let st_return_val_result = vm.execute_op(Operation::StoreFunctionVal(Vec::new())).unwrap();
+    let st_return_val_result = vm.execute_store(StoreOp::StoreFunctionVal(Vec::new(), None)).unwrap();
     let return_val_ref = st_return_val_result.get(0).unwrap();
 
-    let st_add_buffer_result = vm.execute_op(Operation::CreateBuffer).unwrap();
+    let st_add_buffer_result = vm.execute_store(StoreOp::CreateBuffer).unwrap();
     let add_op_ref = st_add_buffer_result.get(0).unwrap();
 
-    let st_arg1_result = vm.execute_op(Operation::StoreFunctionVal(vec![add_op_ref])).unwrap();
+    let st_arg1_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None)).unwrap();
     let arg1_ref = st_arg1_result.get(0).unwrap();
 
-    let st_arg2_result = vm.execute_op(Operation::StoreFunctionVal(vec![add_op_ref])).unwrap();
+    let st_arg2_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None)).unwrap();
     let arg2_ref = st_arg2_result.get(0).unwrap();
 
     // fill the add buffer with the add op
-    let add_op = Operation::StoreFunctionOp(OpCode::Add, vec![arg1_ref, arg2_ref], return_val_ref);
+    let add_op = StoreOp::StoreFunctionOp(OpCode::Add, vec![arg1_ref, arg2_ref], return_val_ref);
     let fill_add_buffer = Operation::SetBuffer(add_op_ref, add_op.get_stored_data().unwrap());
     vm.execute_op(fill_add_buffer).unwrap();
 
     // create the function
-    let store_func_op = Operation::StoreFunction(vec![arg1_ref, arg2_ref], vec![return_val_ref]);
-    let store_func_result = vm.execute_op(store_func_op).unwrap();
+    let store_func_op = StoreOp::StoreFunction(vec![arg1_ref, arg2_ref], vec![return_val_ref], vec![]);
+    let store_func_result = vm.execute_store(store_func_op).unwrap();
     let func_ref = store_func_result.get(0).unwrap();
 
-    let st_arg1_result = vm.execute_op(Operation::StoreInt(5)).unwrap();
-    let st_arg2_result = vm.execute_op(Operation::StoreInt(10)).unwrap();
+    let st_arg1_result = vm.execute_store(StoreOp::StoreInt(5)).unwrap();
+    let st_arg2_result = vm.execute_store(StoreOp::StoreInt(10)).unwrap();
 
     let args: Vec<ValueReference> = vec![st_arg1_result.get(0).unwrap().clone(), st_arg2_result.get(0).unwrap().clone()];
 
@@ -554,8 +557,8 @@ fn test_load_fn(vm: &mut VM) {
 
     let fn_val = vm.get_ref_value(&fn_ref).unwrap().as_live().as_func().unwrap().ok().unwrap();
 
-    let st_arg1_result = vm.execute_op(Operation::StoreInt(5)).unwrap();
-    let st_arg2_result = vm.execute_op(Operation::StoreInt(10)).unwrap();
+    let st_arg1_result = vm.execute_store(StoreOp::StoreInt(5)).unwrap();
+    let st_arg2_result = vm.execute_store(StoreOp::StoreInt(10)).unwrap();
 
     let args: Vec<ValueReference> = vec![st_arg1_result.get(0).unwrap().clone(), st_arg2_result.get(0).unwrap().clone()];
 
@@ -594,6 +597,90 @@ fn test_api<'a>(vm: &'a mut VM) {
     let result = api.get("sum".to_string()).unwrap();
     assert_eq!(result.as_live().as_int().unwrap(), Ok(15));
 }
+
+fn test_calculate_statistics<'a>(vm: &'a mut VM) {
+    vm.reset();
+
+    let symbol_table: HashMap<Symbol, ValueReference<'a>> = HashMap::new();
+    let mut api = GraphiteApi { vm, symbol_table };
+
+    // Define the values (variables).
+    let values: Vec<FunctionValueNode> = vec![
+        FunctionValueNode::new("list".into()),
+        FunctionValueNode::new("sum1".into()),
+        FunctionValueNode::new("sum2".into()),
+        FunctionValueNode::new("sum_final".into()),
+        FunctionValueNode::new("average".into()),
+        FunctionValueNode::new("is_large_sum".into()),
+        FunctionValueNode::new("sum_as_float".into()),
+        FunctionValueNode::new("list_length".into()),
+        FunctionValueNode::constant("100".into(), IntStored(100)),
+        FunctionValueNode::constant("0".into(), IntStored(0)),
+        FunctionValueNode::constant("1".into(), IntStored(1)),
+        FunctionValueNode::constant("2".into(), IntStored(2)),
+        FunctionValueNode::constant("3".into(), IntStored(3)),
+        FunctionValueNode::new("item1".into()),
+        FunctionValueNode::new("item2".into()),
+        FunctionValueNode::new("item3".into()),
+        FunctionValueNode::new("item4".into()),
+    ];
+
+    // Define the operations.
+    let ops: Vec<FunctionOpNode> = vec![
+        // get the items from the list
+        FunctionOpNode::new(OpCode::GetItem, vec!["list".into(), "0".into()], "item1".into()),
+        FunctionOpNode::new(OpCode::GetItem, vec!["list".into(), "1".into()], "item2".into()),
+        FunctionOpNode::new(OpCode::GetItem, vec!["list".into(), "2".into()], "item3".into()),
+        FunctionOpNode::new(OpCode::GetItem, vec!["list".into(), "3".into()], "item4".into()),
+
+        // compute the sum
+        FunctionOpNode::new(OpCode::Add, vec!["item1".into(), "item2".into()], "sum1".into()),
+        FunctionOpNode::new(OpCode::Add, vec!["item3".into(), "item4".into()], "sum2".into()),
+        FunctionOpNode::new(OpCode::Add, vec!["sum1".into(), "sum2".into()], "sum_final".into()),
+
+        // compute the average
+        FunctionOpNode::new(OpCode::Length, vec!["list".into()], "list_length".into()),
+        FunctionOpNode::new(OpCode::Div, vec!["sum_final".into(), "list_length".into()], "average".into()),
+
+        // compute whether the sum is large
+        FunctionOpNode::new(OpCode::GreaterThan, vec!["sum_final".into(), "100".into()], "is_large_sum".into()),
+
+        // get the sum as a float
+        FunctionOpNode::new(OpCode::AsFloat, vec!["sum_final".into()], "sum_as_float".into()),
+    ];
+
+    // Create the function graph.
+    let graph: FunctionGraph = FunctionGraph::new(
+        values,
+        ops,
+        vec!["list".into()], // Initial Inputs
+        vec!["sum_final".into(), "average".into(), "is_large_sum".into(), "sum_as_float".into()] // Returned Outputs
+    );
+
+    // Store the function.
+    api.store_function(graph, "calculate_statistics".to_string()).unwrap();
+
+    // Test the function with a sample list.
+    api.store_int(10, "num1".to_string()).unwrap();
+    api.store_int(20, "num2".to_string()).unwrap();
+    api.store_int(30, "num3".to_string()).unwrap();
+    api.store_int(40, "num4".to_string()).unwrap();
+
+    api.store_list(vec!["num1".into(), "num2".into(), "num3".into(), "num4".into()], "list".to_string()).unwrap();
+    api.execute("calculate_statistics".to_string(), vec!["list".to_string()], vec!["sum".into(), "average".into(), "is_large_sum".into(), "sum_as_float".into()]).unwrap();
+
+    // Retrieve and assert the results.
+    let sum_result = api.get("sum".to_string()).unwrap();
+    let average_result = api.get("average".to_string()).unwrap();
+    let is_large_sum_result = api.get("is_large_sum".to_string()).unwrap();
+    let sum_as_float_result = api.get("sum_as_float".to_string()).unwrap();
+
+    assert_eq!(sum_result.as_live().as_int().unwrap(), Ok(100));
+    assert_eq!(average_result.as_live().as_float().unwrap(), Ok(25.0));
+    assert_eq!(is_large_sum_result.as_live().as_bool().unwrap(), Ok(false));
+    assert_eq!(sum_as_float_result.as_live().as_float().unwrap(), Ok(100.0));
+}
+
 
 fn main() {
     let mut vm = VM::new();
@@ -644,11 +731,15 @@ fn main() {
 
     assert_eq!(vm.object_count(), 0);
 
-    test_load_fn(&mut vm);
+    // test_load_fn(&mut vm);
+    //
+    // assert_eq!(vm.object_count(), 0);
+    //
+    // test_api(&mut vm);
+    //
+    // assert_eq!(vm.object_count(), 0);
 
-    assert_eq!(vm.object_count(), 0);
-
-    test_api(&mut vm);
+    test_calculate_statistics(&mut vm);
 
     assert_eq!(vm.object_count(), 0);
 }

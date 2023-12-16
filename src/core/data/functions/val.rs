@@ -8,4 +8,7 @@ pub struct FuncVal {
 
     /// A list of pointers to the func op nodes that depend on this value.
     pub dependents: Vec<PointerLive>,
+
+    /// An optional constant value that this variable is initialized to.
+    pub constant: Option<PointerLive>,
 }

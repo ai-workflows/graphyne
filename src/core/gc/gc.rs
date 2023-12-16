@@ -60,7 +60,7 @@ impl<T> GarbageCollector<T> where T: GarbageCollectable<T> {
         // If the object does not exist, return an error.
         let obj = match obj_result {
             Some(obj) => obj,
-            None => return Err("Pointer does not point to a valid object.".to_string()),
+            None => return Err(format!("Pointer (id: {}) does not point to a valid object.", ptr.id)),
         };
 
         // increment the ref count of the object. And mark the pointer as counted.
@@ -100,7 +100,7 @@ impl<T> GarbageCollector<T> where T: GarbageCollectable<T> {
             let obj_result = self.get_obj_mut(id);
             let obj = match obj_result {
                 Some(obj) => obj,
-                None => return Err("Pointer does not point to a valid object.".to_string()),
+                None => return Err(format!("Pointer (id: {}) does not point to a valid object.", ptr.id)),
             };
 
             // Decrement the ref count of the object.
@@ -183,7 +183,7 @@ impl<T> GarbageCollector<T> where T: GarbageCollectable<T> {
         let obj_result = self.get_obj(ptr.id);
         let obj = match obj_result {
             Some(obj) => obj,
-            None => return Err("Pointer does not point to a valid object.".to_string()),
+            None => return Err(format!("Pointer (id: {}) does not point to a valid object.", ptr.id)),
         };
 
         // Get the value of the object (automatically clones the value).

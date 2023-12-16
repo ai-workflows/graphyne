@@ -7,5 +7,8 @@ pub struct FuncSig {
     pub input_vals: Vec<PointerLive>,
 
     /// A list of pointers to the func value nodes that the function will return when it is called.
-    pub output_vals: Vec<PointerLive>
+    pub output_vals: Vec<PointerLive>,
+
+    /// A list of pointers to the func value nodes that are constants used by the function.
+    pub constant_vals: Vec<PointerLive>
 }

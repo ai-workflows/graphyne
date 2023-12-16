@@ -4,7 +4,7 @@ use crate::core::data::live::{LiveData, IntLive, FloatLive, StringLive, BoolLive
 use crate::core::data::stored::StoredData;
 use crate::core::ExecResult;
 use crate::core::nodes::FunctionGraph;
-use crate::core::vm::ops::Operation;
+use crate::core::vm::store_op::StoreOp;
 use crate::core::vm::value_ref::ValueReference;
 use crate::core::vm::VM;
 
@@ -15,8 +15,8 @@ pub struct GraphiteApi<'a> {
 }
 
 impl<'a> GraphiteApi<'a> {
-    fn store_value(&mut self, operation: Operation, symbol: Symbol) -> ExecResult<()> {
-        let store_result: Vec<ValueReference> = self.vm.execute_op(operation).unwrap();
+    fn store_value(&mut self, operation: StoreOp, symbol: Symbol) -> ExecResult<()> {
+        let store_result: Vec<ValueReference> = self.vm.execute_store(operation).unwrap();
         self.symbol_table.insert(symbol, store_result[0].clone());
         Ok(())
     }
@@ -24,19 +24,19 @@ impl<'a> GraphiteApi<'a> {
 
 impl<'a> VmInterface for GraphiteApi<'a> {
     fn store_int(&mut self, value: IntLive, symbol: Symbol) -> ExecResult<()> {
-        self.store_value(Operation::StoreInt(value), symbol)
+        self.store_value(StoreOp::StoreInt(value), symbol)
     }
 
     fn store_float(&mut self, value: FloatLive, symbol: Symbol) -> ExecResult<()> {
-        self.store_value(Operation::StoreFloat(value), symbol)
+        self.store_value(StoreOp::StoreFloat(value), symbol)
     }
 
     fn store_string(&mut self, value: StringLive, symbol: Symbol) -> ExecResult<()> {
-        self.store_value(Operation::StoreString(value), symbol)
+        self.store_value(StoreOp::StoreString(value), symbol)
     }
 
     fn store_bool(&mut self, value: BoolLive, symbol: Symbol) -> ExecResult<()> {
-        self.store_value(Operation::StoreBool(value), symbol)
+        self.store_value(StoreOp::StoreBool(value), symbol)
     }
 
     fn store_list(&mut self, values: Vec<Symbol>, symbol: Symbol) -> ExecResult<()> {
@@ -44,8 +44,8 @@ impl<'a> VmInterface for GraphiteApi<'a> {
             .map(|symbol| self.symbol_table.get(&symbol).unwrap())
             .collect();
 
-        let store_op = Operation::StoreList(value_refs);
-        let store_result: Vec<ValueReference> = self.vm.execute_op(store_op).unwrap();
+        let store_op = StoreOp::StoreList(value_refs);
+        let store_result: Vec<ValueReference> = self.vm.execute_store(store_op).unwrap();
         self.symbol_table.insert(symbol, store_result[0].clone());
         Ok(())
     }
@@ -58,15 +58,15 @@ impl<'a> VmInterface for GraphiteApi<'a> {
             value_refs.insert(key, value_ref);
         }
 
-        let store_op = Operation::StoreDict(value_refs);
-        let store_result: Vec<ValueReference> = self.vm.execute_op(store_op).unwrap();
+        let store_op = StoreOp::StoreDict(value_refs);
+        let store_result: Vec<ValueReference> = self.vm.execute_store(store_op).unwrap();
         self.symbol_table.insert(symbol, store_result[0].clone());
         Ok(())
     }
 
     fn store_function(&mut self, func: FunctionGraph, symbol: Symbol) -> ExecResult<()> {
-        let store_op = Operation::StoreFunctionGraph(func);
-        let store_result: Vec<ValueReference> = self.vm.execute_op(store_op).unwrap();
+        let store_op = StoreOp::StoreFunctionGraph(func);
+        let store_result: Vec<ValueReference> = self.vm.execute_store(store_op).unwrap();
         self.symbol_table.insert(symbol, store_result[0].clone());
         Ok(())
     }
@@ -113,7 +113,10 @@ impl<'a> VmInterface for GraphiteApi<'a> {
             input_refs.push(input_ref);
         }
 
-        let exec_result: Vec<ValueReference> = self.vm.handle_call_function(&func_sig, &input_refs).unwrap();
+        let exec_result: Vec<ValueReference> = match self.vm.handle_call_function(&func_sig, &input_refs) {
+            Ok(result) => result,
+            Err(err) => return Err(format!("Error executing function {}: {}", func, err)),
+        };
 
         // verify that the number of outputs is correct
         if exec_result.len() != outputs.len() {

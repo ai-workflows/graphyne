@@ -1,3 +1,4 @@
+use std::fmt;
 use crate::core::vm::ops::Operation;
 use crate::core::vm::value_ref::ValueReference;
 
@@ -56,6 +57,36 @@ impl OpCode {
             OpCode::Sub => Operation::Sub(args[0], args[1]),
             OpCode::Mul => Operation::Mul(args[0], args[1]),
             OpCode::Div => Operation::Div(args[0], args[1]),
+        }
+    }
+}
+
+impl fmt::Display for OpCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            OpCode::AsInt => write!(f, "as_int"),
+            OpCode::AsFloat => write!(f, "as_float"),
+            OpCode::AsString => write!(f, "as_string"),
+            OpCode::AsBool => write!(f, "as_bool"),
+            OpCode::AsPointer => write!(f, "as_pointer"),
+            OpCode::AsList => write!(f, "as_list"),
+            OpCode::AsDictionary => write!(f, "as_dictionary"),
+            OpCode::If => write!(f, "if"),
+            OpCode::Not => write!(f, "not"),
+            OpCode::And => write!(f, "and"),
+            OpCode::Or => write!(f, "or"),
+            OpCode::Equal => write!(f, "equal"),
+            OpCode::LessThan => write!(f, "less_than"),
+            OpCode::GreaterThan => write!(f, "greater_than"),
+            OpCode::Length => write!(f, "length"),
+            OpCode::GetItem => write!(f, "get_item"),
+            OpCode::SetItem => write!(f, "set_item"),
+            OpCode::Push => write!(f, "push"),
+            OpCode::Remove => write!(f, "remove"),
+            OpCode::Add => write!(f, "add"),
+            OpCode::Sub => write!(f, "sub"),
+            OpCode::Mul => write!(f, "mul"),
+            OpCode::Div => write!(f, "div"),
         }
     }
 }

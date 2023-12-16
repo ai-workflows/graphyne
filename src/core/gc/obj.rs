@@ -92,12 +92,22 @@ impl<T> GCObject<T> {
                 for pointer in outputs.iter_mut() {
                     result.push(pointer);
                 }
+
+                let constants: &mut Vec<GCPointer<StoredData>> = &mut func.constant_vals;
+                for pointer in constants.iter_mut() {
+                    result.push(pointer);
+                }
             },
             GCObjectType::FuncVal => {
                 let func_val: &mut FuncValLive = self.as_func_val_mut().unwrap();
 
                 let dependents: &mut Vec<GCPointer<StoredData>> = &mut func_val.dependents;
                 for pointer in dependents.iter_mut() {
+                    result.push(pointer);
+                }
+
+                let constant: &mut Option<GCPointer<StoredData>> = &mut func_val.constant;
+                if let Some(pointer) = constant {
                     result.push(pointer);
                 }
             },
