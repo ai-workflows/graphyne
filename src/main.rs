@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use maplit::hashmap;
-use crate::api::{execute, get, store_float, store_function, store_int};
+use crate::api::{execute, get, GraphiteApi, store_float, store_function, store_int};
 use crate::core::data::functions::{FuncOp, FuncVal, OpCode};
 
 use crate::core::data::stored::StoredData;
@@ -598,6 +598,36 @@ fn test_api(vm: &mut VM) {
     assert_eq!(result.as_live().as_int().unwrap(), Ok(15));
 }
 
+fn test_api2<'a>(vm: &'a mut VM) {
+    vm.reset();
+
+    let mut symbol_table: HashMap<String, ValueReference<'a>> = HashMap::new();
+
+    let mut api = GraphiteApi { vm, symbol_table };
+
+    let values: Vec<FunctionValueNode> = vec![
+        FunctionValueNode::new("num1".into()),
+        FunctionValueNode::new("num2".into()),
+        FunctionValueNode::new("sum".into()),
+    ];
+
+    let ops: Vec<FunctionOpNode> = vec![
+        FunctionOpNode::new(OpCode::Add, vec!["num1".into(), "num2".into()], "sum".into())
+    ];
+
+    let graph: FunctionGraph = FunctionGraph::new(values, ops, vec!["num1".into(), "num2".into()], vec!["sum".into()]);
+
+    api.store_function(graph, "add".to_string()).unwrap();
+
+    api.store_int(5, "num1".to_string()).unwrap();
+    api.store_float(10.0, "num2".to_string()).unwrap();
+
+    api.execute("add".to_string(), vec!["num1".to_string(), "num2".to_string()], vec!["sum".to_string()]).unwrap();
+
+    let result = api.get("sum".to_string()).unwrap();
+    assert_eq!(result.as_live().as_int().unwrap(), Ok(15));
+}
+
 fn main() {
     let mut vm = VM::new();
 
@@ -652,6 +682,10 @@ fn main() {
     assert_eq!(vm.object_count(), 0);
 
     test_api(&mut vm);
+
+    assert_eq!(vm.object_count(), 0);
+
+    test_api2(&mut vm);
 
     assert_eq!(vm.object_count(), 0);
 }

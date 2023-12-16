@@ -7,7 +7,7 @@ use crate::core::vm::ops::Operation;
 use crate::core::vm::value_ref::ValueReference;
 use crate::core::vm::{VM};
 
-type Symbol = String;
+pub type Symbol = String;
 
 pub fn store_int<'a>(value: IntLive, symbol: Symbol, vm: &'a VM, symbol_table: &mut HashMap<Symbol, ValueReference<'a>>) -> ExecResult<()> {
     let store_op = Operation::StoreInt(value);
