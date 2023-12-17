@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::api::interface::{Symbol, VmInterface};
-use crate::core::data::live::{LiveData, IntLive, FloatLive, StringLive, BoolLive};
+use crate::core::data::live::{LiveData, IntLive, FloatLive, StringLive, BoolLive, PointerLive};
 use crate::core::data::stored::StoredData;
 use crate::core::ExecResult;
 use crate::core::nodes::FunctionGraph;
@@ -80,6 +80,17 @@ impl<'a> VmInterface for GraphiteApi<'a> {
         };
 
         self.vm.get_ref_value(val_ref).map(|stored| stored)
+    }
+
+    fn get_ptr(&self, symbol: Symbol) -> ExecResult<PointerLive> {
+        let val_ref = self.symbol_table.get(&symbol);
+
+        let val_ref = match val_ref {
+            Some(val_ref) => val_ref,
+            None => return Err(format!("Symbol {} not found.", symbol)),
+        };
+
+        Ok(val_ref.pointer.clone())
     }
 
     fn drop(&mut self, symbol: Symbol) -> ExecResult<()> {

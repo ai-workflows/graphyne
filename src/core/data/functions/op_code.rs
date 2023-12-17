@@ -28,6 +28,7 @@ pub enum OpCode {
     Sub,
     Mul,
     Div,
+    Call
 }
 
 impl OpCode {
@@ -57,6 +58,7 @@ impl OpCode {
             OpCode::Sub => Operation::Sub(args[0], args[1]),
             OpCode::Mul => Operation::Mul(args[0], args[1]),
             OpCode::Div => Operation::Div(args[0], args[1]),
+            OpCode::Call => Operation::Call(args[0], args[1])
         }
     }
 }
@@ -87,6 +89,7 @@ impl fmt::Display for OpCode {
             OpCode::Sub => write!(f, "sub"),
             OpCode::Mul => write!(f, "mul"),
             OpCode::Div => write!(f, "div"),
+            OpCode::Call => write!(f, "call")
         }
     }
 }

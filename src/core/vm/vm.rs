@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::format;
 use std::sync::{Arc, RwLock};
 use crate::core::data::live::{FuncLive, FuncOpLive, FuncValLive, LiveData, PointerLive, StringLive};
 use crate::core::data::stored::StoredData;
@@ -134,6 +135,7 @@ impl VM {
             Operation::Equal(lhs, rhs) => self.execute_equal(lhs, rhs),
             Operation::LessThan(lhs, rhs) => self.execute_less_than(lhs, rhs),
             Operation::GreaterThan(lhs, rhs) => self.execute_greater_than(lhs, rhs),
+            Operation::Call(func, args) => self.execute_call(func, args),
         }
     }
 
@@ -171,7 +173,7 @@ impl VM {
 
     /// Converts a pointer into a value reference that can be used by the VM's caller.
     /// Counts the pointer if it is uncounted.
-    fn value_ref_from_ptr(&self, mut ptr: GCPointer<StoredData>) -> ExecResult<ValueReference> {
+    pub fn value_ref_from_ptr(&self, mut ptr: GCPointer<StoredData>) -> ExecResult<ValueReference> {
         // if the pointer is uncounted, we need to manually count it
         if !ptr.counted {
             let mut gc = match self.state.try_write() {
@@ -393,6 +395,33 @@ impl VM {
 
     fn execute_remove(&self, list: &ValueReference, index: &ValueReference) -> ExecResult<Vec<ValueReference>> {
         execute_two_arg_op!(self, op_remove, list, index)
+    }
+
+    fn execute_call(&self, func: &ValueReference, args: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        // get the function
+        let func = match self.get_ref_value(func) {
+            Ok(val) => val,
+            Err(msg) => return Err(format!("Failed to get function: {}", msg))
+        };
+        let func = func.as_live().as_func().ok_or_else(|| "Cannot call a non-function value".to_string())??;
+
+        // get the args list
+        let args_val = match self.get_ref_value(args) {
+            Ok(val) => val,
+            Err(msg) => return Err(format!("Failed to get args: {}", msg))
+        };
+        let args_list = args_val.as_live().as_list().ok_or_else(|| "Cannot call a function with a non-list value as arguments".to_string())??;
+
+        // get the args as value references
+        let mut args: Vec<ValueReference> = Vec::new();
+        for arg_ptr in args_list {
+            let arg_val = self.value_ref_from_ptr(arg_ptr)?;
+            args.push(arg_val);
+        }
+
+        let result = self.handle_call_function(&func, &args);
+
+        result
     }
 
     /// Handles the call of an operation that is part of a function.

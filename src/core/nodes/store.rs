@@ -16,6 +16,8 @@ impl VM {
         let mut constant_vals: Vec<ValueReference> = Vec::new();
 
         for val in &func.values {
+
+
             let val_refs = self.execute_store(StoreOp::CreateBuffer)?;
             let buf = val_refs[0].clone();
             values.insert(val.guid.clone(), buf.clone());
@@ -25,6 +27,13 @@ impl VM {
                 let const_ref = const_ref[0].clone();
                 constants.insert(val.guid.clone(), const_ref);
                 constant_vals.push(buf.clone());
+            }
+            else if let Some(external_ptr) = &val.external {
+                // this value is a pointer to an existing external value, convert it to a value reference
+                let val_ref = self.value_ref_from_ptr(external_ptr.clone())?;
+                constants.insert(val.guid.clone(), val_ref);
+                constant_vals.push(buf.clone());
+                continue;
             }
         }
 
@@ -48,7 +57,10 @@ impl VM {
             }
 
             // get the output value for this op
-            let output_val_ref: &ValueReference = values.get(&op.output_val_id).unwrap();
+            let output_val_ref: &ValueReference = match values.get(&op.output_val_id) {
+                Some(val) => val,
+                None => return Err(format!("Error getting output value for op {}.", op.output_val_id)),
+            };
 
             let store_op = StoreOp::StoreFunctionOp(op.opcode, input_val_refs, output_val_ref);
             let op_refs: Vec<ValueReference> = self.execute_store(store_op)?;  // TODO: input and output refs are not being counted

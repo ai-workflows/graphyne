@@ -1,8 +1,4 @@
-use std::collections::HashMap;
-use crate::core::data::functions::{FuncOp, FuncSig, FuncVal, OpCode};
-use crate::core::data::live::{BoolLive, FloatLive, IntLive, StringLive};
 use crate::core::data::stored::StoredData;
-use crate::core::nodes::FunctionGraph;
 use crate::core::vm::value_ref::ValueReference;
 
 
@@ -82,4 +78,7 @@ pub enum Operation<'a> {
 
     /// Divides two values.
     Div(&'a ValueReference<'a>, &'a ValueReference<'a>),
+
+    /// Calls a function.
+    Call(&'a ValueReference<'a>, &'a ValueReference<'a>)
 }

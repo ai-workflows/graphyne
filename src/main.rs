@@ -4,8 +4,7 @@ use crate::api::{GraphiteApi, Symbol};
 use crate::api::interface::VmInterface;
 use crate::core::data::functions::{OpCode};
 use crate::core::data::live::{IntLive, LiveData, StringLive};
-use crate::core::data::stored::StoredData;
-use crate::core::data::stored::StoredData::IntStored;
+use crate::core::data::stored::StoredData::{FloatStored, IntStored, ListStored};
 use crate::core::nodes::{FunctionGraph, FunctionOpNode, FunctionValueNode};
 use crate::core::vm::ops::Operation;
 use crate::core::vm::store_op::StoreOp;
@@ -681,6 +680,77 @@ fn test_calculate_statistics<'a>(vm: &'a mut VM) {
     assert_eq!(sum_as_float_result.as_live().as_float().unwrap(), Ok(100.0));
 }
 
+fn test_sub_call<'a>(vm: &'a mut VM) {
+    vm.reset();
+
+    let symbol_table: HashMap<Symbol, ValueReference<'a>> = HashMap::new();
+    let mut api = GraphiteApi { vm, symbol_table };
+
+    // Define the values for the first function.
+    let values1: Vec<FunctionValueNode> = vec![
+        FunctionValueNode::new("num1".into()),
+        FunctionValueNode::new("num2".into()),
+        FunctionValueNode::new("sum".into()),
+    ];
+
+    // Define the operations for the first function.
+    let ops1: Vec<FunctionOpNode> = vec![
+        FunctionOpNode::new(OpCode::Add, vec!["num1".into(), "num2".into()], "sum".into())
+    ];
+
+    // Create the function graph for the first function.
+    let graph1: FunctionGraph = FunctionGraph::new(values1, ops1, vec!["num1".into(), "num2".into()], vec!["sum".into()]);
+
+    // Store the first function
+    api.store_function(graph1, "add".to_string()).unwrap();
+
+    // Define the values for the second function which will compute an average.
+    let values2: Vec<FunctionValueNode> = vec![
+        // the two numbers that will be averaged
+        FunctionValueNode::new("num1".into()),
+        FunctionValueNode::new("num2".into()),
+
+        // build the args for the add function
+        FunctionValueNode::new("add_args".into()),
+        FunctionValueNode::constant("empty_list".into(), ListStored(Vec::new())),
+        FunctionValueNode::new("list_one_arg".into()),
+
+        // the sum function to call and its result
+        FunctionValueNode::external("add_func".into(), api.get_ptr("add".into()).unwrap()),
+        FunctionValueNode::new("sum".into()),
+
+        // the average result
+        FunctionValueNode::constant("2".into(), FloatStored(2.0)),
+        FunctionValueNode::new("average".into()),
+    ];
+
+    // Define the operations for the second function.
+    let ops2: Vec<FunctionOpNode> = vec![
+        // build the args for the sum func
+        FunctionOpNode::new(OpCode::Push, vec!["empty_list".into(), "num1".into()], "list_one_arg".into()),
+        FunctionOpNode::new(OpCode::Push, vec!["list_one_arg".into(), "num2".into()], "add_args".into()),
+
+        // call the add function and divide the result by 2
+        FunctionOpNode::new(OpCode::Call, vec!["add_func".into(), "add_args".into()], "sum".into()),
+        FunctionOpNode::new(OpCode::Div, vec!["sum".into(), "2".into()], "average".into()),
+    ];
+
+    // Create the function graph for the second function.
+    let graph2: FunctionGraph = FunctionGraph::new(values2, ops2, vec!["num1".into(), "num2".into()], vec!["average".into()]);
+
+    // Store the second function
+    api.store_function(graph2, "average".to_string()).unwrap();
+
+    // test the second function
+    api.store_int(10, "num1".to_string()).unwrap();
+    api.store_int(20, "num2".to_string()).unwrap();
+
+    api.execute("average".to_string(), vec!["num1".to_string(), "num2".to_string()], vec!["average".to_string()]).unwrap();
+
+    let result = api.get("average".to_string()).unwrap();
+    assert_eq!(result.as_live().as_float().unwrap(), Ok(15.0));
+}
+
 
 fn main() {
     let mut vm = VM::new();
@@ -731,15 +801,19 @@ fn main() {
 
     assert_eq!(vm.object_count(), 0);
 
-    // test_load_fn(&mut vm);
-    //
-    // assert_eq!(vm.object_count(), 0);
-    //
-    // test_api(&mut vm);
-    //
-    // assert_eq!(vm.object_count(), 0);
+    test_load_fn(&mut vm);
+
+    assert_eq!(vm.object_count(), 0);
+
+    test_api(&mut vm);
+
+    assert_eq!(vm.object_count(), 0);
 
     test_calculate_statistics(&mut vm);
+
+    assert_eq!(vm.object_count(), 0);
+
+    test_sub_call(&mut vm);
 
     assert_eq!(vm.object_count(), 0);
 }
