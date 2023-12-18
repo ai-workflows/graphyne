@@ -89,4 +89,26 @@ impl LiveData for FloatLive {
     fn op_div(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         checked_arithmetic_float_op!(self, rhs, /)
     }
+
+    fn op_mod(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
+        checked_arithmetic_float_op!(self, rhs, %)
+    }
+
+    fn op_pow(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
+        match rhs {
+            StoredData::FloatStored(rhs) => {
+                // Using direct arithmetic operators
+                let value = self.powf(*rhs);
+                Some(Ok(StoredData::FloatStored(value)))
+            }
+            _ => {
+                let cast_result: Option<ExecResult<FloatLive>> = rhs.as_live().as_float();
+
+                cast_result.map(|rhs| {
+                    let value = self.powf(rhs?);
+                    Ok(StoredData::FloatStored(value))
+                })
+            }
+        }
+    }
 }

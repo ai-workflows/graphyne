@@ -85,4 +85,19 @@ impl LiveData for IntLive {
     fn op_div(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         checked_arithmetic_int_op!(self, rhs, /, checked_div)
     }
+
+    fn op_mod(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
+        checked_arithmetic_int_op!(self, rhs, %, checked_rem)
+    }
+
+    fn op_pow(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
+        match rhs {
+            StoredData::IntStored(rhs) => Some(Ok(StoredData::IntStored(self.clone().pow(*rhs as u32)))),
+            _ => {
+                let cast_result: Option<ExecResult<IntLive>> = rhs.as_live().as_int();
+
+                cast_result.map(|rhs| Ok(StoredData::IntStored(self.clone().pow(rhs? as u32))))
+            }
+        }
+    }
 }

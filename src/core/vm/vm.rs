@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::fmt::format;
 use std::sync::{Arc, RwLock};
 use crate::core::data::live::{FuncLive, FuncOpLive, FuncValLive, LiveData, PointerLive, StringLive};
 use crate::core::data::stored::StoredData;
@@ -122,6 +121,8 @@ impl VM {
             Operation::Sub(lhs, rhs) => self.execute_sub(lhs, rhs),
             Operation::Mul(lhs, rhs) => self.execute_mul(lhs, rhs),
             Operation::Div(lhs, rhs) => self.execute_div(lhs, rhs),
+            Operation::Mod(lhs, rhs) => self.execute_mod(lhs, rhs),
+            Operation::Pow(lhs, rhs) => self.execute_pow(lhs, rhs),
             Operation::Length(list) => self.execute_length(list),
             Operation::GetItem(list, index) => self.execute_get_item(list, index),
             Operation::SetItem(list, index, value) => self.execute_set_item(list, index, value),
@@ -136,6 +137,9 @@ impl VM {
             Operation::LessThan(lhs, rhs) => self.execute_less_than(lhs, rhs),
             Operation::GreaterThan(lhs, rhs) => self.execute_greater_than(lhs, rhs),
             Operation::Call(func, args) => self.execute_call(func, args),
+            Operation::Map(func, list) => self.map(func, list),
+            Operation::Reduce(func, list, initial) => self.handle_reduce(func, list, initial),
+            Operation::Filter(func, list) => self.filter(func, list),
         }
     }
 
@@ -320,6 +324,14 @@ impl VM {
 
     fn execute_div(&self, lhs: &ValueReference, rhs: &ValueReference) -> ExecResult<Vec<ValueReference>> {
         execute_two_arg_op!(self, op_div, lhs, rhs)
+    }
+
+    fn execute_mod(&self, lhs: &ValueReference, rhs: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_two_arg_op!(self, op_mod, lhs, rhs)
+    }
+
+    fn execute_pow(&self, lhs: &ValueReference, rhs: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_two_arg_op!(self, op_pow, lhs, rhs)
     }
 
     fn execute_if(&self, condition: &ValueReference, then: &ValueReference, otherwise: &ValueReference) -> ExecResult<Vec<ValueReference>> {
@@ -591,8 +603,105 @@ impl VM {
         Ok(return_values)
     }
 
+    /// Applies a function to each item in a list, returning a new list of the results.
+    pub fn map(&self, func: &ValueReference, list: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        // get the function
+        let func = match self.get_ref_value(func) {
+            Ok(val) => val,
+            Err(msg) => return Err(format!("Failed to get function: {}", msg))
+        };
+        let func = func.as_live().as_func().ok_or_else(|| "Cannot call a non-function value".to_string())??;
 
+        // get the list
+        let list_val = match self.get_ref_value(list) {
+            Ok(val) => val,
+            Err(msg) => return Err(format!("Failed to get list: {}", msg))
+        };
+        let list_val = list_val.as_live().as_list().ok_or_else(|| "Cannot call a function with a non-list value as arguments".to_string())??;
 
+        // create a new list to hold the results
+        let mut result_list: Vec<ValueReference> = Vec::new();
 
+        // call the function on each item in the list
+        for item_ptr in list_val {
+            let item_val_ref = self.value_ref_from_ptr(item_ptr.clone())?;
+            let result_val = self.handle_call_function(&func, &vec![item_val_ref])?;
+            result_list.push(result_val[0].clone());
+        }
 
+        // store the result list
+        let store_list_result = self.store_value(StoredData::ListStored(result_list.iter().map(|val_ref| val_ref.pointer.clone()).collect()))?;
+        Ok(store_list_result)
+    }
+
+    /// Wrapper function to handle lifetime issues with calling reduce.
+    pub fn handle_reduce(&self, func: &ValueReference, list: &ValueReference, initial: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        // create a new reference to the initial value to avoid lifetime issues
+        let initial = self.value_ref_from_ptr(initial.pointer.clone())?;
+
+        self.reduce(func, list, &initial)
+    }
+
+    // applies a combining function to each item in a list, returning a single result.
+    pub fn reduce<'a>(&'a self, func: &ValueReference, list: &ValueReference, initial: &ValueReference<'a>) -> ExecResult<Vec<ValueReference<'a>>> {
+        // get the function
+        let func = match self.get_ref_value(func) {
+            Ok(val) => val,
+            Err(msg) => return Err(format!("Failed to get function: {}", msg))
+        };
+        let func = func.as_live().as_func().ok_or_else(|| "Cannot call a non-function value".to_string())??;
+
+        // get the list
+        let list_val = match self.get_ref_value(list) {
+            Ok(val) => val,
+            Err(msg) => return Err(format!("Failed to get list: {}", msg))
+        };
+        let list_val = list_val.as_live().as_list().ok_or_else(|| "Cannot call a function with a non-list value as arguments".to_string())??;
+
+        let mut last_result = initial.clone();
+
+        for item_ptr in list_val {
+            let item_val_ref = self.value_ref_from_ptr(item_ptr.clone())?;
+            let result_val = self.handle_call_function(&func, &vec![last_result, item_val_ref])?;
+            last_result = result_val[0].clone();
+        }
+
+        Ok(vec![last_result])
+    }
+
+    // gets the items in a list that match a given condition
+    pub fn filter(&self, func: &ValueReference, list: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        // get the function
+        let func = match self.get_ref_value(func) {
+            Ok(val) => val,
+            Err(msg) => return Err(format!("Failed to get function: {}", msg))
+        };
+        let func = func.as_live().as_func().ok_or_else(|| "Cannot call a non-function value".to_string())??;
+
+        // get the list
+        let list_val = match self.get_ref_value(list) {
+            Ok(val) => val,
+            Err(msg) => return Err(format!("Failed to get list: {}", msg))
+        };
+        let list_val = list_val.as_live().as_list().ok_or_else(|| "Cannot call a function with a non-list value as arguments".to_string())??;
+
+        // create a new list to hold the results
+        let mut result_list: Vec<ValueReference> = Vec::new();
+
+        // call the function on each item in the list
+        for item_ptr in list_val {
+            let item_val_ref = self.value_ref_from_ptr(item_ptr.clone())?;
+            let result_val = self.handle_call_function(&func, &vec![item_val_ref.clone()])?;
+            let result_val_ref = result_val[0].clone();
+            let result_val = self.get_ref_value(&result_val_ref)?;
+            let result_val = result_val.as_live().as_bool().ok_or_else(|| "Cannot filter a list with a non-bool function".to_string())??;
+            if result_val {
+                result_list.push(item_val_ref);
+            }
+        }
+
+        // store the result list
+        let store_list_result = self.store_value(StoredData::ListStored(result_list.iter().map(|val_ref| val_ref.pointer.clone()).collect()))?;
+        Ok(store_list_result)
+    }
 }

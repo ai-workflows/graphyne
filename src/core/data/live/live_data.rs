@@ -74,10 +74,11 @@ pub trait LiveData {
     fn op_push(&self, value: PointerLive) -> Option<ExecResult<StoredData>> {None}
     fn op_remove(&self, index: &StoredData) -> Option<ExecResult<StoredData>> {None}
 
-    /// Operations for this data.
-    /// Casts stored data args to the appropriate live data type and performs the operation.
+    /// Arithmetic operations
     fn op_add(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
     fn op_sub(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
     fn op_mul(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
     fn op_div(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
+    fn op_mod(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
+    fn op_pow(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
 }

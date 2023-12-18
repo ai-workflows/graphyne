@@ -79,6 +79,21 @@ pub enum Operation<'a> {
     /// Divides two values.
     Div(&'a ValueReference<'a>, &'a ValueReference<'a>),
 
+    /// Gets the remainder of two values.
+    Mod(&'a ValueReference<'a>, &'a ValueReference<'a>),
+
+    /// Raises a value to a power.
+    Pow(&'a ValueReference<'a>, &'a ValueReference<'a>),
+
     /// Calls a function.
-    Call(&'a ValueReference<'a>, &'a ValueReference<'a>)
+    Call(&'a ValueReference<'a>, &'a ValueReference<'a>),
+
+    /// Applies a function to each element of a list.
+    Map(&'a ValueReference<'a>, &'a ValueReference<'a>),
+
+    /// Applies a combining function to each element of a list, returning a single value.
+    Reduce(&'a ValueReference<'a>, &'a ValueReference<'a>, &'a ValueReference<'a>),
+
+    /// Gets the items in a list that match a given predicate.
+    Filter(&'a ValueReference<'a>, &'a ValueReference<'a>),
 }

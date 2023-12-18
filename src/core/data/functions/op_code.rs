@@ -28,7 +28,12 @@ pub enum OpCode {
     Sub,
     Mul,
     Div,
-    Call
+    Mod,
+    Pow,
+    Call,
+    Map,
+    Reduce,
+    Filter,
 }
 
 impl OpCode {
@@ -58,7 +63,12 @@ impl OpCode {
             OpCode::Sub => Operation::Sub(args[0], args[1]),
             OpCode::Mul => Operation::Mul(args[0], args[1]),
             OpCode::Div => Operation::Div(args[0], args[1]),
-            OpCode::Call => Operation::Call(args[0], args[1])
+            OpCode::Mod => Operation::Mod(args[0], args[1]),
+            OpCode::Pow => Operation::Pow(args[0], args[1]),
+            OpCode::Call => Operation::Call(args[0], args[1]),
+            OpCode::Map => Operation::Map(args[0], args[1]),
+            OpCode::Reduce => Operation::Reduce(args[0], args[1], args[2]),
+            OpCode::Filter => Operation::Filter(args[0], args[1]),
         }
     }
 }
@@ -89,7 +99,12 @@ impl fmt::Display for OpCode {
             OpCode::Sub => write!(f, "sub"),
             OpCode::Mul => write!(f, "mul"),
             OpCode::Div => write!(f, "div"),
-            OpCode::Call => write!(f, "call")
+            OpCode::Mod => write!(f, "mod"),
+            OpCode::Pow => write!(f, "pow"),
+            OpCode::Call => write!(f, "call"),
+            OpCode::Map => write!(f, "map"),
+            OpCode::Reduce => write!(f, "reduce"),
+            OpCode::Filter => write!(f, "filter"),
         }
     }
 }

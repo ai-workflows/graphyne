@@ -71,6 +71,21 @@ impl<'a> VmInterface for GraphiteApi<'a> {
         Ok(())
     }
 
+    fn store_multiple(&mut self, values: Vec<StoreOp>, prefix: Symbol) -> ExecResult<Vec<Symbol>> {
+        let mut symbol_table: HashMap<Symbol, ValueReference> = HashMap::new();
+        let mut symbols: Vec<Symbol> = Vec::new();
+
+        for (i, value) in values.into_iter().enumerate() {
+            let symbol = format!("{}{}", prefix, i);
+            let store_result: Vec<ValueReference> = self.vm.execute_store(value).unwrap();
+            symbol_table.insert(symbol.clone(), store_result[0].clone());
+            symbols.push(symbol);
+        }
+
+        self.symbol_table.extend(symbol_table);
+        Ok(symbols)
+    }
+
     fn get(&self, symbol: Symbol) -> ExecResult<StoredData> {
         let val_ref = self.symbol_table.get(&symbol);
 
@@ -120,7 +135,10 @@ impl<'a> VmInterface for GraphiteApi<'a> {
         let mut input_refs: Vec<ValueReference> = Vec::new();
 
         for input in inputs {
-            let input_ref = self.symbol_table.get(&input).unwrap().clone();
+            let input_ref = match self.symbol_table.get(&input) {
+                Some(input_ref) => input_ref.clone(),
+                None => return Err(format!("Input symbol {} not found.", input)),
+            };
             input_refs.push(input_ref);
         }
 
