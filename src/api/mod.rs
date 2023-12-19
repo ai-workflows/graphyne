@@ -1,5 +1,6 @@
 pub(crate) mod interface;
-mod api;
+pub(crate) mod api;
+pub(crate) mod collections;
+pub(crate) mod functions;
 
-pub(crate) use interface::{Symbol};
 pub(crate) use api::GraphiteApi;

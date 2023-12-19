@@ -10,5 +10,5 @@ pub struct FuncSig {
     pub output_vals: Vec<PointerLive>,
 
     /// A list of pointers to the func value nodes that are constants used by the function.
-    pub constant_vals: Vec<PointerLive>
+    pub constant_vals: Vec<PointerLive>,
 }

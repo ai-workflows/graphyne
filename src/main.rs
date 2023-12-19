@@ -1,17 +1,20 @@
 use std::collections::HashMap;
 use maplit::hashmap;
-use crate::api::{GraphiteApi, Symbol};
+use crate::api::{GraphiteApi};
+use crate::api::collections::c_const::{CCData, CollectionConst};
+use crate::api::collections::collection::Collection;
+use crate::api::collections::func::CollectionFunc;
+use crate::api::functions::{FunctionGraph, FunctionOpNode, FunctionValueNode};
 use crate::api::interface::VmInterface;
 use crate::core::data::functions::{OpCode};
 use crate::core::data::live::{IntLive, LiveData, StringLive};
-use crate::core::data::stored::StoredData::{FloatStored, IntStored, ListStored};
-use crate::core::nodes::{FunctionGraph, FunctionOpNode, FunctionValueNode};
+use crate::core::data::stored::StoredData::{FloatStored, IntStored, ListStored, StringStored};
+use crate::core::Symbol;
 use crate::core::vm::ops::Operation;
 use crate::core::vm::store_op::StoreOp;
 use crate::core::vm::value_ref::ValueReference;
 use crate::core::vm::VM;
 
-mod nodes;
 mod core;
 mod api;
 
@@ -456,16 +459,16 @@ fn test_bool(vm: &mut VM) {
 fn test_func_build(vm: &mut VM) {
     vm.reset();
 
-    let st_return_val_result = vm.execute_store(StoreOp::StoreFunctionVal(Vec::new(), None)).unwrap();
+    let st_return_val_result = vm.execute_store(StoreOp::StoreFunctionVal(Vec::new(), None, false)).unwrap();
     let return_val_ref = st_return_val_result.get(0).unwrap();
 
     let st_add_buffer_result = vm.execute_store(StoreOp::CreateBuffer).unwrap();
     let add_op_ref = st_add_buffer_result.get(0).unwrap();
 
-    let st_arg1_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None)).unwrap();
+    let st_arg1_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None, false)).unwrap();
     let arg1_ref = st_arg1_result.get(0).unwrap();
 
-    let st_arg2_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None)).unwrap();
+    let st_arg2_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None, false)).unwrap();
     let arg2_ref = st_arg2_result.get(0).unwrap();
 
     // fill the add buffer with the add op
@@ -502,16 +505,16 @@ fn test_func_build(vm: &mut VM) {
 fn test_add_func(vm: &mut VM) {
     vm.reset();
 
-    let st_return_val_result = vm.execute_store(StoreOp::StoreFunctionVal(Vec::new(), None)).unwrap();
+    let st_return_val_result = vm.execute_store(StoreOp::StoreFunctionVal(Vec::new(), None, false)).unwrap();
     let return_val_ref = st_return_val_result.get(0).unwrap();
 
     let st_add_buffer_result = vm.execute_store(StoreOp::CreateBuffer).unwrap();
     let add_op_ref = st_add_buffer_result.get(0).unwrap();
 
-    let st_arg1_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None)).unwrap();
+    let st_arg1_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None, false)).unwrap();
     let arg1_ref = st_arg1_result.get(0).unwrap();
 
-    let st_arg2_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None)).unwrap();
+    let st_arg2_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None, false)).unwrap();
     let arg2_ref = st_arg2_result.get(0).unwrap();
 
     // fill the add buffer with the add op
@@ -539,9 +542,9 @@ fn test_add_func(vm: &mut VM) {
 
 fn test_load_fn(vm: &mut VM) {
     let values: Vec<FunctionValueNode> = vec![
-        FunctionValueNode::new("num1".into()),
-        FunctionValueNode::new("num2".into()),
-        FunctionValueNode::new("sum".into()),
+        FunctionValueNode::var("num1".into()),
+        FunctionValueNode::var("num2".into()),
+        FunctionValueNode::var("sum".into()),
     ];
 
     let ops: Vec<FunctionOpNode> = vec![
@@ -551,7 +554,7 @@ fn test_load_fn(vm: &mut VM) {
     let graph: FunctionGraph = FunctionGraph::new(values, ops, vec!["num1".into(), "num2".into()], vec!["sum".into()]);
 
 
-    let load_result = vm.store_function(&graph).unwrap();
+    let load_result = vm.store_function(&graph, None).unwrap();
     let fn_ref = load_result.get(0).unwrap().clone();
 
     let fn_val = vm.get_ref_value(&fn_ref).unwrap().as_live().as_func().unwrap().ok().unwrap();
@@ -575,9 +578,9 @@ fn test_api<'a>(vm: &'a mut VM) {
     let mut api = GraphiteApi { vm, symbol_table };
 
     let values: Vec<FunctionValueNode> = vec![
-        FunctionValueNode::new("num1".into()),
-        FunctionValueNode::new("num2".into()),
-        FunctionValueNode::new("sum".into()),
+        FunctionValueNode::var("num1".into()),
+        FunctionValueNode::var("num2".into()),
+        FunctionValueNode::var("sum".into()),
     ];
 
     let ops: Vec<FunctionOpNode> = vec![
@@ -586,12 +589,12 @@ fn test_api<'a>(vm: &'a mut VM) {
 
     let graph: FunctionGraph = FunctionGraph::new(values, ops, vec!["num1".into(), "num2".into()], vec!["sum".into()]);
 
-    api.store_function(graph, "add".to_string()).unwrap();
+    api.store_function(graph, "add".to_string(), None).unwrap();
 
     api.store_int(5, "num1".to_string()).unwrap();
     api.store_float(10.0, "num2".to_string()).unwrap();
 
-    api.execute("add".to_string(), vec!["num1".to_string(), "num2".to_string()], vec!["sum".to_string()]).unwrap();
+    api.execute(vec!["add".to_string()], vec!["num1".to_string(), "num2".to_string()], vec!["sum".to_string()]).unwrap();
 
     let result = api.get("sum".to_string()).unwrap();
     assert_eq!(result.as_live().as_int().unwrap(), Ok(15));
@@ -605,23 +608,23 @@ fn test_calculate_statistics<'a>(vm: &'a mut VM) {
 
     // Define the values (variables).
     let values: Vec<FunctionValueNode> = vec![
-        FunctionValueNode::new("list".into()),
-        FunctionValueNode::new("sum1".into()),
-        FunctionValueNode::new("sum2".into()),
-        FunctionValueNode::new("sum_final".into()),
-        FunctionValueNode::new("average".into()),
-        FunctionValueNode::new("is_large_sum".into()),
-        FunctionValueNode::new("sum_as_float".into()),
-        FunctionValueNode::new("list_length".into()),
+        FunctionValueNode::var("list".into()),
+        FunctionValueNode::var("sum1".into()),
+        FunctionValueNode::var("sum2".into()),
+        FunctionValueNode::var("sum_final".into()),
+        FunctionValueNode::var("average".into()),
+        FunctionValueNode::var("is_large_sum".into()),
+        FunctionValueNode::var("sum_as_float".into()),
+        FunctionValueNode::var("list_length".into()),
         FunctionValueNode::constant("100".into(), IntStored(100)),
         FunctionValueNode::constant("0".into(), IntStored(0)),
         FunctionValueNode::constant("1".into(), IntStored(1)),
         FunctionValueNode::constant("2".into(), IntStored(2)),
         FunctionValueNode::constant("3".into(), IntStored(3)),
-        FunctionValueNode::new("item1".into()),
-        FunctionValueNode::new("item2".into()),
-        FunctionValueNode::new("item3".into()),
-        FunctionValueNode::new("item4".into()),
+        FunctionValueNode::var("item1".into()),
+        FunctionValueNode::var("item2".into()),
+        FunctionValueNode::var("item3".into()),
+        FunctionValueNode::var("item4".into()),
     ];
 
     // Define the operations.
@@ -657,7 +660,7 @@ fn test_calculate_statistics<'a>(vm: &'a mut VM) {
     );
 
     // Store the function.
-    api.store_function(graph, "calculate_statistics".to_string()).unwrap();
+    api.store_function(graph, "calculate_statistics".to_string(), None).unwrap();
 
     // Test the function with a sample list.
     api.store_int(10, "num1".to_string()).unwrap();
@@ -666,7 +669,7 @@ fn test_calculate_statistics<'a>(vm: &'a mut VM) {
     api.store_int(40, "num4".to_string()).unwrap();
 
     api.store_list(vec!["num1".into(), "num2".into(), "num3".into(), "num4".into()], "list".to_string()).unwrap();
-    api.execute("calculate_statistics".to_string(), vec!["list".to_string()], vec!["sum".into(), "average".into(), "is_large_sum".into(), "sum_as_float".into()]).unwrap();
+    api.execute(vec!["calculate_statistics".to_string()], vec!["list".to_string()], vec!["sum".into(), "average".into(), "is_large_sum".into(), "sum_as_float".into()]).unwrap();
 
     // Retrieve and assert the results.
     let sum_result = api.get("sum".to_string()).unwrap();
@@ -688,9 +691,9 @@ fn test_sub_call<'a>(vm: &'a mut VM) {
 
     // Define the values for the first function.
     let values1: Vec<FunctionValueNode> = vec![
-        FunctionValueNode::new("num1".into()),
-        FunctionValueNode::new("num2".into()),
-        FunctionValueNode::new("sum".into()),
+        FunctionValueNode::var("num1".into()),
+        FunctionValueNode::var("num2".into()),
+        FunctionValueNode::var("sum".into()),
     ];
 
     // Define the operations for the first function.
@@ -702,26 +705,26 @@ fn test_sub_call<'a>(vm: &'a mut VM) {
     let graph1: FunctionGraph = FunctionGraph::new(values1, ops1, vec!["num1".into(), "num2".into()], vec!["sum".into()]);
 
     // Store the first function
-    api.store_function(graph1, "add".to_string()).unwrap();
+    api.store_function(graph1, "add".to_string(), None).unwrap();
 
     // Define the values for the second function which will compute an average.
     let values2: Vec<FunctionValueNode> = vec![
         // the two numbers that will be averaged
-        FunctionValueNode::new("num1".into()),
-        FunctionValueNode::new("num2".into()),
+        FunctionValueNode::var("num1".into()),
+        FunctionValueNode::var("num2".into()),
 
         // build the args for the add function
-        FunctionValueNode::new("add_args".into()),
+        FunctionValueNode::var("add_args".into()),
         FunctionValueNode::constant("empty_list".into(), ListStored(Vec::new())),
-        FunctionValueNode::new("list_one_arg".into()),
+        FunctionValueNode::var("list_one_arg".into()),
 
         // the sum function to call and its result
         FunctionValueNode::external("add_func".into(), api.get_ptr("add".into()).unwrap()),
-        FunctionValueNode::new("sum".into()),
+        FunctionValueNode::var("sum".into()),
 
         // the average result
         FunctionValueNode::constant("2".into(), FloatStored(2.0)),
-        FunctionValueNode::new("average".into()),
+        FunctionValueNode::var("average".into()),
     ];
 
     // Define the operations for the second function.
@@ -739,13 +742,13 @@ fn test_sub_call<'a>(vm: &'a mut VM) {
     let graph2: FunctionGraph = FunctionGraph::new(values2, ops2, vec!["num1".into(), "num2".into()], vec!["average".into()]);
 
     // Store the second function
-    api.store_function(graph2, "average".to_string()).unwrap();
+    api.store_function(graph2, "average".to_string(), None).unwrap();
 
     // test the second function
     api.store_int(10, "num1".to_string()).unwrap();
     api.store_int(20, "num2".to_string()).unwrap();
 
-    api.execute("average".to_string(), vec!["num1".to_string(), "num2".to_string()], vec!["average".to_string()]).unwrap();
+    api.execute(vec!["average".to_string()], vec!["num1".to_string(), "num2".to_string()], vec!["average".to_string()]).unwrap();
 
     let result = api.get("average".to_string()).unwrap();
     assert_eq!(result.as_live().as_float().unwrap(), Ok(15.0));
@@ -759,9 +762,9 @@ fn test_reduce<'a>(vm: &'a mut VM) {
 
     // Define the add function.
     let values: Vec<FunctionValueNode> = vec![
-        FunctionValueNode::new("num1".into()),
-        FunctionValueNode::new("num2".into()),
-        FunctionValueNode::new("sum".into()),
+        FunctionValueNode::var("num1".into()),
+        FunctionValueNode::var("num2".into()),
+        FunctionValueNode::var("sum".into()),
     ];
 
     let ops: Vec<FunctionOpNode> = vec![
@@ -769,12 +772,12 @@ fn test_reduce<'a>(vm: &'a mut VM) {
     ];
 
     let graph: FunctionGraph = FunctionGraph::new(values, ops, vec!["num1".into(), "num2".into()], vec!["sum".into()]);
-    api.store_function(graph, "add".to_string()).unwrap();
+    api.store_function(graph, "add".to_string(), None).unwrap();
 
     // Define the sum_list function.
     let values: Vec<FunctionValueNode> = vec![
-        FunctionValueNode::new("list".into()),
-        FunctionValueNode::new("sum".into()),
+        FunctionValueNode::var("list".into()),
+        FunctionValueNode::var("sum".into()),
         FunctionValueNode::external("add_func".into(), api.get_ptr("add".into()).unwrap()),
         FunctionValueNode::constant("0".into(), IntStored(0)),
     ];
@@ -784,14 +787,14 @@ fn test_reduce<'a>(vm: &'a mut VM) {
     ];
 
     let graph: FunctionGraph = FunctionGraph::new(values, ops, vec!["list".into()], vec!["sum".into()]);
-    api.store_function(graph, "sum_list".to_string()).unwrap();
+    api.store_function(graph, "sum_list".to_string(), None).unwrap();
 
     // Test the sum_list function.
     let vals = vec![10, 20, 30, 40];
     let val_symbols = api.store_multiple(vals.iter().map(|v| StoreOp::StoreInt(*v)).collect(), "num".to_string()).unwrap();
     api.store_list(val_symbols, "test_list".to_string()).unwrap();
 
-    api.execute("sum_list".to_string(), vec!["test_list".to_string()], vec!["sum".to_string()]).unwrap();
+    api.execute(vec!["sum_list".to_string()], vec!["test_list".to_string()], vec!["sum".to_string()]).unwrap();
     let result = api.get("sum".to_string()).unwrap();
 
     assert_eq!(result.as_live().as_int().unwrap(), Ok(100));
@@ -805,8 +808,8 @@ fn test_map(vm: &mut VM) {
 
     // Define the double function.
     let values: Vec<FunctionValueNode> = vec![
-        FunctionValueNode::new("num".into()),
-        FunctionValueNode::new("double".into()),
+        FunctionValueNode::var("num".into()),
+        FunctionValueNode::var("double".into()),
         FunctionValueNode::constant("two".into(), IntStored(2)),
     ];
 
@@ -816,12 +819,12 @@ fn test_map(vm: &mut VM) {
 
     let graph: FunctionGraph = FunctionGraph::new(values, ops, vec!["num".into()], vec!["double".into()]);
 
-    api.store_function(graph, "double".to_string()).unwrap();
+    api.store_function(graph, "double".to_string(), None).unwrap();
 
     // Define the double_list function.
     let values: Vec<FunctionValueNode> = vec![
-        FunctionValueNode::new("list".into()),
-        FunctionValueNode::new("double_list".into()),
+        FunctionValueNode::var("list".into()),
+        FunctionValueNode::var("double_list".into()),
         FunctionValueNode::external("double_func".into(), api.get_ptr("double".into()).unwrap()),
     ];
 
@@ -831,7 +834,7 @@ fn test_map(vm: &mut VM) {
 
     let graph: FunctionGraph = FunctionGraph::new(values, ops, vec!["list".into()], vec!["double_list".into()]);
 
-    api.store_function(graph, "double_list".to_string()).unwrap();
+    api.store_function(graph, "double_list".to_string(), None).unwrap();
 
     // Test the double_list function.
     let vals = vec![10, 20, 30, 40];
@@ -839,7 +842,7 @@ fn test_map(vm: &mut VM) {
 
     api.store_list(val_symbols, "test_list".to_string()).unwrap();
 
-    api.execute("double_list".to_string(), vec!["test_list".to_string()], vec!["list_doubled".to_string()]).unwrap();
+    api.execute(vec!["double_list".to_string()], vec!["test_list".to_string()], vec!["list_doubled".to_string()]).unwrap();
 
     let result = api.get("list_doubled".to_string()).unwrap();
     let result_live = result.as_live().as_list().unwrap().unwrap();
@@ -848,9 +851,9 @@ fn test_map(vm: &mut VM) {
 
     // define a function to get the values from the list
     let values = vec![
-        FunctionValueNode::new("list".into()),
-        FunctionValueNode::new("index".into()),
-        FunctionValueNode::new("item".into()),
+        FunctionValueNode::var("list".into()),
+        FunctionValueNode::var("index".into()),
+        FunctionValueNode::var("item".into()),
     ];
 
     let ops = vec![
@@ -858,12 +861,12 @@ fn test_map(vm: &mut VM) {
     ];
 
     let graph = FunctionGraph::new(values, ops, vec!["list".into(), "index".into()], vec!["item".into()]);
-    api.store_function(graph, "get_item".to_string()).unwrap();
+    api.store_function(graph, "get_item".to_string(), None).unwrap();
 
     for i in 0..vals.len() {
         api.store_int(i as i64, "index".to_string()).unwrap();
 
-        api.execute("get_item".to_string(), vec!["list_doubled".to_string(), "index".into()], vec!["item".to_string()]).unwrap();
+        api.execute(vec!["get_item".to_string()], vec!["list_doubled".to_string(), "index".into()], vec!["item".to_string()]).unwrap();
         let item = api.get("item".to_string()).unwrap();
         let item = item.as_live().as_int().unwrap().unwrap();
 
@@ -882,12 +885,12 @@ fn test_filter<'a>(vm: &'a mut VM) {
 
     // Define the is_even function.
     let values: Vec<FunctionValueNode> = vec![
-        FunctionValueNode::new("num".into()),
+        FunctionValueNode::var("num".into()),
         FunctionValueNode::constant("two".into(), IntStored(2)),
 
-        FunctionValueNode::new("remainder".into()),
+        FunctionValueNode::var("remainder".into()),
         FunctionValueNode::constant("0".into(), IntStored(0)),
-        FunctionValueNode::new("is_even".into()),
+        FunctionValueNode::var("is_even".into()),
     ];
 
     let ops: Vec<FunctionOpNode> = vec![
@@ -896,12 +899,12 @@ fn test_filter<'a>(vm: &'a mut VM) {
     ];
 
     let graph: FunctionGraph = FunctionGraph::new(values, ops, vec!["num".into()], vec!["is_even".into()]);
-    api.store_function(graph, "is_even".to_string()).unwrap();
+    api.store_function(graph, "is_even".to_string(), None).unwrap();
 
     // Define the filter_list function.
     let values: Vec<FunctionValueNode> = vec![
-        FunctionValueNode::new("list".into()),
-        FunctionValueNode::new("filtered_list".into()),
+        FunctionValueNode::var("list".into()),
+        FunctionValueNode::var("filtered_list".into()),
         FunctionValueNode::external("is_even_func".into(), api.get_ptr("is_even".into()).unwrap()),
     ];
 
@@ -910,14 +913,14 @@ fn test_filter<'a>(vm: &'a mut VM) {
     ];
 
     let graph: FunctionGraph = FunctionGraph::new(values, ops, vec!["list".into()], vec!["filtered_list".into()]);
-    api.store_function(graph, "filter_list".to_string()).unwrap();
+    api.store_function(graph, "filter_list".to_string(), None).unwrap();
 
     // Test the filter_list function.
     let vals = vec![5, 10, 15, 20];
     let val_symbols = api.store_multiple(vals.iter().map(|v| StoreOp::StoreInt(*v)).collect(), "num".to_string()).unwrap();
     api.store_list(val_symbols, "test_list".to_string()).unwrap();
 
-    api.execute("filter_list".to_string(), vec!["test_list".to_string()], vec!["filtered_list".to_string()]).unwrap();
+    api.execute(vec!["filter_list".to_string()], vec!["test_list".to_string()], vec!["filtered_list".to_string()]).unwrap();
     let result = api.get("filtered_list".to_string()).unwrap();
     let result_live = result.as_live().as_list().unwrap().unwrap();
 
@@ -925,9 +928,9 @@ fn test_filter<'a>(vm: &'a mut VM) {
 
     // define a function to get the values from the list
     let values = vec![
-        FunctionValueNode::new("list".into()),
-        FunctionValueNode::new("index".into()),
-        FunctionValueNode::new("item".into()),
+        FunctionValueNode::var("list".into()),
+        FunctionValueNode::var("index".into()),
+        FunctionValueNode::var("item".into()),
     ];
 
     let ops = vec![
@@ -935,12 +938,12 @@ fn test_filter<'a>(vm: &'a mut VM) {
     ];
 
     let graph = FunctionGraph::new(values, ops, vec!["list".into(), "index".into()], vec!["item".into()]);
-    api.store_function(graph, "get_item".to_string()).unwrap();
+    api.store_function(graph, "get_item".to_string(), None).unwrap();
 
     for i in 0..result_live.len() {
         api.store_int(i as i64, "index".to_string()).unwrap();
 
-        api.execute("get_item".to_string(), vec!["filtered_list".to_string(), "index".into()], vec!["item".to_string()]).unwrap();
+        api.execute(vec!["get_item".to_string()], vec!["filtered_list".to_string(), "index".into()], vec!["item".to_string()]).unwrap();
         let item = api.get("item".to_string()).unwrap();
         let item = item.as_live().as_int().unwrap().unwrap();
 
@@ -953,6 +956,87 @@ fn test_filter<'a>(vm: &'a mut VM) {
         api.drop("index".to_string()).unwrap();
         api.drop("item".to_string()).unwrap();
     }
+}
+
+fn test_collection(vm: &mut VM) {
+    vm.reset();
+
+    let mut api = GraphiteApi { vm, symbol_table: HashMap::new() };
+
+    let my_list = vec![10, 20, 30];
+
+    let constants: HashMap<Symbol, CollectionConst> = hashmap!{
+        "two".into() => 2.into(),
+        "my_list".into() => my_list.iter().map(|v| v.clone().into()).collect::<Vec<CCData>>().into(),
+        "my_dict".into() => hashmap!{
+            "Hello".to_string() => "World".to_string().into(),
+            "Foo".to_string() => "Bar".to_string().into()
+        }.into(),
+    };
+
+    let functions: HashMap<Symbol, CollectionFunc> = hashmap! {
+        "double".into() => CollectionFunc {graph: FunctionGraph {
+            values: vec![
+                FunctionValueNode::constant("_two".into(), StringStored("two".to_string())),
+                FunctionValueNode::var("two".into()),
+
+                FunctionValueNode::var("num".into()),
+                FunctionValueNode::var("doubled".into()),
+            ],
+            ops: vec![
+                // get the 2 const
+                FunctionOpNode::new(OpCode::GetItem, vec!["self".into(), "_two".into()], "two".into()),
+
+                // double the number
+                FunctionOpNode::new(OpCode::Mul, vec!["num".into(), "two".into()], "doubled".into())
+            ],
+            input_vals: vec!["num".into()],
+            output_vals: vec!["doubled".into()],
+        }},
+        "double_list".into() => CollectionFunc {graph: FunctionGraph {
+            values: vec![
+                FunctionValueNode::var("double_func".into()),
+                FunctionValueNode::constant("_double".into(), StringStored("double".to_string())),
+                FunctionValueNode::constant("_my_list".into(), StringStored("my_list".to_string())),
+
+                FunctionValueNode::var("my_list".into()),
+                FunctionValueNode::var("double_list".into()),
+            ],
+            ops: vec![
+                // get the double func and the list
+                FunctionOpNode::new(OpCode::GetItem, vec!["self".into(), "_double".into()], "double_func".into()),
+                FunctionOpNode::new(OpCode::GetItem, vec!["self".into(), "_my_list".into()], "my_list".into()),
+
+                FunctionOpNode::new(OpCode::Map, vec!["double_func".into(), "my_list".into()], "double_list".into())
+            ],
+            input_vals: vec![],
+            output_vals: vec!["double_list".into()],
+        }},
+    };
+
+    let subcollections = HashMap::new();
+    let imports = HashMap::new();
+
+    let collection = Collection::new(functions, constants, subcollections, imports);
+
+    api.store_collection(collection, "my_collection".to_string()).unwrap();
+
+    api.execute(vec!["my_collection".to_string(), "double_list".to_string()], vec![], vec!["doubled_list".to_string()]).unwrap();
+
+    let result = api.get("doubled_list".to_string()).unwrap();
+    let result = result.as_live().as_list().unwrap().unwrap();
+
+    assert_eq!(result.len(), 3);
+
+    for i in 0..result.len() {
+        let item = result.get(i).unwrap();
+        let item_ref = vm.value_ref_from_ptr(item.clone()).unwrap();
+        let item = vm.get_ref_value(&item_ref).unwrap();
+        let item = item.as_live().as_int().unwrap().unwrap();
+
+        assert_eq!(item, my_list[i] * 2);
+    }
+
 }
 
 
@@ -1030,6 +1114,10 @@ fn main() {
     assert_eq!(vm.object_count(), 0);
 
     test_filter(&mut vm);
+
+    assert_eq!(vm.object_count(), 0);
+
+    test_collection(&mut vm);
 
     assert_eq!(vm.object_count(), 0);
 }

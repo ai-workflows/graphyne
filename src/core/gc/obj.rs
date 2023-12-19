@@ -106,9 +106,13 @@ impl<T> GCObject<T> {
                     result.push(pointer);
                 }
 
-                let constant: &mut Option<GCPointer<StoredData>> = &mut func_val.constant;
-                if let Some(pointer) = constant {
-                    result.push(pointer);
+                // only get the constant if it is not a pointer to the class context
+                // this will prevent a circular reference between the collection and function
+                if !func_val.is_self {
+                    let constant: &mut Option<GCPointer<StoredData>> = &mut func_val.constant;
+                    if let Some(pointer) = constant {
+                        result.push(pointer);
+                    }
                 }
             },
             GCObjectType::FuncOp => {

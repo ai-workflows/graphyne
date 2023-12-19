@@ -1,24 +1,24 @@
 use crate::core::data::functions::OpCode;
-use crate::core::nodes::fn_val::ValIdentifier;
+use crate::core::Symbol;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionOpNode {
     /// The opcode that this function call represents.
     pub opcode: OpCode,
     
     /// References to the identifiers of the func value nodes that are used as inputs for this operation.
-    pub input_val_ids: Vec<ValIdentifier>,
+    pub input_vals: Vec<Symbol>,
     
     /// Reference to the identifier of the func value node that is the output of this operation.
-    pub output_val_id: ValIdentifier,
+    pub output_val: Symbol,
 }
 
 impl FunctionOpNode {
-    pub fn new(opcode: OpCode, input_val_ids: Vec<ValIdentifier>, output_val_id: ValIdentifier) -> Self {
+    pub fn new(opcode: OpCode, input_vals: Vec<Symbol>, output_val: Symbol) -> Self {
         Self {
             opcode,
-            input_val_ids,
-            output_val_id,
+            input_vals,
+            output_val,
         }
     }
 }

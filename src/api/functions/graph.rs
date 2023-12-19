@@ -1,10 +1,8 @@
-use std::collections::HashMap;
-use crate::core::data::stored::StoredData;
-use crate::core::nodes::{FunctionOpNode, FunctionValueNode};
-use crate::core::nodes::fn_val::ValIdentifier;
+use crate::api::functions::{FunctionOpNode, FunctionValueNode};
+use crate::core::Symbol;
 
 /// Represents a graph of a function's values and operations, including what values are inputs and outputs.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionGraph {
     /// List of the function value nodes that exist within the scope of this function.
     pub values: Vec<FunctionValueNode>,
@@ -13,19 +11,19 @@ pub struct FunctionGraph {
     pub ops: Vec<FunctionOpNode>,
 
     /// List of identifiers for the function value nodes that are used as inputs to this function.
-    pub input_val_ids: Vec<ValIdentifier>,
+    pub input_vals: Vec<Symbol>,
     
     /// List of identifiers for the function value nodes that are outputs of this function.
-    pub output_val_ids: Vec<ValIdentifier>,
+    pub output_vals: Vec<Symbol>,
 }
 
 impl FunctionGraph {
-    pub fn new(values: Vec<FunctionValueNode>, ops: Vec<FunctionOpNode>, input_val_ids: Vec<ValIdentifier>, output_val_ids: Vec<ValIdentifier>) -> Self {
+    pub fn new(values: Vec<FunctionValueNode>, ops: Vec<FunctionOpNode>, input_vals: Vec<Symbol>, output_vals: Vec<Symbol>) -> Self {
         Self {
             values,
             ops,
-            input_val_ids,
-            output_val_ids,
+            input_vals,
+            output_vals,
         }
     }
 }

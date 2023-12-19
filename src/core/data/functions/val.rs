@@ -11,4 +11,7 @@ pub struct FuncVal {
 
     /// An optional constant value that this variable is initialized to.
     pub constant: Option<PointerLive>,
+    
+    /// Whether this value is a pointer to the function's class context.
+    pub is_self: bool,
 }

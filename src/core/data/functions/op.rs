@@ -4,6 +4,8 @@ use crate::core::data::live::PointerLive;
 /// Represents an operation that is executed within a function.
 #[derive(Debug, Clone)]
 pub struct FuncOp {
+    pub guid: String,
+
     /// The opcode of the operation.
     pub opcode: OpCode,
 
