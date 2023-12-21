@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use crate::core::data::live::{BoolLive, FloatLive, IntLive, StringLive};
-use crate::core::data::stored::StoredData;
 use crate::core::Symbol;
 
 /// The types of constants that can be stored in a collection.

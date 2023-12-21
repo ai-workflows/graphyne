@@ -8,7 +8,7 @@ use crate::api::functions::{FunctionGraph, FunctionOpNode, FunctionValueNode};
 use crate::api::interface::VmInterface;
 use crate::core::data::functions::{OpCode};
 use crate::core::data::live::{IntLive, LiveData, StringLive};
-use crate::core::data::stored::StoredData::{FloatStored, IntStored, ListStored, StringStored};
+use crate::core::data::stored::StoredData::{FloatStored, IntStored, StringStored};
 use crate::core::Symbol;
 use crate::core::vm::ops::Operation;
 use crate::core::vm::store_op::StoreOp;
