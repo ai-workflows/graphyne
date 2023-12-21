@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
 use crate::core::data::live::{LiveData, FuncLive, FuncOpLive, FuncValLive, PointerLive};
 use crate::core::data::stored::StoredData;
 use crate::core::{ExecResult, Symbol};
@@ -6,7 +7,7 @@ use crate::core::vm::value_ref::ValueReference;
 use crate::core::vm::VM;
 
 impl VM {
-    /// Helper function to get a function value from a pointer.
+    /// Helper function to get a function value/variable from a pointer.
     fn get_func_val(&self, ptr: &PointerLive) -> ExecResult<FuncValLive> {
         let val = match self.state.read().unwrap().get(ptr) {
             Ok(val) => val,
@@ -23,25 +24,41 @@ impl VM {
     }
 
     /// Handles the call of an operation that is part of a function.
-    pub fn handle_call_function_op(&self, func_op: &FuncOpLive, context: &HashMap<String, ValueReference>) -> ExecResult<Vec<ValueReference>> {
+    /// Gets the arguments from the context, executes the operation, and returns the result values.
+    pub fn handle_call_function_op<'a>(&'a self, func_op: &FuncOpLive, context: Arc<RwLock<HashMap<String, ValueReference<'a>>>>) -> ExecResult<Vec<ValueReference>> {
+
         let arg_values = self.get_func_op_args(func_op, context)?;
+        let arg_values: Vec<&_> = arg_values.iter().collect();
         let op = func_op.opcode.to_operation(&arg_values);
         self.execute_op(op)
     }
 
-    fn get_func_op_args<'a>(&'a self, func_op: &FuncOpLive, context: &'a HashMap<String, ValueReference>) -> ExecResult<Vec<&ValueReference>> {
-        func_op.input_vals.iter()
-            .map(|arg_ptr| self.resolve_func_op_arg(arg_ptr, context))
-            .collect()
+    fn get_val_from_context<'a>(&self, ptr: &PointerLive, context: &RwLockReadGuard<'_, HashMap<String, ValueReference<'a>>>) -> ExecResult<ValueReference<'a>> {
+        // get the read lock on the context
+        let func_val = self.get_func_val(ptr)
+            .map_err(|msg| format!("Function cannot get value from context: {}", msg))?;
+
+        let val = match context.get(&func_val.guid) {
+            Some(val) => val,
+            None => return Err(format!("Cannot find value (pointer id: {}) in context", ptr.id))
+        };
+        Ok(val.clone())
     }
 
-    fn resolve_func_op_arg<'a>(&'a self, arg_ptr: &PointerLive, context: &'a HashMap<String, ValueReference<'a>>) -> ExecResult<&ValueReference> {
-        let func_val = self.get_func_val(arg_ptr)?;
-        context.get(&func_val.guid)
-            .ok_or_else(|| format!("Function cannot find input value: {}", func_val.guid))
+    /// Gets the arguments to a function's operation from the context.
+    fn get_func_op_args<'a>(&'a self, func_op: &FuncOpLive, context: Arc<RwLock<HashMap<Symbol, ValueReference<'a>>>>) -> ExecResult<Vec<ValueReference>> {
+
+        let list: ExecResult<Vec<ValueReference>> = func_op.input_vals.iter()
+            .map(move |arg_ptr| {
+                self.get_val_from_context(arg_ptr, &context.read().unwrap())
+            })
+            .collect();
+
+        list
     }
 
-    fn handle_func_val_dependents(&self, func_val: &FuncValLive, op_queue: &mut Vec<FuncOpLive>) -> ExecResult<()> {
+    /// Gets the operations that are dependent on a particular value that is now known, and adds them to the operation queue.
+    fn handle_func_val_dependents(&self, func_val: &FuncValLive, op_queue: Arc<Mutex<Vec<FuncOpLive>>>) -> ExecResult<()> {
         for dependent_op in &func_val.dependents {
             let state = self.state.read().unwrap();
             let dependent_op_val_live = state.get(dependent_op)
@@ -50,32 +67,54 @@ impl VM {
                 .ok_or_else(|| "Function cannot execute a non-func-op value".to_string())?
                 .map_err(|msg| format!("Function cannot execute a non-func-op value: {}", msg))?;
 
-            op_queue.push(dependent_op_val_live);
+            op_queue.lock().unwrap().push(dependent_op_val_live);
         }
         Ok(())
     }
 
-
-    fn initialize_func_call<'a>(&'a self, func: &FuncLive, args: &[ValueReference<'a>], context: &mut HashMap<Symbol, ValueReference<'a>>, op_queue: &mut Vec<FuncOpLive>) -> ExecResult<()> {
-        self.bind_args_to_context(func, args, context, op_queue)?;
+    /// Initializes the call of a function by binding the arguments and constants to the context.
+    fn initialize_func_call<'a>(&'a self,
+                                func: &FuncLive,
+                                args: &[ValueReference<'a>],
+                                context: Arc<RwLock<HashMap<Symbol, ValueReference<'a>>>>,
+                                op_queue: Arc<Mutex<Vec<FuncOpLive>>>
+    ) -> ExecResult<()> {
+        self.bind_args_to_context(func, args, context.clone(), op_queue.clone())?;
         self.handle_constants(func, context, op_queue)?;
         Ok(())
     }
 
-    fn bind_args_to_context<'a>(&'a self, func: &FuncLive, args: &[ValueReference<'a>], context: &mut HashMap<Symbol, ValueReference<'a>>, op_queue: &mut Vec<FuncOpLive>) -> ExecResult<()> {
+    /// Takes the arguments to a function as a list of value references, gets their corresponding func value nodes, and binds them to the context.
+    fn bind_args_to_context<'a>(&'a self,
+                                func: &FuncLive,
+                                args: &[ValueReference<'a>],
+                                context: Arc<RwLock<HashMap<Symbol, ValueReference<'a>>>>,
+                                op_queue: Arc<Mutex<Vec<FuncOpLive>>>
+    ) -> ExecResult<()> {
+        // obtain the write lock on the context
+        let mut context = context.write().unwrap();
+
         for (i, arg_value) in args.iter().enumerate() {
             let input_ptr = func.input_vals.get(i)
                 .ok_or("Function input value missing")?;
-            let input_val_live = self.get_func_val(input_ptr)
+            let input = self.get_func_val(input_ptr)
                 .map_err(|msg| format!("Function cannot get input value: {}", msg))?;
 
-            context.insert(input_val_live.guid.clone(), arg_value.clone());
-            self.handle_func_val_dependents(&input_val_live, op_queue)?;
+            context.insert(input.guid.clone(), arg_value.clone());
+            self.handle_func_val_dependents(&input, op_queue.clone())?;
         }
         Ok(())
     }
 
-    fn handle_constants<'a>(&'a self, func: &FuncLive, context: &mut HashMap<Symbol, ValueReference<'a>>, op_queue: &mut Vec<FuncOpLive>) -> ExecResult<()> {
+    /// Handles the constant values present in a function's scope by retrieving their values and binding them to the context.
+    fn handle_constants<'a>(&'a self,
+                            func: &FuncLive,
+                            context: Arc<RwLock<HashMap<Symbol, ValueReference<'a>>>>,
+                            op_queue: Arc<Mutex<Vec<FuncOpLive>>>
+    ) -> ExecResult<()> {
+        // obtain the write lock on the context
+        let mut context = context.write().unwrap();
+
         for constant_ptr in &func.constant_vals {
             let constant_val = self.get_func_val(constant_ptr)
                 .map_err(|msg| format!("Function cannot get constant value: {}", msg))?;
@@ -86,25 +125,45 @@ impl VM {
             };
 
             context.insert(constant_val.guid.clone(), constant_ref);
-            self.handle_func_val_dependents(&constant_val, op_queue)?;
+            self.handle_func_val_dependents(&constant_val, op_queue.clone())?;
         }
         Ok(())
     }
 
 
-    fn try_execute_fn_op<'a>(&'a self, op: &FuncOpLive, context: &mut HashMap<Symbol, ValueReference<'a>>) -> ExecResult<Vec<ValueReference>> {
-        self.validate_op_inputs(op, context)?;
-        let result_val_refs = self.handle_call_function_op(op, context)
+    /// Executes an operation within the scope of a function using the provided context.
+    /// Retrieves the arg values from the context, executes the operation, and returns the result values.
+    fn try_execute_fn_op<'a>(&'a self, op: &FuncOpLive, context: Arc<RwLock<HashMap<Symbol, ValueReference<'a>>>>) -> ExecResult<Vec<ValueReference>> {
+        self.validate_op_inputs(op, context.clone())?;
+        let result_val_refs = self.handle_call_function_op(op, context.clone())
             .map_err(|msg| format!("Execution of operation {} failed: {}", op.opcode, msg))?;
 
         if result_val_refs.len() != op.output_vals.len() {
             return Err(format!("Function operation expected {} result values, but got {}", op.output_vals.len(), result_val_refs.len()));
         }
 
+        // get the write lock on the context
+        let mut context = context.write().unwrap();
+
+        // loop through the outputs from the executed operation
+        for (output_ptr, result_val_ref) in op.output_vals.iter().zip(&result_val_refs) {
+            // get the output
+            let output_val = self.get_func_val(output_ptr)
+                .map_err(|msg| format!("Function cannot get output value for operation {}: {}", op.opcode, msg))?;
+
+            // store the output in the context
+            context.insert(output_val.guid.clone(), result_val_ref.clone());
+        }
+
+
         Ok(result_val_refs)
     }
 
-    fn validate_op_inputs<'a>(&'a self, op: &FuncOpLive, context: &HashMap<Symbol, ValueReference<'a>>) -> ExecResult<()> {
+    /// Validates the inputs to function's operation by checking that all args are present in the context.
+    fn validate_op_inputs<'a>(&'a self, op: &FuncOpLive, context: Arc<RwLock<HashMap<Symbol, ValueReference<'a>>>>) -> ExecResult<()> {
+        // get the read lock on the context
+        let context = context.read().unwrap();
+
         op.input_vals.iter().enumerate().try_for_each(|(arg_index, input_ptr)| {
             let input_val = self.get_func_val(input_ptr)
                 .map_err(|msg| format!("Function cannot get input value (index {}): {}", arg_index, msg))?;
@@ -117,35 +176,44 @@ impl VM {
         })
     }
 
-    /// Handles the call of a function.
-    pub fn handle_call_function<'a>(&'a self, func: &FuncLive, args: &[ValueReference<'a>]) -> ExecResult<Vec<ValueReference<'a>>> {
-        // Check if the function has the right number of args
-        if func.input_vals.len() != args.len() {
-            return Err(format!("Function expected {} arguments, but got {}", func.input_vals.len(), args.len()));
-        }
-
-        let mut context = HashMap::new();
-        let mut op_queue = Vec::new();
+    /// Manages the call of function operations and the queuing of its dependent operations for execution.
+    fn manage_op_queue<'a>(&'a self,
+                           op_queue: Arc<Mutex<Vec<FuncOpLive>>>,
+                           context: Arc<RwLock<HashMap<Symbol, ValueReference<'a>>>>) -> ExecResult<()> {
         let mut executed = HashSet::new();
 
-        // Initialize the function call
-        self.initialize_func_call(func, args, &mut context, &mut op_queue)?;
-
-        while let Some(op) = op_queue.pop() {
+        while let Some(op) = op_queue.lock().unwrap().pop() {
+            // skip operations that have already been executed
             if executed.contains(&op.guid) {
                 continue;
             }
 
-            if let Ok(result_val_refs) = self.try_execute_fn_op(&op, &mut context) {
-                for (output_ptr, result_val_ref) in op.output_vals.iter().zip(&result_val_refs) {
-                    let output_val = self.get_func_val(output_ptr)
-                        .map_err(|msg| format!("Function cannot get output value for operation {}: {}", op.opcode, msg))?;
-                    context.insert(output_val.guid.clone(), result_val_ref.clone());
-                    self.handle_func_val_dependents(&output_val, &mut op_queue)?;
-                }
-                executed.insert(op.guid.clone());
+            // execute the operation and continue if it fails
+            match self.try_execute_fn_op(&op, context.clone()) {
+                Ok(_) => {}
+                Err(_) => continue
             }
+
+            // loop through the outputs from the executed operation
+            for output_ptr in op.output_vals.iter() {
+                // get the output
+                let output_val = self.get_func_val(output_ptr)
+                    .map_err(|msg| format!("Function cannot get output value for operation {}: {}", op.opcode, msg))?;
+
+                // add the output value's dependent operations to the queue
+                self.handle_func_val_dependents(&output_val, op_queue.clone())?;
+            }
+
+            // mark the operation as executed
+            executed.insert(op.guid.clone());
         }
+
+        Ok(())
+    }
+
+    fn get_func_call_outputs<'a>(&'a self, func: &FuncLive, context: Arc<RwLock<HashMap<Symbol, ValueReference<'a>>>>) -> ExecResult<Vec<ValueReference<'a>>> {
+        // obtain the read lock on the context
+        let context = context.read().unwrap();
 
         func.output_vals.iter()
             .map(|output_ptr| {
@@ -156,5 +224,25 @@ impl VM {
                     .ok_or_else(|| "Function cannot find return value in context".to_string())
             })
             .collect()
+    }
+
+    /// Handles the call of a function.
+    pub fn handle_call_function<'a>(&'a self, func: &FuncLive, args: &[ValueReference<'a>]) -> ExecResult<Vec<ValueReference<'a>>> {
+        // Check if the function has the right number of args
+        if func.input_vals.len() != args.len() {
+            return Err(format!("Function expected {} arguments, but got {}", func.input_vals.len(), args.len()));
+        }
+
+        let context: Arc<RwLock<HashMap<Symbol, ValueReference>>> = Arc::new(RwLock::new(HashMap::new()));
+        let op_queue: Arc<Mutex<Vec<FuncOpLive>>> = Arc::new(Mutex::new(Vec::new()));
+
+
+        // Initialize the function call
+        self.initialize_func_call(func, args, context.clone(), op_queue.clone())?;
+
+        // Execute the function's operations
+        self.manage_op_queue(op_queue, context.clone())?;
+
+        self.get_func_call_outputs(func, context)
     }
 }

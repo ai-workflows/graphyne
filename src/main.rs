@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use maplit::hashmap;
 use crate::api::{GraphiteApi};
 use crate::api::collections::c_const::{CCData};
@@ -484,16 +485,16 @@ fn test_func_build(vm: &mut VM) {
     // println!("state: {:#?}", vm.state);
 
     // test calling the func op
-    let mut context: HashMap<StringLive, ValueReference> = HashMap::new();
+    let context: Arc<RwLock<HashMap<Symbol, ValueReference>>> = Arc::new(RwLock::new(HashMap::new()));
     let arg1_guid = vm.get_ref_value(arg1_ref).unwrap().as_live().as_func_val().unwrap().ok().unwrap().guid;
     let arg2_guid = vm.get_ref_value(arg2_ref).unwrap().as_live().as_func_val().unwrap().ok().unwrap().guid;
     let st_arg1_result = vm.execute_store(StoreOp::StoreInt(5)).unwrap();
     let st_arg2_result = vm.execute_store(StoreOp::StoreInt(10)).unwrap();
-    context.insert(arg1_guid, st_arg1_result.get(0).unwrap().clone());
-    context.insert(arg2_guid, st_arg2_result.get(0).unwrap().clone());
+    context.write().unwrap().insert(arg1_guid, st_arg1_result.get(0).unwrap().clone());
+    context.write().unwrap().insert(arg2_guid, st_arg2_result.get(0).unwrap().clone());
 
     let add_op_val = vm.get_ref_value(add_op_ref).unwrap().as_live().as_func_op().unwrap().ok().unwrap();
-    let call_func_op_rst = vm.handle_call_function_op(&add_op_val, &context);
+    let call_func_op_rst = vm.handle_call_function_op(&add_op_val, context);
     println!("call_func_op_rst: {:#?}", call_func_op_rst);
     let call_func_op_rst = call_func_op_rst.unwrap();
     assert_eq!(call_func_op_rst.len(), 1);
