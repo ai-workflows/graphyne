@@ -12,6 +12,6 @@ pub struct FuncOp {
     /// A list of pointers to the func value nodes that are used as inputs for this operation.
     pub input_vals: Vec<PointerLive>,
 
-    /// A pointer to the func value node that is the output of this operation.
-    pub output_val: PointerLive,
+    /// A list of pointers to the func value nodes that are the output of this operation.
+    pub output_vals: Vec<PointerLive>,
 }

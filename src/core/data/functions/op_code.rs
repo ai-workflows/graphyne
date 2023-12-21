@@ -65,7 +65,7 @@ impl OpCode {
             OpCode::Div => Operation::Div(args[0], args[1]),
             OpCode::Mod => Operation::Mod(args[0], args[1]),
             OpCode::Pow => Operation::Pow(args[0], args[1]),
-            OpCode::Call => Operation::Call(args[0], args[1]),
+            OpCode::Call => Operation::Call(args[0], args[1..].to_vec()),
             OpCode::Map => Operation::Map(args[0], args[1]),
             OpCode::Reduce => Operation::Reduce(args[0], args[1], args[2]),
             OpCode::Filter => Operation::Filter(args[0], args[1]),

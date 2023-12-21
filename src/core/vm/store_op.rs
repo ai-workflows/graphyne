@@ -43,8 +43,8 @@ pub enum StoreOp<'a>  {
     /// Stores a literal function operation in memory.
     /// opcode: The opcode of the operation.
     /// input_vals: Reference to the func value nodes that are used as inputs for this operation.
-    /// output_val: Reference to the func value node that is the output of this operation.
-    StoreFunctionOp(OpCode, Vec<&'a ValueReference<'a>>, &'a ValueReference<'a>),
+    /// output_vals: Reference to the func value nodes that are the outputs of this operation.
+    StoreFunctionOp(OpCode, Vec<&'a ValueReference<'a>>, Vec<&'a ValueReference<'a>>),
 
     /// Stores a function graph in memory.
     /// The second argument is a reference to the class (as a dict) that the func belongs to (if any).
@@ -80,7 +80,7 @@ impl<'a> StoreOp<'a> {
                 guid: uuid::Uuid::new_v4().to_string(),
                 opcode: op_code,
                 input_vals: input_vals.iter().map(|v| v.pointer.clone()).collect(),
-                output_val: output_val.pointer.clone()
+                output_vals: output_val.iter().map(|v| v.pointer.clone()).collect(),
             })),
             _ => None,
         }

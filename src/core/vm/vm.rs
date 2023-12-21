@@ -408,7 +408,7 @@ impl VM {
         execute_two_arg_op!(self, op_remove, list, index)
     }
 
-    fn execute_call(&self, func: &ValueReference, args: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+    fn execute_call(&self, func: &ValueReference, args: Vec<&ValueReference>) -> ExecResult<Vec<ValueReference>> {
         // get the function
         let func = match self.get_ref_value(func) {
             Ok(val) => val,
@@ -416,21 +416,13 @@ impl VM {
         };
         let func = func.as_live().as_func().ok_or_else(|| "Cannot call a non-function value".to_string())??;
 
-        // get the args list
-        let args_val = match self.get_ref_value(args) {
-            Ok(val) => val,
-            Err(msg) => return Err(format!("Failed to get args: {}", msg))
-        };
-        let args_list = args_val.as_live().as_list().ok_or_else(|| "Cannot call a function with a non-list value as arguments".to_string())??;
-
-        // get the args as value references
-        let mut args: Vec<ValueReference> = Vec::new();
-        for arg_ptr in args_list {
-            let arg_val = self.value_ref_from_ptr(arg_ptr)?;
-            args.push(arg_val);
+        // get the args and ensure that there are the correct number of them
+        let mut args_cloned: Vec<ValueReference> = Vec::new();
+        for arg in args {
+            args_cloned.push(self.clone_reference(arg)?);
         }
 
-        let result = self.handle_call_function(&func, &args);
+        let result = self.handle_call_function(&func, &args_cloned);
 
         result
     }

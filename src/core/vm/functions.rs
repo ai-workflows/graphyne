@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use crate::api::functions::FunctionGraph;
 use crate::core::{ExecResult, Symbol};
+use crate::core::data::functions::OpCode;
 use crate::core::data::live::{LiveData, FuncLive, FuncOpLive, FuncValLive, PointerLive};
 use crate::core::data::stored::StoredData;
 use crate::core::vm::ops::Operation;
@@ -90,13 +91,18 @@ impl VM {
                 input_val_refs.push(val);
             }
 
-            // get the output value for this op
-            let output_val_ref: &ValueReference = match values.get(&op.output_val) {
-                Some(val) => val,
-                None => return Err(format!("Output value {} for op {} does not exist. Ensure that the value is defined.", op.output_val, op.opcode)),
-            };
+            // get the output values for this op
+            let mut output_val_refs: Vec<&ValueReference> = Vec::new();
+            for val_id in &op.output_vals {
+                let val = match values.get(&val_id.to_string()) {
+                    Some(val) => val,
+                    None => return Err(format!("Output value {} for op {} does not exist. Ensure that the value is defined.", val_id, op.opcode)),
+                };
 
-            let store_op = StoreOp::StoreFunctionOp(op.opcode, input_val_refs, output_val_ref);
+                output_val_refs.push(val);
+            }
+
+            let store_op = StoreOp::StoreFunctionOp(op.opcode, input_val_refs, output_val_refs);
             let op_refs: Vec<ValueReference> = self.execute_store(store_op)?;  // TODO: input and output refs are not being counted
             let op_ref: ValueReference = op_refs[0].clone();
             ops.push(op_ref);
@@ -210,6 +216,86 @@ impl VM {
         self.execute_op(op)
     }
 
+    fn get_func(&self, ptr: &PointerLive) -> ExecResult<FuncLive> {
+        let val = match self.state.read().unwrap().get(ptr) {
+            Ok(val) => val,
+            Err(msg) => return Err(format!("Cannot find func (pointer id: {}): {}", ptr.id, msg))
+        };
+
+        let func = match val {
+            StoredData::FuncStored(func) => func,
+            _ => {
+                let type_code = val.type_code()?;
+                return Err(format!("Expected func but got type: {}", type_code));
+            }
+        };
+
+        Ok(func)
+    }
+
+    fn get_func_val(&self, ptr: &PointerLive) -> ExecResult<FuncValLive> {
+        let val = match self.state.read().unwrap().get(ptr) {
+            Ok(val) => val,
+            Err(msg) => return Err(format!("Cannot find func val (pointer id: {}) for function: {}", ptr.id, msg))
+        };
+        let func_val = match val {
+            StoredData::FuncValStored(func_val) => func_val,
+            _ => {
+                let type_code = val.type_code()?;
+                return Err(format!("Expected func val but got type: {}", type_code));
+            }
+        };
+        Ok(func_val)
+    }
+
+    fn handle_func_val_dependents(&self, func_val: &FuncValLive, op_queue: &mut Vec<FuncOpLive>) -> ExecResult<()> {
+        for dependent_op in &func_val.dependents {
+            let state = self.state.read().unwrap();
+            let dependent_op_val_live = state.get(dependent_op)
+                .map_err(|msg| format!("Function cannot find dependent operation: {}", msg))?
+                .as_live().as_func_op()
+                .ok_or_else(|| "Function cannot execute a non-func-op value".to_string())?
+                .map_err(|msg| format!("Function cannot execute a non-func-op value: {}", msg))?;
+
+            op_queue.push(dependent_op_val_live);
+        }
+        Ok(())
+    }
+
+
+    fn initialize_func_call<'a>(&'a self, func: &FuncLive, args: &Vec<ValueReference<'a>>, context: &mut HashMap<Symbol, ValueReference<'a>>, op_queue: &mut Vec<FuncOpLive>) -> ExecResult<()> {
+        // bind the args to the context
+        for (i, arg_value) in args.iter().enumerate() {
+            // get the func val that this arg is for
+            let input_ptr: &PointerLive = func.input_vals.get(i).unwrap();
+            let input_val_live: FuncValLive = self.get_func_val(input_ptr).map_err(|msg| format!("Function cannot get input value: {}", msg))?;
+
+            // add the arg to the context
+            context.insert(input_val_live.guid.clone(), arg_value.clone());
+
+            // get the dependent operations on the arg and add them to the queue
+            self.handle_func_val_dependents(&input_val_live, op_queue)?;
+        }
+
+        // handle constants
+        for constant_ptr in func.constant_vals.iter() {
+            // get the constant's func val
+            let constant_val: FuncValLive = self.get_func_val(constant_ptr).map_err(|msg| format!("Function cannot get constant value: {}", msg))?;
+
+            // get the value that the constant points to and add it to the context
+            let constant_ref: ValueReference = match &constant_val.constant {
+                Some(ptr) => self.value_ref_from_ptr(ptr.clone())?,
+                None => return Err("Function expected {} to be a constant but no pointer to a constant value was found".to_string())
+            };
+            context.insert(constant_val.guid.clone(), constant_ref);
+
+            // get the dependent operations on the constant and add them to the queue
+            self.handle_func_val_dependents(&constant_val, op_queue)?;
+        }
+
+        Ok(())
+    }
+
     /// Handles the call of a function.
     pub fn handle_call_function<'a>(&'a self, func: &FuncLive, args: &Vec<ValueReference<'a>>) -> ExecResult<Vec<ValueReference<'a>>> {
         // make sure the function has the right number of args
@@ -223,70 +309,8 @@ impl VM {
         // create a queue to hold the operations that need to be executed
         let mut op_queue: Vec<FuncOpLive> = Vec::new();
 
-        // bind the args to the context
-        for (i, arg) in args.iter().enumerate() {
-            let input_ptr: &PointerLive = func.input_vals.get(i).unwrap();
-            let input_val: StoredData = match self.state.read().unwrap().get(input_ptr) {
-                Ok(val) => val,
-                Err(msg) => return Err(format!("Function cannot find function input value (index: {}): {}", i, msg))
-            };
-            let input_val_live: FuncValLive = match input_val.as_live().as_func_val() {
-                Some(Ok(val)) => val,
-                Some(Err(msg)) => return Err(format!("Function cannot take a non-func value as an argument: {}", msg)),
-                None => return Err("Function cannot take a non-func value as an argument".to_string())
-            };
-            context.insert(input_val_live.guid.clone(), arg.clone());
-
-            // get the dependent operations on the arg and add them to the queue
-            let dependent_ops: Vec<PointerLive> = input_val_live.dependents.clone();
-            for dependent_op in dependent_ops {
-                let dependent_op_val = match self.state.read().unwrap().get(&dependent_op) {
-                    Ok(val) => val,
-                    Err(msg) => return Err(format!("Function cannot find dependent operation: {}", msg))
-                };
-                let dependent_op_val_live: FuncOpLive = match dependent_op_val.as_live().as_func_op() {
-                    Some(Ok(val)) => val,
-                    Some(Err(msg)) => return Err(format!("Function cannot execute a non-func-op value: {}", msg)),
-                    None => return Err("Function cannot execute a non-func-op value".to_string())
-                };
-                op_queue.push(dependent_op_val_live);
-            }
-        }
-
-        // handle constants
-        for constant_ptr in func.constant_vals.iter() {
-            // get the constant value from memory using its pointer and add it to the context
-            let constant_val: StoredData = match self.state.read().unwrap().get(constant_ptr) {
-                Ok(val) => val,
-                Err(msg) => return Err(format!("Function cannot find constant value: {}", msg))
-            };
-            let constant_val_live: FuncValLive = match constant_val.as_live().as_func_val() {
-                Some(Ok(val)) => val,
-                Some(Err(msg)) => return Err(format!("Function cannot take a non-func value as an argument: {}", msg)),
-                None => return Err("Function cannot take a non-func value as an argument".to_string())
-            };
-
-            let constant_ref: ValueReference = match constant_val_live.constant {
-                Some(ptr) => self.value_ref_from_ptr(ptr.clone())?,
-                None => return Err("Function cannot take a non-constant value as an argument".to_string())
-            };
-            context.insert(constant_val_live.guid.clone(), constant_ref);
-
-            // get the dependent operations on the constant and add them to the queue
-            let dependent_ops: Vec<PointerLive> = constant_val_live.dependents.clone();
-            for dependent_op in dependent_ops {
-                let dependent_op_val = match self.state.read().unwrap().get(&dependent_op) {
-                    Ok(val) => val,
-                    Err(msg) => return Err(format!("Function cannot find dependent operation: {}", msg))
-                };
-                let dependent_op_val_live: FuncOpLive = match dependent_op_val.as_live().as_func_op() {
-                    Some(Ok(val)) => val,
-                    Some(Err(msg)) => return Err(format!("Function cannot execute a non-func-op value: {}", msg)),
-                    None => return Err("Function cannot execute a non-func-op value".to_string())
-                };
-                op_queue.push(dependent_op_val_live);
-            }
-        }
+        // initialize the function call by adding args and constants to the context and adding dependent operations to the queue
+        self.initialize_func_call(func, args, &mut context, &mut op_queue)?;
 
         // create a set to track which ops have been executed
         let mut executed: HashSet<String> = HashSet::new();
@@ -304,25 +328,17 @@ impl VM {
             // check if all of the op's inputs are in the context
             let mut all_inputs_known = true;
             for (arg_index, input_ptr) in op.input_vals.iter().enumerate() {
-                let input_val: StoredData = match self.state.read().unwrap().get(input_ptr) {
-                    Ok(val) => val,
-                    Err(msg) => return Err(format!("Cannot find input value (index: {}) for operation {}: {}", arg_index, op.opcode, msg))
-                };
-                let input_val_live: FuncValLive = match input_val.as_live().as_func_val() {
-                    Some(Ok(val)) => val,
-                    Some(Err(msg)) => return Err(format!("Cannot take a non-func value as an argument for operation {}: {}", op.opcode, msg)),
-                    None => return Err("Cannot take a non-func value as an argument".to_string())
-                };
+                let input_val: FuncValLive = self.get_func_val(input_ptr).map_err(|msg| format!("Function cannot get input value (index {}): {}", arg_index, msg))?;
 
                 // if the val is a constant but is not in the context, add it to the context
-                if let Some(constant_ptr) = input_val_live.constant {
-                    if !context.contains_key(&input_val_live.guid) {
+                if let Some(constant_ptr) = input_val.constant {
+                    if !context.contains_key(&input_val.guid) {
                         let constant_val_ref: ValueReference = self.value_ref_from_ptr(constant_ptr.clone())?;
-                        context.insert(input_val_live.guid.clone(), constant_val_ref);
+                        context.insert(input_val.guid.clone(), constant_val_ref);
                     }
                 }
 
-                if !context.contains_key(&input_val_live.guid) {
+                if !context.contains_key(&input_val.guid) {
                     all_inputs_known = false;
                     break;
                 }
@@ -335,44 +351,29 @@ impl VM {
             }
 
             // if all inputs are known, execute the operation
-            let result_val_refs: Vec<ValueReference> = match self.handle_call_function_op(&op, &context) {
-                Ok(val_refs) => val_refs,
-                Err(msg) => return Err(format!("Execution of operation {} failed: {}", op.opcode, msg))
-            };
+            let result_val_refs: Vec<ValueReference> = self.handle_call_function_op(&op, &context)
+                .map_err(|msg| format!("Execution of operation {} failed: {}", op.opcode, msg))?;
 
             // make sure the number of result vals matches the number of output vals
-            let num_outputs: usize = match op {
-                _ => 1  // since functions can only call operations at the moment, and all operations have only one output
-            };
-            if result_val_refs.len() != num_outputs {
-                return Err(format!("Function operation expected {} result values, but got {}", num_outputs, result_val_refs.len()));
+            if result_val_refs.len() != op.output_vals.len() {
+                return Err(format!("Function operation expected {} result values, but got {}", op.output_vals.len(), result_val_refs.len()));
             }
 
-            let result_func_val_ptrs: Vec<&PointerLive> = match op {
-                _ => vec![&op.output_val]  // ops can only have one output
-            };
+            let result_func_val_ptrs: Vec<&PointerLive> = op.output_vals.iter().collect();
 
             for (i, result_val_ref) in result_val_refs.iter().enumerate() {
                 // get the func val associated with this output
+
                 let output_ptr: &PointerLive = result_func_val_ptrs.get(i).unwrap();
-                let output_val: StoredData = match self.state.read().unwrap().get(&output_ptr) {
-                    Ok(val) => val,
-                    Err(msg) => return Err(format!("Cannot find output value {} for operation {}: {}", i, op.opcode, msg))
-                };
-                let output_func_val: FuncValLive = output_val.as_live().as_func_val().ok_or_else(|| "Function operation cannot return a non-func value".to_string())??;
+
+                let output_val: FuncValLive = self.get_func_val(output_ptr)
+                    .map_err(|msg| format!("Function cannot get output value (index {}) for operation {}: {}", i, op.opcode, msg))?;
 
                 // add the result value to the context
-                context.insert(output_func_val.guid.clone(), result_val_ref.clone());
+                context.insert(output_val.guid.clone(), result_val_ref.clone());
 
                 // add the dependent operations on the result value to the queue
-                for dependent_op_ptr in output_func_val.dependents.iter() {
-                    let dependent_op_val: StoredData = match self.state.read().unwrap().get(&dependent_op_ptr) {
-                        Ok(val) => val,
-                        Err(msg) => return Err(format!("Cannot find dependent operation (pointer id: {}) for operation {}: {}", dependent_op_ptr.id, op.opcode, msg))
-                    };
-                    let dependent_op_val_live: FuncOpLive = dependent_op_val.as_live().as_func_op().ok_or_else(|| "Function cannot execute a non-func-op value".to_string())??;
-                    op_queue.push(dependent_op_val_live);
-                }
+                self.handle_func_val_dependents(&output_val, &mut op_queue)?;
             }
 
             // add the op to the executed set
@@ -383,12 +384,11 @@ impl VM {
         let mut return_values: Vec<ValueReference> = Vec::new();
 
         for output_ptr in func.output_vals.iter() {
-            let output_val: StoredData = match self.state.read().unwrap().get(output_ptr) {
-                Ok(val) => val,
-                Err(msg) => return Err(format!("Cannot find output value (pointer id: {}) for function: {}", output_ptr.id, msg))
-            };
-            let output_val_live: FuncValLive = output_val.as_live().as_func_val().ok_or_else(|| "Function cannot return a non-func value".to_string())??;
-            let return_value: ValueReference = context.get(&output_val_live.guid).ok_or_else(|| "Function cannot find return value in context".to_string())?.clone();
+            let output_val: FuncValLive = self.get_func_val(output_ptr)
+                .map_err(|msg| format!("Function cannot get output value for function: {}", msg))?;
+
+            // get the reference to the value associated with the returned func val
+            let return_value: ValueReference = context.get(&output_val.guid).ok_or_else(|| "Function cannot find return value in context".to_string())?.clone();
             return_values.push(return_value);
         }
 

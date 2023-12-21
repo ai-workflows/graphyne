@@ -125,8 +125,9 @@ impl<T> GCObject<T> {
                 //     result.push(pointer);
                 // }
 
-                let output: &mut GCPointer<StoredData> = &mut func_op.output_val;
-                result.push(output);
+                for pointer in func_op.output_vals.iter_mut() {
+                    result.push(pointer);
+                }
             },
             _ => {}
         }

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use maplit::hashmap;
 use crate::api::{GraphiteApi};
-use crate::api::collections::c_const::{CCData, CollectionConst};
+use crate::api::collections::c_const::{CCData};
 use crate::api::collections::collection::Collection;
 use crate::api::collections::func::CollectionFunc;
 use crate::api::functions::{FunctionGraph, FunctionOpNode, FunctionValueNode};
@@ -472,7 +472,7 @@ fn test_func_build(vm: &mut VM) {
     let arg2_ref = st_arg2_result.get(0).unwrap();
 
     // fill the add buffer with the add op
-    let add_op = StoreOp::StoreFunctionOp(OpCode::Add, vec![arg1_ref, arg2_ref], return_val_ref);
+    let add_op = StoreOp::StoreFunctionOp(OpCode::Add, vec![arg1_ref, arg2_ref], vec![return_val_ref]);
     let fill_add_buffer = Operation::SetBuffer(add_op_ref, add_op.get_stored_data().unwrap());
     vm.execute_op(fill_add_buffer).unwrap();
 
@@ -518,7 +518,7 @@ fn test_add_func(vm: &mut VM) {
     let arg2_ref = st_arg2_result.get(0).unwrap();
 
     // fill the add buffer with the add op
-    let add_op = StoreOp::StoreFunctionOp(OpCode::Add, vec![arg1_ref, arg2_ref], return_val_ref);
+    let add_op = StoreOp::StoreFunctionOp(OpCode::Add, vec![arg1_ref, arg2_ref], vec![return_val_ref]);
     let fill_add_buffer = Operation::SetBuffer(add_op_ref, add_op.get_stored_data().unwrap());
     vm.execute_op(fill_add_buffer).unwrap();
 
@@ -713,11 +713,6 @@ fn test_sub_call<'a>(vm: &'a mut VM) {
         FunctionValueNode::var("num1".into()),
         FunctionValueNode::var("num2".into()),
 
-        // build the args for the add function
-        FunctionValueNode::var("add_args".into()),
-        FunctionValueNode::constant("empty_list".into(), ListStored(Vec::new())),
-        FunctionValueNode::var("list_one_arg".into()),
-
         // the sum function to call and its result
         FunctionValueNode::external("add_func".into(), api.get_ptr("add".into()).unwrap()),
         FunctionValueNode::var("sum".into()),
@@ -729,12 +724,8 @@ fn test_sub_call<'a>(vm: &'a mut VM) {
 
     // Define the operations for the second function.
     let ops2: Vec<FunctionOpNode> = vec![
-        // build the args for the sum func
-        FunctionOpNode::new(OpCode::Push, vec!["empty_list".into(), "num1".into()], "list_one_arg".into()),
-        FunctionOpNode::new(OpCode::Push, vec!["list_one_arg".into(), "num2".into()], "add_args".into()),
-
         // call the add function and divide the result by 2
-        FunctionOpNode::new(OpCode::Call, vec!["add_func".into(), "add_args".into()], "sum".into()),
+        FunctionOpNode::call("add_func".into(), vec!["num1".into(), "num2".into()], vec!["sum".into()]),
         FunctionOpNode::new(OpCode::Div, vec!["sum".into(), "2".into()], "average".into()),
     ];
 
@@ -965,16 +956,16 @@ fn test_collection(vm: &mut VM) {
 
     let my_list = vec![10, 20, 30];
 
-    let constants: HashMap<Symbol, CollectionConst> = hashmap!{
-        "two".into() => 2.into(),
-        "my_list".into() => my_list.iter().map(|v| v.clone().into()).collect::<Vec<CCData>>().into(),
-        "my_dict".into() => hashmap!{
-            "Hello".to_string() => "World".to_string().into(),
-            "Foo".to_string() => "Bar".to_string().into()
-        }.into(),
-    };
-
-    let functions: HashMap<Symbol, CollectionFunc> = hashmap! {
+    let collection = Collection {
+        constants: hashmap!{
+            "two".into() => 2.into(),
+            "my_list".into() => my_list.iter().map(|v| v.clone().into()).collect::<Vec<CCData>>().into(),
+            "my_dict".into() => hashmap!{
+                "Hello".to_string() => "World".to_string().into(),
+                "Foo".to_string() => "Bar".to_string().into()
+            }.into(),
+        },
+        functions: hashmap! {
         "double".into() => CollectionFunc {graph: FunctionGraph {
             values: vec![
                 FunctionValueNode::constant("_two".into(), StringStored("two".to_string())),
@@ -1012,12 +1003,10 @@ fn test_collection(vm: &mut VM) {
             input_vals: vec![],
             output_vals: vec!["double_list".into()],
         }},
+        },
+        collections: hashmap!{},
+        imports: hashmap!{},
     };
-
-    let subcollections = HashMap::new();
-    let imports = HashMap::new();
-
-    let collection = Collection::new(functions, constants, subcollections, imports);
 
     api.store_collection(collection, "my_collection".to_string()).unwrap();
 

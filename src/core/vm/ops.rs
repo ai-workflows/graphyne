@@ -86,7 +86,7 @@ pub enum Operation<'a> {
     Pow(&'a ValueReference<'a>, &'a ValueReference<'a>),
 
     /// Calls a function.
-    Call(&'a ValueReference<'a>, &'a ValueReference<'a>),
+    Call(&'a ValueReference<'a>, Vec<&'a ValueReference<'a>>),
 
     /// Applies a function to each element of a list.
     Map(&'a ValueReference<'a>, &'a ValueReference<'a>),
