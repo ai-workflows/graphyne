@@ -1031,7 +1031,7 @@ fn test_collection(vm: &mut VM) {
 
 
 fn main() {
-    let mut vm = VM::new();
+    let mut vm = VM::new(4);
 
     test_gc(&mut vm, "Hello World");
 

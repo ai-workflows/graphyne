@@ -69,14 +69,17 @@ macro_rules! execute_three_arg_op {
     };
 }
 
+#[derive(Debug)]
 pub struct VM {
     pub state: Arc<RwLock<GarbageCollector<StoredData>>>,
+    pub thread_pool: rayon::ThreadPool,
 }
 
 impl VM {
-    pub fn new() -> Self {
+    pub fn new(num_threads: usize) -> Self {
         VM {
             state: Arc::new(RwLock::new(GarbageCollector::new())),
+            thread_pool: rayon::ThreadPoolBuilder::new().num_threads(num_threads).build().unwrap(),
         }
     }
 

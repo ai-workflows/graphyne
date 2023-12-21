@@ -1,5 +1,7 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
+use std::collections::{HashMap};
+use std::sync::{Arc, RwLock, RwLockReadGuard};
+use std::sync::mpsc::channel;
+use crossbeam::queue::SegQueue;
 use crate::core::data::live::{LiveData, FuncLive, FuncOpLive, FuncValLive, PointerLive};
 use crate::core::data::stored::StoredData;
 use crate::core::{ExecResult, Symbol};
@@ -58,7 +60,9 @@ impl VM {
     }
 
     /// Gets the operations that are dependent on a particular value that is now known, and adds them to the operation queue.
-    fn handle_func_val_dependents(&self, func_val: &FuncValLive, op_queue: Arc<Mutex<Vec<FuncOpLive>>>) -> ExecResult<()> {
+    fn handle_func_val_dependents(&self, func_val: &FuncValLive, context: Arc<RwLock<HashMap<Symbol, ValueReference>>>) -> ExecResult<Vec<FuncOpLive>> {
+        let mut op_queue = Vec::new();
+
         for dependent_op in &func_val.dependents {
             let state = self.state.read().unwrap();
             let dependent_op_val_live = state.get(dependent_op)
@@ -67,9 +71,40 @@ impl VM {
                 .ok_or_else(|| "Function cannot execute a non-func-op value".to_string())?
                 .map_err(|msg| format!("Function cannot execute a non-func-op value: {}", msg))?;
 
-            op_queue.lock().unwrap().push(dependent_op_val_live);
+            // get the read lock on the context
+            let context = context.read().unwrap();
+
+            // check if the operation has already been executed
+            let output_ptr = dependent_op_val_live.output_vals.get(0)
+                .ok_or_else(|| "Function operation has no output value".to_string())?;
+            let output_val = self.get_func_val(output_ptr)
+                .map_err(|msg| format!("Function cannot get output value for operation {}: {}", dependent_op_val_live.opcode, msg))?;
+            if context.contains_key(&output_val.guid) {
+                continue;
+            }
+
+            // check if all inputs are known
+            let inputs_known = dependent_op_val_live.input_vals.iter()
+                .all(|input_ptr| {
+                    let input_val = self.get_func_val(input_ptr)
+                        .map_err(|msg| format!("Function cannot get input value for operation {}: {}", dependent_op_val_live.opcode, msg));
+
+                    let input_val = match input_val {
+                        Ok(input_val) => input_val,
+                        Err(_) => return false
+                    };
+
+                    context.contains_key(&input_val.guid)
+                });
+
+            if !inputs_known {
+                continue;
+            }
+
+            // add the operation to the queue
+            op_queue.push(dependent_op_val_live.clone());
         }
-        Ok(())
+        Ok(op_queue)
     }
 
     /// Initializes the call of a function by binding the arguments and constants to the context.
@@ -77,7 +112,7 @@ impl VM {
                                 func: &FuncLive,
                                 args: &[ValueReference<'a>],
                                 context: Arc<RwLock<HashMap<Symbol, ValueReference<'a>>>>,
-                                op_queue: Arc<Mutex<Vec<FuncOpLive>>>
+                                op_queue: Arc<SegQueue<FuncOpLive>>
     ) -> ExecResult<()> {
         self.bind_args_to_context(func, args, context.clone(), op_queue.clone())?;
         self.handle_constants(func, context, op_queue)?;
@@ -89,19 +124,19 @@ impl VM {
                                 func: &FuncLive,
                                 args: &[ValueReference<'a>],
                                 context: Arc<RwLock<HashMap<Symbol, ValueReference<'a>>>>,
-                                op_queue: Arc<Mutex<Vec<FuncOpLive>>>
+                                op_queue: Arc<SegQueue<FuncOpLive>>
     ) -> ExecResult<()> {
-        // obtain the write lock on the context
-        let mut context = context.write().unwrap();
-
         for (i, arg_value) in args.iter().enumerate() {
             let input_ptr = func.input_vals.get(i)
                 .ok_or("Function input value missing")?;
             let input = self.get_func_val(input_ptr)
                 .map_err(|msg| format!("Function cannot get input value: {}", msg))?;
 
-            context.insert(input.guid.clone(), arg_value.clone());
-            self.handle_func_val_dependents(&input, op_queue.clone())?;
+            context.write().unwrap().insert(input.guid.clone(), arg_value.clone());
+            let new_ops = self.handle_func_val_dependents(&input, context.clone())?;
+            for new_op in new_ops {
+                op_queue.push(new_op);
+            }
         }
         Ok(())
     }
@@ -110,11 +145,8 @@ impl VM {
     fn handle_constants<'a>(&'a self,
                             func: &FuncLive,
                             context: Arc<RwLock<HashMap<Symbol, ValueReference<'a>>>>,
-                            op_queue: Arc<Mutex<Vec<FuncOpLive>>>
+                            op_queue: Arc<SegQueue<FuncOpLive>>
     ) -> ExecResult<()> {
-        // obtain the write lock on the context
-        let mut context = context.write().unwrap();
-
         for constant_ptr in &func.constant_vals {
             let constant_val = self.get_func_val(constant_ptr)
                 .map_err(|msg| format!("Function cannot get constant value: {}", msg))?;
@@ -124,8 +156,11 @@ impl VM {
                 None => return Err("Function expected constant but none found".to_string())
             };
 
-            context.insert(constant_val.guid.clone(), constant_ref);
-            self.handle_func_val_dependents(&constant_val, op_queue.clone())?;
+            context.write().unwrap().insert(constant_val.guid.clone(), constant_ref);
+            let new_ops = self.handle_func_val_dependents(&constant_val, context.clone())?;
+            for new_op in new_ops {
+                op_queue.push(new_op);
+            }
         }
         Ok(())
     }
@@ -177,35 +212,39 @@ impl VM {
     }
 
     /// Manages the call of function operations and the queuing of its dependent operations for execution.
-    fn manage_op_queue<'a>(&'a self,
-                           op_queue: Arc<Mutex<Vec<FuncOpLive>>>,
-                           context: Arc<RwLock<HashMap<Symbol, ValueReference<'a>>>>) -> ExecResult<()> {
-        let mut executed = HashSet::new();
+    fn manage_op_queue<'a>(
+        &'a self,
+        op_queue: Arc<SegQueue<FuncOpLive>>,
+        context: Arc<RwLock<HashMap<Symbol, ValueReference<'a>>>>
+    ) -> ExecResult<()> {
+        while let Some(op) = op_queue.pop() {
+            let (tx, rx) = channel();
+            // Spawning a new thread to execute the operation
+            self.thread_pool.scope(|s| {
+                let context = context.clone();
+                let op = op.clone();
 
-        while let Some(op) = op_queue.lock().unwrap().pop() {
-            // skip operations that have already been executed
-            if executed.contains(&op.guid) {
-                continue;
+                s.spawn(move |_| {
+                    let result = self.try_execute_fn_op(&op, context.clone());
+                    // Sending the result back to the main thread
+                    tx.send(result).expect("Failed to send result");
+                });
+            });
+
+            // Processing the result to queue dependent operations
+            if let Ok(_) = rx.recv() {
+                for output_ptr in &op.output_vals {
+                    let output_val = self.get_func_val(output_ptr)
+                        .map_err(|msg| format!("Function cannot get output value for operation {}: {}", op.opcode, msg))?;
+
+                    let new_ops = self.handle_func_val_dependents(&output_val, context.clone())
+                        .map_err(|msg| format!("Function cannot handle dependents for operation {}: {}", op.opcode, msg))?;
+
+                    for new_op in new_ops {
+                        op_queue.push(new_op);
+                    }
+                }
             }
-
-            // execute the operation and continue if it fails
-            match self.try_execute_fn_op(&op, context.clone()) {
-                Ok(_) => {}
-                Err(_) => continue
-            }
-
-            // loop through the outputs from the executed operation
-            for output_ptr in op.output_vals.iter() {
-                // get the output
-                let output_val = self.get_func_val(output_ptr)
-                    .map_err(|msg| format!("Function cannot get output value for operation {}: {}", op.opcode, msg))?;
-
-                // add the output value's dependent operations to the queue
-                self.handle_func_val_dependents(&output_val, op_queue.clone())?;
-            }
-
-            // mark the operation as executed
-            executed.insert(op.guid.clone());
         }
 
         Ok(())
@@ -234,8 +273,7 @@ impl VM {
         }
 
         let context: Arc<RwLock<HashMap<Symbol, ValueReference>>> = Arc::new(RwLock::new(HashMap::new()));
-        let op_queue: Arc<Mutex<Vec<FuncOpLive>>> = Arc::new(Mutex::new(Vec::new()));
-
+        let op_queue: Arc<SegQueue<FuncOpLive>> = Arc::new(SegQueue::new());
 
         // Initialize the function call
         self.initialize_func_call(func, args, context.clone(), op_queue.clone())?;
