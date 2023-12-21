@@ -6,51 +6,7 @@ use crate::core::vm::value_ref::ValueReference;
 use crate::core::vm::VM;
 
 impl VM {
-    /// Handles the call of an operation that is part of a function.
-    pub fn handle_call_function_op(&self, func_op: &FuncOpLive, context: &HashMap<String, ValueReference>) -> ExecResult<Vec<ValueReference>> {
-        // get each arg value from the context
-        let mut arg_values: Vec<&ValueReference> = Vec::new();
-        for arg_ptr in func_op.input_vals.iter() {
-            // get the stored data at the pointer
-            let get_result = self.state.read().unwrap().get(arg_ptr)?;
-
-            // convert it to a func value
-            let func_val = match get_result {
-                StoredData::FuncValStored(func_val) => func_val,
-                _ => return Err("Function operation cannot take a non-func value as an argument".to_string())
-            };
-
-            // get the ref from the context by looking up the func val's guid
-            let arg_ref = context.get(&func_val.guid).ok_or_else(|| "Function operation cannot find argument value in context".to_string())?;
-
-            // add the ref to the arg values
-            arg_values.push(arg_ref);
-        }
-
-        // get an operation using the opcode and arg values
-        let op = func_op.opcode.to_operation(&arg_values);
-
-        // execute the operation and return its result
-        self.execute_op(op)
-    }
-
-    fn get_func(&self, ptr: &PointerLive) -> ExecResult<FuncLive> {
-        let val = match self.state.read().unwrap().get(ptr) {
-            Ok(val) => val,
-            Err(msg) => return Err(format!("Cannot find func (pointer id: {}): {}", ptr.id, msg))
-        };
-
-        let func = match val {
-            StoredData::FuncStored(func) => func,
-            _ => {
-                let type_code = val.type_code()?;
-                return Err(format!("Expected func but got type: {}", type_code));
-            }
-        };
-
-        Ok(func)
-    }
-
+    /// Helper function to get a function value from a pointer.
     fn get_func_val(&self, ptr: &PointerLive) -> ExecResult<FuncValLive> {
         let val = match self.state.read().unwrap().get(ptr) {
             Ok(val) => val,
@@ -64,6 +20,25 @@ impl VM {
             }
         };
         Ok(func_val)
+    }
+
+    /// Handles the call of an operation that is part of a function.
+    pub fn handle_call_function_op(&self, func_op: &FuncOpLive, context: &HashMap<String, ValueReference>) -> ExecResult<Vec<ValueReference>> {
+        let arg_values = self.get_func_op_args(func_op, context)?;
+        let op = func_op.opcode.to_operation(&arg_values);
+        self.execute_op(op)
+    }
+
+    fn get_func_op_args<'a>(&'a self, func_op: &FuncOpLive, context: &'a HashMap<String, ValueReference>) -> ExecResult<Vec<&ValueReference>> {
+        func_op.input_vals.iter()
+            .map(|arg_ptr| self.resolve_func_op_arg(arg_ptr, context))
+            .collect()
+    }
+
+    fn resolve_func_op_arg<'a>(&'a self, arg_ptr: &PointerLive, context: &'a HashMap<String, ValueReference<'a>>) -> ExecResult<&ValueReference> {
+        let func_val = self.get_func_val(arg_ptr)?;
+        context.get(&func_val.guid)
+            .ok_or_else(|| format!("Function cannot find input value: {}", func_val.guid))
     }
 
     fn handle_func_val_dependents(&self, func_val: &FuncValLive, op_queue: &mut Vec<FuncOpLive>) -> ExecResult<()> {
