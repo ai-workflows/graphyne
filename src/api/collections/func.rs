@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 use crate::api::collections::c_const::CCData;
-use crate::api::functions::{FunctionOpNode, FunctionValueNode};
-use crate::core::data::live::PointerLive;
-use crate::core::data::stored::StoredData;
+use crate::api::functions::{FunctionOpNode};
 use crate::core::Symbol;
 
 /// A function as it is represented in a collection.

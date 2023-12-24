@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Serialize};
 use crate::core::data::live::{BoolLive, FloatLive, IntLive, StringLive};
 use crate::core::Symbol;
 

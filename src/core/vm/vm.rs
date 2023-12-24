@@ -435,8 +435,7 @@ impl VM {
 mod tests {
     use crate::core::vm::store_op::StoreOp;
     use crate::core::vm::VM;
-    use crate::core::data::live::{IntLive, LiveData, StringLive};
-    use crate::core::vm::ops::Operation;
+    use crate::core::data::live::{LiveData};
     use crate::core::vm::value_ref::ValueReference;
 
     #[test]

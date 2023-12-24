@@ -1,4 +1,4 @@
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Serialize};
 use crate::core::data::functions::OpCode;
 use crate::core::Symbol;
 
