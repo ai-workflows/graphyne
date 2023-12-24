@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use crate::api::collections::c_const::CCData;
 use crate::api::collections::collection::Collection;
-use crate::api::functions::FunctionGraph;
+use crate::api::functions::{FunctionGraph, FunctionValueNode};
 use crate::api::interface::{VmInterface};
 use crate::core::data::live::{LiveData, IntLive, FloatLive, StringLive, BoolLive, PointerLive};
 use crate::core::data::stored::StoredData;
@@ -182,7 +182,7 @@ impl<'a> GraphiteApi<'a> {
             };
 
             // store the constant data in memory in a temporary location
-            let stored_ref = self.store_cc_data(constant.data.clone())?[0].clone();
+            let stored_ref = self.store_cc_data(constant.into())?[0].clone();
 
             // retrieve the value that was stored
             let stored_value = match self.vm.get_ref_value(&stored_ref) {
@@ -210,8 +210,38 @@ impl<'a> GraphiteApi<'a> {
                 Err(err) => return Err(format!("Error getting buffer reference for function {} for collection {}: {}", symbol, symbol, err))
             };
 
+            // convert the function graph to a proper format by storing the constant values in memory
+            let mut func_graph = FunctionGraph {
+                values: vec![],
+                ops: func.graph.ops,
+                input_vals: func.graph.input_vals,
+                output_vals: func.graph.output_vals,
+            };
+
+            for c_func_value_node in func.graph.values {
+                let graph;
+                if let Some(constant) = c_func_value_node.constant {
+                    let stored_ref = self.store_cc_data(constant.clone())?[0].clone();
+                    let stored_value = match self.vm.get_ref_value(&stored_ref) {
+                        Ok(stored_value) => stored_value,
+                        Err(err) => return Err(format!("Error getting stored value for constant {} for function {} for collection {}: {}", c_func_value_node.symbol, symbol, symbol, err))
+                    };
+                    graph = FunctionValueNode {
+                        symbol: c_func_value_node.symbol,
+                        constant: Some(stored_value),
+                    };
+                    drop(stored_ref);
+                } else {
+                    graph = FunctionValueNode {
+                        symbol: c_func_value_node.symbol,
+                        constant: None,
+                    };
+                }
+                func_graph.values.push(graph);
+            }
+
             // temporarily store the function graph in memory at a random location
-            let func_ref = match self.vm.execute_store(StoreOp::StoreFunctionGraph(func.graph, Some(&collection_ref))) {
+            let func_ref = match self.vm.execute_store(StoreOp::StoreFunctionGraph(func_graph, Some(&collection_ref))) {
                 Ok(result) => result[0].clone(),
                 Err(err) => return Err(format!("Error storing function {} for collection {}: {}", symbol, symbol, err))
             };
@@ -256,23 +286,38 @@ impl<'a> GraphiteApi<'a> {
 
         Ok(())
     }
+
+    pub fn store_collections(&mut self, values: Vec<(Collection, Symbol)>) -> ExecResult<()> {
+        // create all of the collection skeletons
+        for (value, symbol) in &values {
+            self.create_collection_skeleton(value.clone(), symbol.clone())?;
+        }
+
+        // fill all of the collection skeletons
+        for (value, symbol) in values {
+            let collection_ref = self.symbol_table.get(&symbol).unwrap().clone();
+            self.fill_collection_skeleton(collection_ref, value)?;
+        }
+
+        Ok(())
+    }
 }
 
 impl<'a> VmInterface for GraphiteApi<'a> {
     fn store_int(&mut self, value: IntLive, symbol: Symbol) -> ExecResult<()> {
-        self.store_value(StoreOp::StoreInt(value), symbol)
+        self.store_value(StoreInt(value), symbol)
     }
 
     fn store_float(&mut self, value: FloatLive, symbol: Symbol) -> ExecResult<()> {
-        self.store_value(StoreOp::StoreFloat(value), symbol)
+        self.store_value(StoreFloat(value), symbol)
     }
 
     fn store_string(&mut self, value: StringLive, symbol: Symbol) -> ExecResult<()> {
-        self.store_value(StoreOp::StoreString(value), symbol)
+        self.store_value(StoreString(value), symbol)
     }
 
     fn store_bool(&mut self, value: BoolLive, symbol: Symbol) -> ExecResult<()> {
-        self.store_value(StoreOp::StoreBool(value), symbol)
+        self.store_value(StoreBool(value), symbol)
     }
 
     fn store_list(&mut self, values: Vec<Symbol>, symbol: Symbol) -> ExecResult<()> {

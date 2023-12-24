@@ -1,10 +1,11 @@
 use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 use crate::api::collections::func::CollectionFunc;
 use crate::api::collections::c_const::CollectionConst;
 use crate::core::{Symbol, SymbolPath};
 
 /// A grouping of functions, constants, sub-collections, and types (in the future).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Collection {
     /// The collection's functions.
     pub functions: HashMap<Symbol, CollectionFunc>,

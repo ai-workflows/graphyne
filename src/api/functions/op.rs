@@ -1,7 +1,8 @@
+use serde::{Deserialize, Deserializer, Serialize};
 use crate::core::data::functions::OpCode;
 use crate::core::Symbol;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FunctionOpNode {
     /// The opcode that this function call represents.
     pub opcode: OpCode,

@@ -1,9 +1,10 @@
 use std::fmt;
+use serde::{Deserialize, Serialize};
 use crate::core::vm::ops::Operation;
 use crate::core::vm::value_ref::ValueReference;
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum OpCode {
     AsInt,
     AsFloat,
