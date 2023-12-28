@@ -265,10 +265,10 @@ mod tests {
         // Define the operations.
         let ops: Vec<FunctionOpNode> = vec![
             // get the items from the list
-            FunctionOpNode::new(OpCode::GetItem, vec!["list".into(), "0".into()], "item1".into()),
-            FunctionOpNode::new(OpCode::GetItem, vec!["list".into(), "1".into()], "item2".into()),
-            FunctionOpNode::new(OpCode::GetItem, vec!["list".into(), "2".into()], "item3".into()),
-            FunctionOpNode::new(OpCode::GetItem, vec!["list".into(), "3".into()], "item4".into()),
+            FunctionOpNode::new(OpCode::Get, vec!["list".into(), "0".into()], "item1".into()),
+            FunctionOpNode::new(OpCode::Get, vec!["list".into(), "1".into()], "item2".into()),
+            FunctionOpNode::new(OpCode::Get, vec!["list".into(), "2".into()], "item3".into()),
+            FunctionOpNode::new(OpCode::Get, vec!["list".into(), "3".into()], "item4".into()),
 
             // compute the sum
             FunctionOpNode::new(OpCode::Add, vec!["item1".into(), "item2".into()], "sum1".into()),
@@ -483,7 +483,7 @@ mod tests {
         ];
 
         let ops = vec![
-            FunctionOpNode::new(OpCode::GetItem, vec!["list".into(), "index".into()], "item".into())
+            FunctionOpNode::new(OpCode::Get, vec!["list".into(), "index".into()], "item".into())
         ];
 
         let graph = FunctionGraph::new(values, ops, vec!["list".into(), "index".into()], vec!["item".into()]);
@@ -560,7 +560,7 @@ mod tests {
         ];
 
         let ops = vec![
-            FunctionOpNode::new(OpCode::GetItem, vec!["list".into(), "index".into()], "item".into())
+            FunctionOpNode::new(OpCode::Get, vec!["list".into(), "index".into()], "item".into())
         ];
 
         let graph = FunctionGraph::new(values, ops, vec!["list".into(), "index".into()], vec!["item".into()]);
@@ -611,7 +611,7 @@ mod tests {
             ],
             ops: vec![
                 // get the 2 const
-                FunctionOpNode::new(OpCode::GetItem, vec!["self".into(), "_two".into()], "two".into()),
+                FunctionOpNode::new(OpCode::Get, vec!["self".into(), "_two".into()], "two".into()),
 
                 // double the number
                 FunctionOpNode::new(OpCode::Mul, vec!["num".into(), "two".into()], "doubled".into())
@@ -630,8 +630,8 @@ mod tests {
             ],
             ops: vec![
                 // get the double func and the list
-                FunctionOpNode::new(OpCode::GetItem, vec!["self".into(), "_double".into()], "double_func".into()),
-                FunctionOpNode::new(OpCode::GetItem, vec!["self".into(), "_my_list".into()], "my_list".into()),
+                FunctionOpNode::new(OpCode::Get, vec!["self".into(), "_double".into()], "double_func".into()),
+                FunctionOpNode::new(OpCode::Get, vec!["self".into(), "_my_list".into()], "my_list".into()),
 
                 FunctionOpNode::new(OpCode::Map, vec!["double_func".into(), "my_list".into()], "double_list".into())
             ],
@@ -689,7 +689,7 @@ mod tests {
                         "doubled"
                     ],
                     "ops": [
-                        ["GetItem", ["self", "_two"], "two"],
+                        ["Get", ["self", "_two"], "two"],
                         ["Mul", ["num", "two"], "doubled"]
                     ],
                     "input_vals": ["num"],
@@ -708,8 +708,8 @@ mod tests {
                         "double_list"
                     ],
                     "ops": [
-                        ["GetItem", ["self", "_double"], "double_func"],
-                        ["GetItem", ["self", "_my_list"], "my_list"],
+                        ["Get", ["self", "_double"], "double_func"],
+                        ["Get", ["self", "_my_list"], "my_list"],
                         ["Map", ["double_func", "my_list"], "double_list"]
                     ],
                     "input_vals": [],
