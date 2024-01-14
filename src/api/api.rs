@@ -27,7 +27,7 @@ impl<'a> GraphiteApi<'a> {
     }
 
     /// Gets the reference to a value at the given symbol path.
-    fn get_path(&self, path: SymbolPath) -> ExecResult<ValueReference> {
+    pub fn get_path(&self, path: SymbolPath) -> ExecResult<ValueReference> {
         // represent the symbol table as a stored dict
         let mut context: Option<ValueReference> = None;
 
@@ -115,30 +115,51 @@ impl<'a> GraphiteApi<'a> {
         Ok(())
     }
 
-    fn store_cc_data(&self, data: CCData) -> ExecResult<Vec<ValueReference>> {
-        match data {
-            CCData::Int(i) => self.vm.execute_store(StoreInt(i)),
-            CCData::Float(f) => self.vm.execute_store(StoreFloat(f)),
-            CCData::String(s) => self.vm.execute_store(StoreString(s)),
-            CCData::Bool(b) => self.vm.execute_store(StoreBool(b)),
-            CCData::List(l) => {
-                let item_refs: Vec<Vec<ValueReference>> = l.iter().map(|c| self.store_cc_data(c.clone()).unwrap()).collect::<Vec<Vec<ValueReference>>>();
-                let item_refs: Vec<ValueReference> = item_refs.into_iter().flatten().collect();
+    // pub fn store_cc_data(&self, data: CCData) -> ExecResult<Vec<ValueReference>> {
+    //     match data {
+    //         CCData::Int(i) => self.vm.execute_store(StoreInt(i)),
+    //         CCData::Float(f) => self.vm.execute_store(StoreFloat(f)),
+    //         CCData::String(s) => self.vm.execute_store(StoreString(s)),
+    //         CCData::Bool(b) => self.vm.execute_store(StoreBool(b)),
+    //         CCData::List(l) => {
+    //             let item_refs: Vec<Vec<ValueReference>> = l.iter().map(|c| self.store_cc_data(c.clone()).unwrap()).collect::<Vec<Vec<ValueReference>>>();
+    //             let item_refs: Vec<ValueReference> = item_refs.into_iter().flatten().collect();
+    //
+    //             self.vm.execute_store(StoreOp::StoreList(item_refs.iter().collect()))
+    //         }
+    //         CCData::Dict(d) => {
+    //             let item_refs: Vec<(String, Vec<ValueReference>)> = d.iter().map(|(k, v)| (k.clone(), self.store_cc_data(v.clone()).unwrap())).collect::<Vec<(String, Vec<ValueReference>)>>();
+    //             let item_refs: HashMap<String, ValueReference> = item_refs.into_iter().map(|(k, v)| (k, v[0].clone())).collect();
+    //             let item_refs: HashMap<String, &ValueReference> = item_refs.iter().map(|(k, v)| (k.clone(), v)).collect();
+    //
+    //             self.vm.execute_store(StoreOp::StoreDict(item_refs))
+    //
+    //         }
+    //     }
+    // }
 
-                self.vm.execute_store(StoreOp::StoreList(item_refs.iter().collect()))
-            }
-            CCData::Dict(d) => {
-                let item_refs: Vec<(String, Vec<ValueReference>)> = d.iter().map(|(k, v)| (k.clone(), self.store_cc_data(v.clone()).unwrap())).collect::<Vec<(String, Vec<ValueReference>)>>();
-                let item_refs: HashMap<String, ValueReference> = item_refs.into_iter().map(|(k, v)| (k, v[0].clone())).collect();
-                let item_refs: HashMap<String, &ValueReference> = item_refs.iter().map(|(k, v)| (k.clone(), v)).collect();
-
-                self.vm.execute_store(StoreOp::StoreDict(item_refs))
-
-            }
-        }
+    pub fn store_named_cc_data(&'a mut self, data: CCData, symbol: Symbol) -> ExecResult<()> {
+        let data_refs = self.vm.store_cc_data(data)?;
+        self.symbol_table.insert(symbol, data_refs[0].clone());
+        Ok(())
     }
 
-    fn fill_collection_skeleton(&self, collection_ref: ValueReference, value: Collection) -> ExecResult<()> {
+    pub fn store_multiple_named_cc_data(&'a mut self, data: Vec<CCData>, prefix: Symbol) -> ExecResult<Vec<Symbol>> {
+        let mut symbol_table: HashMap<Symbol, ValueReference> = HashMap::new();
+        let mut symbols: Vec<Symbol> = Vec::new();
+
+        for (i, data) in data.into_iter().enumerate() {
+            let symbol = format!("{}{}", prefix, i);
+            let data_refs = self.vm.store_cc_data(data)?;
+            symbol_table.insert(symbol.clone(), data_refs[0].clone());
+            symbols.push(symbol);
+        }
+
+        self.symbol_table.extend(symbol_table);
+        Ok(symbols)
+    }
+
+    fn fill_collection_skeleton(&mut self, collection_ref: ValueReference, value: Collection) -> ExecResult<()> {
         let collection_val = match self.vm.get_ref_value(&collection_ref) {
             Ok(collection_val) => collection_val,
             Err(err) => return Err(format!("Error getting collection: {}", err))
@@ -182,7 +203,7 @@ impl<'a> GraphiteApi<'a> {
             };
 
             // store the constant data in memory in a temporary location
-            let stored_ref = self.store_cc_data(constant.into())?[0].clone();
+            let stored_ref = self.vm.store_cc_data(constant.into())?[0].clone();
 
             // retrieve the value that was stored
             let stored_value = match self.vm.get_ref_value(&stored_ref) {
@@ -221,7 +242,7 @@ impl<'a> GraphiteApi<'a> {
             for c_func_value_node in func.graph.values {
                 let graph;
                 if let Some(constant) = c_func_value_node.constant {
-                    let stored_ref = self.store_cc_data(constant.clone())?[0].clone();
+                    let stored_ref = self.vm.store_cc_data(constant.clone())?[0].clone();
                     let stored_value = match self.vm.get_ref_value(&stored_ref) {
                         Ok(stored_value) => stored_value,
                         Err(err) => return Err(format!("Error getting stored value for constant {} for function {} for collection {}: {}", c_func_value_node.symbol, symbol, symbol, err))
@@ -300,6 +321,80 @@ impl<'a> GraphiteApi<'a> {
         }
 
         Ok(())
+    }
+
+    pub fn jsonify(&self, val: &StoredData) -> String {
+        match val {
+            StoredData::NullStored => "null".to_string(),
+            StoredData::IntStored(val) => val.to_string(),
+            StoredData::FloatStored(val) => val.to_string(),
+            StoredData::StringStored(val) => val.clone(),
+            StoredData::BoolStored(val) => val.to_string(),
+            StoredData::PointerStored(ptr) => {
+                let val_ref = match self.vm.value_ref_from_ptr(ptr.clone()) {
+                    Ok(val_ref) => val_ref,
+                    Err(_) => return "null".to_string(),
+                };
+                match self.vm.get_ref_value(&val_ref) {
+                    Ok(val) => self.jsonify(&val),
+                    Err(_) => return "null".to_string(),
+                }
+            }
+            StoredData::ListStored(list) => {
+                let mut result = "[".to_string();
+                for (i, item) in list.iter().enumerate() {
+                    let ptr_stored = StoredData::PointerStored(item.clone());
+
+                    result.push_str(&self.jsonify(&ptr_stored));
+
+                    if i < list.len() - 1 {
+                        result.push_str(", ");
+                    }
+                }
+                result.push_str("]");
+                result
+            }
+            DictStored(dict) => {
+                let mut map = HashMap::new();
+
+                for (key, val) in dict {
+                    let ptr_stored = StoredData::PointerStored(val.clone());
+                    map.insert(key.clone(), self.jsonify(&ptr_stored));
+                }
+
+                serde_json::to_string(&map).unwrap_or_else(|_| "null".to_string())
+            }
+            StoredData::FuncStored(val) => {
+                let mut map = HashMap::new();
+
+                map.insert("input_vals".to_string(), self.jsonify(&StoredData::ListStored(val.input_vals.clone())));
+                map.insert("output_vals".to_string(), self.jsonify(&StoredData::ListStored(val.output_vals.clone())));
+
+                serde_json::to_string(&map).unwrap_or_else(|_| "null".to_string())
+            }
+            StoredData::FuncValStored(val) => {
+                let mut map = HashMap::new();
+
+                map.insert("guid".to_string(), val.guid.clone());
+                map.insert("dependents".to_string(), self.jsonify(&StoredData::ListStored(val.dependents.clone())));
+                if let Some(constant) = &val.constant {
+                    map.insert("constant".to_string(), self.jsonify(&StoredData::PointerStored(constant.clone())));
+                }
+                map.insert("is_self".to_string(), self.jsonify(&StoredData::BoolStored(val.is_self)));
+
+                serde_json::to_string(&map).unwrap_or_else(|_| "null".to_string())
+            }
+            StoredData::FuncOpStored(val) => {
+                let mut map = HashMap::new();
+
+                map.insert("guid".to_string(), val.guid.clone());
+                map.insert("opcode".to_string(), self.jsonify(&StoredData::IntStored(val.opcode as i64)));
+                map.insert("input_vals".to_string(), self.jsonify(&StoredData::ListStored(val.input_vals.clone())));
+                map.insert("output_vals".to_string(), self.jsonify(&StoredData::ListStored(val.output_vals.clone())));
+
+                serde_json::to_string(&map).unwrap_or_else(|_| "null".to_string())
+            }
+        }
     }
 }
 

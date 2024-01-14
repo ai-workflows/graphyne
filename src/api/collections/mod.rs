@@ -110,57 +110,57 @@ mod tests {
             let mut api = GraphiteApi { vm, symbol_table: HashMap::new() };
 
             let json_collection = r#"{
-        "constants": {
-            "two": 2,
-            "my_list": [10, 20, 30],
-            "my_dict": {
-                "Hello": "World",
-                "Foo": "Bar"
-            }
-        },
-        "functions": {
-            "double": {
-               "name": "Double",
-               "description": "Doubles a number",
-               "graph": {
-                    "values": [
-                        ["_two", "two"],
-                        "two",
-                        "num",
-                        "doubled"
-                    ],
-                    "ops": [
-                        ["Get", ["self", "_two"], "two"],
-                        ["Mul", ["num", "two"], "doubled"]
-                    ],
-                    "input_vals": ["num"],
-                    "output_vals": ["doubled"]
-                }
-            },
-            "double_list": {
-                "name": "Double List",
-                "description": "Doubles a list of numbers",
-                "graph": {
-                    "values": [
-                        "double_func",
-                        ["_double", "double"],
-                        ["_my_list", "my_list"],
-                        "my_list",
-                        "double_list"
-                    ],
-                    "ops": [
-                        ["Get", ["self", "_double"], "double_func"],
-                        ["Get", ["self", "_my_list"], "my_list"],
-                        ["Map", ["double_func", "my_list"], "double_list"]
-                    ],
-                    "input_vals": [],
-                    "output_vals": ["double_list"]
-                }
-            }
-        },
-        "collections": {},
-        "imports": {}
-    }"#;
+                "constants": {
+                    "two": 2,
+                    "my_list": [10, 20, 30],
+                    "my_dict": {
+                        "Hello": "World",
+                        "Foo": "Bar"
+                    }
+                },
+                "functions": {
+                    "double": {
+                       "name": "Double",
+                       "description": "Doubles a number",
+                       "graph": {
+                            "values": [
+                                ["_two", "two"],
+                                "two",
+                                "num",
+                                "doubled"
+                            ],
+                            "ops": [
+                                ["Get", ["self", "_two"], "two"],
+                                ["Mul", ["num", "two"], "doubled"]
+                            ],
+                            "input_vals": ["num"],
+                            "output_vals": ["doubled"]
+                        }
+                    },
+                    "double_list": {
+                        "name": "Double List",
+                        "description": "Doubles a list of numbers",
+                        "graph": {
+                            "values": [
+                                "double_func",
+                                ["_double", "double"],
+                                ["_my_list", "my_list"],
+                                "my_list",
+                                "double_list"
+                            ],
+                            "ops": [
+                                ["Get", ["self", "_double"], "double_func"],
+                                ["Get", ["self", "_my_list"], "my_list"],
+                                ["Map", ["double_func", "my_list"], "double_list"]
+                            ],
+                            "input_vals": [],
+                            "output_vals": ["double_list"]
+                        }
+                    }
+                },
+                "collections": {},
+                "imports": {}
+            }"#;
 
             let collection: Collection = serde_json::from_str(json_collection).unwrap();
 

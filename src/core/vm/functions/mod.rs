@@ -54,7 +54,7 @@ mod tests {
 
             let add_op_val = vm.get_ref_value(add_op_ref).unwrap().as_live().as_func_op().unwrap().ok().unwrap();
             let call_func_op_rst = vm.handle_call_function_op(&add_op_val, context);
-            println!("call_func_op_rst: {:#?}", call_func_op_rst);
+            // println!("call_func_op_rst: {:#?}", call_func_op_rst);
             let call_func_op_rst = call_func_op_rst.unwrap();
             assert_eq!(call_func_op_rst.len(), 1);
             let call_func_op_rst = call_func_op_rst.get(0).unwrap();

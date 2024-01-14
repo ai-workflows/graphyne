@@ -1,6 +1,6 @@
 pub(crate) mod val;
 pub(crate) mod op;
-mod graph;
+pub(crate)mod graph;
 
 
 pub(crate) use val::FunctionValueNode;

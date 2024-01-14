@@ -1,7 +1,11 @@
 use std::collections::HashMap;
 use serde::{Serialize};
 use crate::core::data::live::{BoolLive, FloatLive, IntLive, StringLive};
-use crate::core::Symbol;
+use crate::core::{ExecResult, Symbol};
+use crate::core::vm::store_op::StoreOp;
+use crate::core::vm::store_op::StoreOp::{StoreBool, StoreFloat, StoreInt, StoreString};
+use crate::core::vm::value_ref::ValueReference;
+use crate::core::vm::VM;
 
 /// The types of constants that can be stored in a collection.
 #[derive(Debug, Clone, Serialize)]
@@ -95,3 +99,29 @@ impl From<CollectionConst> for CCData {
         value.0
     }
 }
+
+impl VM {
+    pub fn store_cc_data(&self, data: CCData) -> ExecResult<Vec<ValueReference>> {
+        match data {
+            CCData::Int(i) => self.execute_store(StoreInt(i)),
+            CCData::Float(f) => self.execute_store(StoreFloat(f)),
+            CCData::String(s) => self.execute_store(StoreString(s)),
+            CCData::Bool(b) => self.execute_store(StoreBool(b)),
+            CCData::List(l) => {
+                let item_refs: Vec<Vec<ValueReference>> = l.iter().map(|c| self.store_cc_data(c.clone()).unwrap()).collect::<Vec<Vec<ValueReference>>>();
+                let item_refs: Vec<ValueReference> = item_refs.into_iter().flatten().collect();
+
+                self.execute_store(StoreOp::StoreList(item_refs.iter().collect()))
+            }
+            CCData::Dict(d) => {
+                let item_refs: Vec<(String, Vec<ValueReference>)> = d.iter().map(|(k, v)| (k.clone(), self.store_cc_data(v.clone()).unwrap())).collect::<Vec<(String, Vec<ValueReference>)>>();
+                let item_refs: HashMap<String, ValueReference> = item_refs.into_iter().map(|(k, v)| (k, v[0].clone())).collect();
+                let item_refs: HashMap<String, &ValueReference> = item_refs.iter().map(|(k, v)| (k.clone(), v)).collect();
+
+                self.execute_store(StoreOp::StoreDict(item_refs))
+
+            }
+        }
+    }
+}
+

@@ -3,6 +3,6 @@ pub(crate) mod api;
 pub(crate) mod collections;
 pub(crate) mod functions;
 pub(crate) mod deserialize;
-mod cli;
+pub(crate) mod program;
 
 pub(crate) use api::GraphiteApi;
