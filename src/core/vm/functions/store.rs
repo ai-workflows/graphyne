@@ -108,7 +108,7 @@ impl VM {
             let is_self = val_id == "self" && has_context;
 
             // Store the function value in memory
-            let store_op = StoreOp::StoreFunctionVal(val_deps.iter().collect(), const_ref, is_self);
+            let store_op = StoreOp::StoreFunctionVal(val_deps.iter().collect(), const_ref, is_self, Some(val_id.clone()));
             let stored_val_ref = self.execute_store(store_op)?.get(0).cloned().ok_or("Failed to store function value")?;
 
             // Get the stored function value

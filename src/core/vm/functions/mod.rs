@@ -19,16 +19,16 @@ mod tests {
         let vm: &mut VM = &mut VM::new(4);
 
         {
-            let st_return_val_result = vm.execute_store(StoreOp::StoreFunctionVal(Vec::new(), None, false)).unwrap();
+            let st_return_val_result = vm.execute_store(StoreOp::StoreFunctionVal(Vec::new(), None, false, None)).unwrap();
             let return_val_ref = st_return_val_result.get(0).unwrap();
 
             let st_add_buffer_result = vm.execute_store(StoreOp::CreateBuffer).unwrap();
             let add_op_ref = st_add_buffer_result.get(0).unwrap();
 
-            let st_arg1_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None, false)).unwrap();
+            let st_arg1_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None, false, None)).unwrap();
             let arg1_ref = st_arg1_result.get(0).unwrap();
 
-            let st_arg2_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None, false)).unwrap();
+            let st_arg2_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None, false, None)).unwrap();
             let arg2_ref = st_arg2_result.get(0).unwrap();
 
             // fill the add buffer with the add op
@@ -70,16 +70,16 @@ mod tests {
         let vm: &mut VM = &mut VM::new(4);
 
         {
-            let st_return_val_result = vm.execute_store(StoreOp::StoreFunctionVal(Vec::new(), None, false)).unwrap();
+            let st_return_val_result = vm.execute_store(StoreOp::StoreFunctionVal(Vec::new(), None, false, None)).unwrap();
             let return_val_ref = st_return_val_result.get(0).unwrap();
 
             let st_add_buffer_result = vm.execute_store(StoreOp::CreateBuffer).unwrap();
             let add_op_ref = st_add_buffer_result.get(0).unwrap();
 
-            let st_arg1_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None, false)).unwrap();
+            let st_arg1_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None, false, None)).unwrap();
             let arg1_ref = st_arg1_result.get(0).unwrap();
 
-            let st_arg2_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None, false)).unwrap();
+            let st_arg2_result = vm.execute_store(StoreOp::StoreFunctionVal(vec![add_op_ref], None, false, None)).unwrap();
             let arg2_ref = st_arg2_result.get(0).unwrap();
 
             // fill the add buffer with the add op

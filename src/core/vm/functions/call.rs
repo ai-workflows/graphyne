@@ -260,7 +260,10 @@ impl VM {
                     .map_err(|msg| format!("Function cannot get output value for function: {}", msg))?;
                 context.get(&output_val.guid)
                     .cloned()
-                    .ok_or_else(|| "Function cannot find return value in context".to_string())
+                    .ok_or_else(|| format!("Function cannot find output value {:?} in context", match output_val.symbol {
+                        Some(ref symbol) => symbol.clone(),
+                        None => output_val.guid.clone()
+                    }))
             })
             .collect()
     }

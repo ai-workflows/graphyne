@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::fs;
+use crate::api::collections::collection::Collection;
 use crate::api::GraphiteApi;
 use crate::api::interface::VmInterface;
-use crate::api::program::Program;
+// use crate::api::program::Program;
 use crate::core::Symbol;
 use crate::core::vm::value_ref::ValueReference;
 use crate::core::vm::VM;
@@ -41,7 +42,7 @@ fn main() {
     match args.command {
         Commands::Run { path } => {
             let contents = fs::read_to_string(path).expect("Something went wrong reading the file");
-            let program: Program= match serde_json::from_str(&contents) {
+            let program: Collection = match serde_json::from_str(&contents) {
                 Ok(v) => v,
                 Err(e) => {
                     println!("Error parsing program JSON: {}", e);
@@ -53,20 +54,33 @@ fn main() {
             let symbol_table: HashMap<Symbol, ValueReference> = HashMap::new();
             let mut api = GraphiteApi { vm: &vm, symbol_table };
 
-            match api.execute_program(&program) {
-                Ok(_) => {},
+            let results = match api.execute_program(&program) {
+                Ok(v) => v,
                 Err(e) => {
                     println!("Error executing program: {}", e);
                     return;
                 },
-            }
+            };
 
-            for output in program.outputs {
-                match api.get(output.clone()) {
-                    Ok(v) => println!("{}: {:}", output, api.jsonify(&v)),
+            for result in results {
+                let guid = result.0;
+                let symbol: Option<Symbol> = result.1;
+
+                match api.get(guid.clone()) {
+                    Ok(v) => match symbol {
+                        Some(s) => println!("{}: {}", s, api.jsonify(&v)),
+                        None => println!("{}: {}", guid, api.jsonify(&v)),
+                    },
                     Err(e) => println!("Error getting output symbol: {}", e),
                 }
             }
+
+            // for output in program.outputs {
+            //     match api.get(output.clone()) {
+            //         Ok(v) => println!("{}: {:}", output, api.jsonify(&v)),
+            //         Err(e) => println!("Error getting output symbol: {}", e),
+            //     }
+            // }
         },
     }
 

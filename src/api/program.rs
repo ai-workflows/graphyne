@@ -1,6 +1,3 @@
-use std::collections::HashMap;
-use serde::Deserialize;
-use crate::api::collections::c_const::CollectionConst;
 use crate::api::collections::collection::Collection;
 use crate::api::GraphiteApi;
 use crate::core::{ExecResult, Symbol, SymbolPath};
@@ -8,32 +5,32 @@ use crate::core::data::live::FuncLive;
 use crate::core::data::stored::StoredData;
 use crate::core::vm::value_ref::ValueReference;
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct Program {
-    /// The program's collections.
-    pub collections: HashMap<Symbol, Collection>,
-
-    /// The path to the program's entry point.
-    pub main: SymbolPath,
-
-    /// Input values to the program passed as arguments.
-    pub inputs: Vec<CollectionConst>,
-
-    /// THe symbols of the values that are output by the program.
-    pub outputs: Vec<Symbol>,
-}
+// #[derive(Debug, Clone, Deserialize)]
+// pub struct Program {
+//     /// The program's collections.
+//     pub collections: HashMap<Symbol, Collection>,
+//
+//     /// The path to the program's entry point.
+//     pub main: SymbolPath,
+//
+//     /// Input values to the program passed as arguments.
+//     pub inputs: Vec<CollectionConst>,
+//
+//     /// THe symbols of the values that are output by the program.
+//     pub outputs: Vec<Symbol>,
+// }
 
 impl<'a> GraphiteApi<'a>  {
-    pub fn execute_program(&mut self, program: &Program) -> ExecResult<()> {
-        // store the collections
-        let collections_vec: Vec<(Collection, Symbol)> = program.collections.iter().map(|(k, v)| (v.clone(), k.clone())).collect();
-        match self.store_collections(collections_vec) {
+    pub fn execute_program(&mut self, program: &Collection) -> ExecResult<Vec<(Symbol, Option<Symbol>)>> {
+        // store the main collection
+        match self.store_collection(program.clone(), "main".to_string()) {
             Ok(_) => {},
             Err(e) => return Err(e),
         }
 
         // get the main func
-        let main_ref = match self.get_path(program.main.clone()) {
+        let main_path: SymbolPath = vec!["main".to_string(), "main".to_string()];
+        let main_ref = match self.get_path(main_path) {
             Ok(v) => v,
             Err(e) => return Err(e),
         };
@@ -46,40 +43,36 @@ impl<'a> GraphiteApi<'a>  {
         };
         drop(main_ref);
 
-        // verify that the number of inputs is correct
-        if main.input_vals.len() != program.inputs.len() {
-            return Err(format!("Number of inputs does not match number of inputs for function {:?}.", main));
-        }
-
-        // store the inputs
-        let mut input_refs = Vec::new();
-        for input in &program.inputs {
-            let input_ref = match self.vm.store_cc_data(input.0.clone()) {
-                Ok(v) => v[0].clone(),
-                Err(e) => return Err(e),
-            };
-            input_refs.push(input_ref);
-        }
-
         // call the main func
-        let result: Vec<ValueReference> = match self.vm.handle_call_function(&main, &input_refs) {
+        let result: Vec<ValueReference> = match self.vm.handle_call_function(&main, &vec![]) {
             Ok(v) => v,
             Err(e) => return Err(e),
         };
 
         // verify that the number of outputs is correct
-        if result.len() != program.outputs.len() {
-            return Err(format!("Expected {} outputs, but got {}", program.outputs.len(), result.len()));
+        if result.len() != main.output_vals.len() {
+            return Err(format!("Expected {} outputs, but got {}", main.output_vals.len(), result.len()));
         }
-
-        drop(main);
 
         // store the outputs
-        for (i, output) in program.outputs.iter().enumerate() {
+        let mut results: Vec<(Symbol, Option<Symbol>)> = vec![];
+
+        for (i, output_val_ptr) in main.output_vals.iter().enumerate() {
+            let output_val_ref = self.vm.value_ref_from_ptr(output_val_ptr.clone()).unwrap();
+            let output_val = match self.vm.get_ref_value(&output_val_ref) {
+                Ok(v) => match v {
+                    StoredData::FuncValStored(f) => f,
+                    _ => return Err("Output value is not a function value".to_string()),
+                }
+                Err(e) => return Err(e),
+            };
+
             let output_ref = result[i].clone();
-            self.symbol_table.insert(output.clone(), output_ref);
+            self.symbol_table.insert(output_val.guid.clone(), output_ref);
+
+            results.push((output_val.guid.clone(), output_val.symbol.clone()));
         }
 
-        return Ok(());
+        return Ok(results);
     }
 }

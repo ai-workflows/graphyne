@@ -1,8 +1,12 @@
 use crate::core::data::live::{PointerLive, StringLive};
+use crate::core::Symbol;
 
 /// Represents a value that exists within the scope of a function call.
 #[derive(Debug, Clone)]
 pub struct FuncVal {
+    /// The local symbol for this value.
+    pub symbol: Option<Symbol>,
+
     /// A globally unique identifier for this value.
     pub guid: StringLive,
 

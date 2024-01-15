@@ -103,7 +103,7 @@ impl VM {
             StoreOp::StoreList(_) => self.store_value(operation.get_stored_data().unwrap()),
             StoreOp::StoreDict(_) => self.store_value(operation.get_stored_data().unwrap()),
             StoreOp::StoreFunction(_, _, _) => self.store_value(operation.get_stored_data().unwrap()),
-            StoreOp::StoreFunctionVal(_, _ ,_) => self.store_value(operation.get_stored_data().unwrap()),
+            StoreOp::StoreFunctionVal(_, _ ,_, _) => self.store_value(operation.get_stored_data().unwrap()),
             StoreOp::StoreFunctionOp(_, _, _) => self.store_value(operation.get_stored_data().unwrap()),
             StoreOp::StoreFunctionGraph(func, class_context) => self.store_function(&func, class_context),
             StoreOp::CreateBuffer => self.store_value(StoredData::NullStored),

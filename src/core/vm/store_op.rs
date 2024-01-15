@@ -38,7 +38,8 @@ pub enum StoreOp<'a>  {
     /// dependents: list of refs to the func op nodes that depend on this func val.
     /// constant: an optional ref to a constant value that this func val is initialized to.
     /// is_self: whether this func val is a pointer to the function's class context.
-    StoreFunctionVal(Vec<&'a ValueReference<'a>>, Option<&'a ValueReference<'a>>, bool),
+    /// symbol: the local symbol for this value.
+    StoreFunctionVal(Vec<&'a ValueReference<'a>>, Option<&'a ValueReference<'a>>, bool, Option<Symbol>),
 
     /// Stores a literal function operation in memory.
     /// opcode: The opcode of the operation.
@@ -70,11 +71,12 @@ impl<'a> StoreOp<'a> {
                 output_vals: output_vals.iter().map(|v| v.pointer.clone()).collect(),
                 constant_vals: constants.iter().map(|v| v.pointer.clone()).collect(),
             })),
-            StoreOp::StoreFunctionVal(dependents, constant, is_self) => Some(StoredData::FuncValStored(FuncVal{
+            StoreOp::StoreFunctionVal(dependents, constant, is_self, symbol) => Some(StoredData::FuncValStored(FuncVal{
                 guid: uuid::Uuid::new_v4().to_string(),
                 dependents: dependents.iter().map(|v| v.pointer.clone()).collect(),
                 constant: constant.map(|v| v.pointer.clone()),
                 is_self,
+                symbol,
             })),
             StoreOp::StoreFunctionOp(op_code, input_vals, output_val) => Some(StoredData::FuncOpStored(FuncOp{
                 guid: uuid::Uuid::new_v4().to_string(),

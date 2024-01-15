@@ -1,4 +1,6 @@
 {
+  "constants": {},
+  "imports": {},
   "collections": {
     "my_collection": {
       "constants": {
@@ -53,8 +55,27 @@
       "imports": {}
     }
   },
-  "main": ["my_collection", "double_list"],
-  "inputs": [],
-  "outputs": ["doubled_list"]
+  "functions": {
+    "main": {
+      "name": "Main",
+      "description": "Main function",
+      "graph": {
+        "values": [
+          ["_my_collection", "my_collection"],
+          ["_double_list", "double_list"],
+          "my_collection",
+          "double_list_func",
+          "doubled_list"
+        ],
+        "ops": [
+          ["Get", ["self", "_my_collection"], "my_collection"],
+          ["Get", ["my_collection", "_double_list"], "double_list_func"],
+          ["Call", ["double_list_func"], "doubled_list"]
+        ],
+        "input_vals": [],
+        "output_vals": ["doubled_list"]
+      }
+    }
+  }
 }
 
