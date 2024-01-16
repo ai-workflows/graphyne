@@ -232,7 +232,12 @@ impl VM {
             });
 
             // Processing the result to queue dependent operations
-            if let Ok(_) = rx.recv() {
+            if let Ok(result) = rx.recv() {
+                match result {
+                    Ok(_) => (),
+                    Err(e) => return Err(format!("Error executing operation {}: {}", op.opcode, e))
+                }
+
                 for output_ptr in &op.output_vals {
                     let output_val = self.get_func_val(output_ptr)
                         .map_err(|msg| format!("Function cannot get output value for operation {}: {}", op.opcode, msg))?;

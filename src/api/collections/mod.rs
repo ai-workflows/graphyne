@@ -187,4 +187,88 @@ mod tests {
         // there should be 0 objects in the VM
         assert_eq!(vm.object_count(), 0);
     }
+
+    #[test]
+    fn test_literal_list() {
+        let vm: &mut VM = &mut VM::new(4);
+
+        {
+            let mut api = GraphiteApi { vm, symbol_table: HashMap::new() };
+
+            let json_collection = r#"{
+                "constants": {
+                    "two": 2
+                },
+                "functions": {
+                    "double": {
+                       "name": "Double",
+                       "description": "Doubles a number",
+                       "graph": {
+                            "values": [
+                                ["_two", "two"],
+                                "two",
+                                "num",
+                                "doubled"
+                            ],
+                            "ops": [
+                                ["Get", ["self", "_two"], "two"],
+                                ["Mul", ["num", "two"], "doubled"]
+                            ],
+                            "input_vals": ["num"],
+                            "output_vals": ["doubled"]
+                        }
+                    },
+                    "double_list": {
+                        "name": "Double List",
+                        "description": "Doubles a list of numbers",
+                        "graph": {
+                            "values": [
+                                "double_func",
+                                ["_double", "double"],
+                                ["my_list", [1, 2, 3]],
+                                "double_list"
+                            ],
+                            "ops": [
+                                ["Get", ["self", "_double"], "double_func"],
+                                ["Map", ["double_func", "my_list"], "double_list"]
+                            ],
+                            "input_vals": [],
+                            "output_vals": ["double_list"]
+                        }
+                    }
+                },
+                "collections": {},
+                "imports": {}
+            }"#;
+
+            let collection: Collection = match serde_json::from_str(json_collection) {
+                Ok(collection) => collection,
+                Err(e) => {
+                    println!("{}", e);
+                    panic!();
+                }
+            };
+
+            api.store_collection(collection, "my_collection".to_string()).unwrap();
+            api.execute(vec!["my_collection".to_string(), "double_list".to_string()], vec![], vec!["doubled_list".to_string()]).unwrap();
+
+            let result = api.get("doubled_list".to_string()).unwrap();
+            let result = result.as_live().as_list().unwrap().unwrap();
+
+            assert_eq!(result.len(), 3);
+            let my_list = vec![1, 2, 3];
+
+            for i in 0..result.len() {
+                let item = result.get(i).unwrap();
+                let item_ref = vm.value_ref_from_ptr(item.clone()).unwrap();
+                let item = vm.get_ref_value(&item_ref).unwrap();
+                let item = item.as_live().as_int().unwrap().unwrap();
+
+                assert_eq!(item, my_list[i] * 2);
+            }
+        }
+
+        // there should be 0 objects in the VM
+        assert_eq!(vm.object_count(), 0);
+    }
 }

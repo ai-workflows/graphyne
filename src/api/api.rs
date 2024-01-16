@@ -232,6 +232,7 @@ impl<'a> GraphiteApi<'a> {
             };
 
             // convert the function graph to a proper format by storing the constant values in memory
+            let mut func_constants: Vec<ValueReference> = vec![];
             let mut func_graph = FunctionGraph {
                 values: vec![],
                 ops: func.graph.ops,
@@ -251,7 +252,8 @@ impl<'a> GraphiteApi<'a> {
                         symbol: c_func_value_node.symbol,
                         constant: Some(stored_value),
                     };
-                    drop(stored_ref);
+                    // temporarily hold on to the the ref to prevent child pointers from being dropped
+                    func_constants.push(stored_ref);
                 } else {
                     graph = FunctionValueNode {
                         symbol: c_func_value_node.symbol,
@@ -266,6 +268,9 @@ impl<'a> GraphiteApi<'a> {
                 Ok(result) => result[0].clone(),
                 Err(err) => return Err(format!("Error storing function {} for collection {}: {}", symbol, symbol, err))
             };
+
+            // should now be ok to drop the constant refs
+            drop(func_constants);
 
             // get the stored data for the function graph
             let func_stored = match self.vm.get_ref_value(&func_ref) {

@@ -24,7 +24,7 @@ impl LiveData for DictLive {
 
         return Some(match self.get(&key) {
             Some(ptr) => Ok(StoredData::PointerStored(ptr.clone())),
-            None => Err("Key not found".to_string()),
+            None => Err(format!("Key {} not found", key)),
         })
     }
 
