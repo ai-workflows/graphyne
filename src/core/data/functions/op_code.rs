@@ -34,6 +34,8 @@ pub enum OpCode {
     LessThan,
     #[serde(alias="greater_than", alias="greaterThan", alias="GreaterThan", alias="GREATERTHAN", alias="GREATER_THAN")]
     GreaterThan,
+    #[serde(alias="is_null", alias="isNull", alias="IsNull", alias="ISNULL", alias="IS_NULL")]
+    IsNull,
     #[serde(alias="length", alias="Length", alias="LENGTH")]
     Length,
     #[serde(alias="get", alias="Get", alias="GET")]
@@ -84,6 +86,7 @@ impl OpCode {
             OpCode::Equal => Operation::Equal(args[0], args[1]),
             OpCode::LessThan => Operation::LessThan(args[0], args[1]),
             OpCode::GreaterThan => Operation::GreaterThan(args[0], args[1]),
+            OpCode::IsNull => Operation::IsNull(args[0]),
             OpCode::Length => Operation::Length(args[0]),
             OpCode::Get => Operation::GetItem(args[0], args[1]),
             OpCode::Set => Operation::SetItem(args[0], args[1], args[2]),
@@ -120,6 +123,7 @@ impl fmt::Display for OpCode {
             OpCode::Equal => write!(f, "equal"),
             OpCode::LessThan => write!(f, "less_than"),
             OpCode::GreaterThan => write!(f, "greater_than"),
+            OpCode::IsNull => write!(f, "is_null"),
             OpCode::Length => write!(f, "length"),
             OpCode::Get => write!(f, "get_item"),
             OpCode::Set => write!(f, "set_item"),

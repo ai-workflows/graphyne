@@ -1,4 +1,4 @@
-use crate::core::data::live::{FloatLive, IntLive, LiveData};
+use crate::core::data::live::{BoolLive, FloatLive, IntLive, LiveData};
 use crate::core::{ExecResult, Type};
 use crate::core::data::stored::StoredData;
 macro_rules! checked_arithmetic_int_op {
@@ -35,9 +35,14 @@ impl LiveData for IntLive {
         Some(Ok(self.clone() as FloatLive))
     }
 
+    fn is_null(&self) -> Option<ExecResult<BoolLive>> {
+        Some(Ok(BoolLive::from(false)))
+    }
+
     fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
             StoredData::IntStored(rhs) => Some(Ok(StoredData::BoolStored(self.clone() == *rhs))),
+            StoredData::NullStored => self.is_null().map(|r| Ok(StoredData::BoolStored(r?))),
             _ => {
                 let cast_result: Option<ExecResult<IntLive>> = rhs.as_live().as_int();
 
@@ -133,9 +138,14 @@ impl LiveData for FloatLive {
         Some(Ok(self.clone()))
     }
 
+    fn is_null(&self) -> Option<ExecResult<BoolLive>> {
+        Some(Ok(BoolLive::from(false)))
+    }
+
     fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
             StoredData::FloatStored(rhs) => Some(Ok(StoredData::BoolStored(self.clone() == *rhs))),
+            StoredData::NullStored => self.is_null().map(|r| Ok(StoredData::BoolStored(r?))),
             _ => {
                 let cast_result: Option<ExecResult<FloatLive>> = rhs.as_live().as_float();
 

@@ -99,35 +99,35 @@ impl<'de> Deserialize<'de> for CCData {
         struct CCDataVisitor;
 
         impl<'de> serde::de::Visitor<'de> for CCDataVisitor {
-            type Value = CCData;
+            type Value = Option<CCData>;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str("a CCData")
             }
 
             fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E> where E: serde::de::Error {
-                Ok(CCData::Bool(value.into()))
+                Ok(Some(CCData::Bool(value.into())))
             }
 
             fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E> where E: serde::de::Error {
-                Ok(CCData::Int(value.into()))
+                Ok(Some(CCData::Int(value.into())))
             }
 
             fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> where E: serde::de::Error {
-                Ok(CCData::Int(value as i64))
+                Ok(Some(CCData::Int(value as i64)))
             }
 
             fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E> where E: serde::de::Error {
                 // check if the float is an integer
                 if value.fract() == 0.0 {
-                    Ok(CCData::Int(value as i64))
+                    Ok(Some(CCData::Int(value as i64)))
                 } else {
-                    Ok(CCData::Float(value.into()))
+                    Ok(Some(CCData::Float(value.into())))
                 }
             }
 
             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E> where E: serde::de::Error {
-                Ok(CCData::String(value.into()))
+                Ok(Some(CCData::String(value.into())))
             }
 
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: serde::de::SeqAccess<'de> {
@@ -137,7 +137,7 @@ impl<'de> Deserialize<'de> for CCData {
                     list.push(elem);
                 }
 
-                Ok(CCData::List(list))
+                Ok(Some(CCData::List(list)))
             }
 
             fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error> where A: serde::de::MapAccess<'de> {
@@ -147,13 +147,28 @@ impl<'de> Deserialize<'de> for CCData {
                     dict.insert(key, value);
                 }
 
-                Ok(CCData::Dict(dict))
+                Ok(Some(CCData::Dict(dict)))
+            }
+
+            fn visit_none<E>(self) -> Result<Self::Value, E> where E: serde::de::Error {
+                Ok(Some(CCData::Null))
             }
         }
 
-        deserializer.deserialize_any(CCDataVisitor)
+        match deserializer.deserialize_any(CCDataVisitor) {
+            Ok(Some(data)) => Ok(data),
+            Ok(None) => Ok(CCData::Null),
+            Err(err) => {
+                if err.to_string().starts_with("invalid type: null") {
+                    Ok(CCData::Null)
+                } else {
+                    Err(err)
+                }
+            }
+        }
     }
 }
+
 
 impl<'de> Deserialize<'de> for CollectionConst {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: serde::Deserializer<'de> {

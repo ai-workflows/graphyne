@@ -1,4 +1,4 @@
-use crate::core::data::live::{FloatLive, IntLive, LiveData, StringLive};
+use crate::core::data::live::{BoolLive, FloatLive, IntLive, LiveData, StringLive};
 use crate::core::{ExecResult, Type};
 use crate::core::data::stored::StoredData;
 
@@ -18,9 +18,14 @@ impl LiveData for StringLive {
         Some(Ok(self.clone()))
     }
 
+    fn is_null(&self) -> Option<ExecResult<BoolLive>> {
+        Some(Ok(BoolLive::from(false)))
+    }
+
     fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
             StoredData::StringStored(rhs) => Some(Ok(StoredData::BoolStored(*self == *rhs))),
+            StoredData::NullStored => self.is_null().map(|r| Ok(StoredData::BoolStored(r?))),
             _ => {
                 let cast_result: Option<ExecResult<StringLive>> = rhs.as_live().as_string();
 

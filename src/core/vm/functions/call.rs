@@ -186,6 +186,14 @@ impl VM {
             let output_val = self.get_func_val(output_ptr)
                 .map_err(|msg| format!("Function cannot get output value for operation {}: {}", op.opcode, msg))?;
 
+            // make sure the output is not already in the context
+            if context.contains_key(&output_val.guid) {
+                return Err(format!("Function cannot overwrite output value {:?} in context", match output_val.symbol {
+                    Some(ref symbol) => symbol.clone(),
+                    None => output_val.guid.clone()
+                }));
+            }
+
             // store the output in the context
             context.insert(output_val.guid.clone(), result_val_ref.clone());
         }

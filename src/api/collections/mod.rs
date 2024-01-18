@@ -226,7 +226,8 @@ mod tests {
                                 "double_func",
                                 ["_double", "double"],
                                 ["my_list", [1, 2, 3]],
-                                "double_list"
+                                "double_list",
+                                ["null", null]
                             ],
                             "ops": [
                                 ["Get", ["self", "_double"], "double_func"],
@@ -240,6 +241,8 @@ mod tests {
                 "collections": {},
                 "imports": {}
             }"#;
+
+
 
             let collection: Collection = match serde_json::from_str(json_collection) {
                 Ok(collection) => collection,

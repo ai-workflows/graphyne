@@ -138,6 +138,7 @@ impl VM {
             Operation::Equal(lhs, rhs) => self.execute_equal(lhs, rhs),
             Operation::LessThan(lhs, rhs) => self.execute_less_than(lhs, rhs),
             Operation::GreaterThan(lhs, rhs) => self.execute_greater_than(lhs, rhs),
+            Operation::IsNull(arg) => self.execute_is_null(arg),
             Operation::Call(func, args) => self.execute_call(func, args),
             Operation::Map(func, list) => self.map(func, list),
             Operation::Reduce(func, list, initial) => self.handle_reduce(func, list, initial),
@@ -362,6 +363,14 @@ impl VM {
 
     fn execute_greater_than(&self, lhs: &ValueReference, rhs: &ValueReference) -> ExecResult<Vec<ValueReference>> {
         execute_two_arg_op!(self, op_gt, lhs, rhs)
+    }
+
+    fn execute_is_null(&self, arg: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        let arg_value: StoredData = self.get_ref_value(arg).map_err(|msg| msg)?;
+
+        arg_value.clone().as_live().is_null().map_or_else(
+            || self.handle_op_null_result(arg_value, stringify!($op)),
+            |result| self.handle_op_result(result.map(|value| StoredData::BoolStored(value))))
     }
 
     fn execute_length(&self, list: &ValueReference) -> ExecResult<Vec<ValueReference>> {

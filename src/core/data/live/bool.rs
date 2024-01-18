@@ -12,6 +12,10 @@ impl LiveData for BoolLive {
         Some(Ok(self.clone()))
     }
 
+    fn is_null(&self) -> Option<ExecResult<BoolLive>> {
+        Some(Ok(BoolLive::from(false)))
+    }
+
     fn op_if(&self, then: &StoredData, otherwise: &StoredData) -> Option<ExecResult<StoredData>> {
         if *self {
             Some(Ok(then.clone()))
@@ -53,6 +57,7 @@ impl LiveData for BoolLive {
     fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
             StoredData::BoolStored(rhs) => Some(Ok(StoredData::BoolStored(*self == *rhs))),
+            StoredData::NullStored => self.is_null().map(|r| Ok(StoredData::BoolStored(r?))),
             _ => {
                 let cast_result: Option<ExecResult<BoolLive>> = rhs.as_live().as_bool();
 

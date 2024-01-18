@@ -16,6 +16,7 @@ pub enum CCData {
     Bool(BoolLive),
     List(Vec<CCData>),
     Dict(HashMap<Symbol, CCData>),
+    Null
 }
 
 /// A constant value stored in a collection.
@@ -119,8 +120,8 @@ impl VM {
                 let item_refs: HashMap<String, &ValueReference> = item_refs.iter().map(|(k, v)| (k.clone(), v)).collect();
 
                 self.execute_store(StoreOp::StoreDict(item_refs))
-
             }
+            CCData::Null => self.execute_store(StoreOp::CreateBuffer),
         }
     }
 }

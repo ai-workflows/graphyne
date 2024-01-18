@@ -12,4 +12,5 @@ pub enum Type {
     Function,
     FunctionVal,
     FunctionOp,
+    Null,
 }

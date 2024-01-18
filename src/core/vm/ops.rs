@@ -52,6 +52,9 @@ pub enum Operation<'a> {
     /// Returns true if the first value is greater than the second value.
     GreaterThan(&'a ValueReference<'a>, &'a ValueReference<'a>),
 
+    /// Returns true if the value is null.
+    IsNull(&'a ValueReference<'a>),
+
     /// Gets the length of a collection.
     Length(&'a ValueReference<'a>),
 

@@ -5,6 +5,7 @@ use crate::core::data::stored::StoredData;
 use crate::core::gc::GCPointer;
 
 /// Live data types. These are interoperable with rust types and can be used to perform operations.
+pub type NullLive = ();
 pub type IntLive = i64;
 pub type FloatLive = f64;
 pub type StringLive = String;
@@ -38,6 +39,7 @@ pub trait LiveData {
             Type::Function => "function",
             Type::FunctionVal => "function-val",
             Type::FunctionOp => "function-op",
+            Type::Null => "null",
         }.to_string())
     }
 
@@ -54,6 +56,7 @@ pub trait LiveData {
     fn as_func(&self) -> Option<ExecResult<FuncLive>> {None}
     fn as_func_val(&self) -> Option<ExecResult<FuncValLive>> {None}
     fn as_func_op(&self) -> Option<ExecResult<FuncOpLive>> {None}
+    fn as_null(&self) -> Option<ExecResult<NullLive>> {None}
 
     /// Boolean operations
     fn op_if(&self, then: &StoredData, otherwise: &StoredData) -> Option<ExecResult<StoredData>> {None}
@@ -65,6 +68,7 @@ pub trait LiveData {
     fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
     fn op_lt(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
     fn op_gt(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {None}
+    fn is_null(&self) -> Option<ExecResult<BoolLive>> {None}
 
 
     /// Collection operations
