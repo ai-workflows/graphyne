@@ -7,6 +7,9 @@ pub(crate) mod dict;
 pub(crate) mod bool;
 pub(crate) mod func;
 mod null;
+pub mod types;
+mod object;
+mod helpers;
 
 
-pub(crate) use live_data::{LiveData, NullLive, IntLive, FloatLive, StringLive, PointerLive, ListLive, DictLive, BoolLive, FuncLive, FuncOpLive, FuncValLive};
+pub(crate) use live_data::{BoolLive, DictLive, FloatLive, FuncLive, FuncOpLive, FuncValLive, IntLive, ListLive, LiveData, NullLive, PointerLive, StringLive};

@@ -1,5 +1,8 @@
-use crate::core::data::live::{BoolLive, FloatLive, IntLive, LiveData};
+use std::collections::HashMap;
+use crate::core::data::live::{BoolLive, FloatLive, IntLive, LiveData, PointerLive};
 use crate::core::{ExecResult, Type};
+use crate::core::data::live::helpers::type_of_helper;
+use crate::core::data::live::live_data::TypeLive;
 use crate::core::data::stored::StoredData;
 macro_rules! checked_arithmetic_int_op {
     ($self:ident, $rhs:ident, $op:tt, $op_name:ident) => {
@@ -23,8 +26,8 @@ macro_rules! checked_arithmetic_int_op {
 }
 
 impl LiveData for IntLive {
-    fn type_tag(&self) -> Type {
-        Type::Integer
+    fn type_of(&self, type_map: &HashMap<TypeLive, usize>) -> Option<ExecResult<PointerLive>> {
+        type_of_helper(&TypeLive::Integer, &type_map)
     }
 
     fn as_int(&self) -> Option<ExecResult<IntLive>> {
@@ -126,8 +129,8 @@ macro_rules! checked_arithmetic_float_op {
 }
 
 impl LiveData for FloatLive {
-    fn type_tag(&self) -> Type {
-        Type::Float
+    fn type_of(&self, type_map: &HashMap<TypeLive, usize>) -> Option<ExecResult<PointerLive>> {
+        type_of_helper(&TypeLive::Float, &type_map)
     }
 
     fn as_int(&self) -> Option<ExecResult<IntLive>> {

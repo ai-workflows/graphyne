@@ -1,10 +1,13 @@
-use crate::core::data::live::{BoolLive, FuncLive, FuncOpLive, FuncValLive, LiveData};
+use std::collections::HashMap;
+use crate::core::data::live::{BoolLive, FuncLive, FuncOpLive, FuncValLive, LiveData, PointerLive};
 use crate::core::{ExecResult, Type};
+use crate::core::data::live::helpers::type_of_helper;
+use crate::core::data::live::live_data::TypeLive;
 use crate::core::data::stored::StoredData;
 
 impl LiveData for FuncLive {
-    fn type_tag(&self) -> Type {
-        Type::Function
+    fn type_of(&self, type_map: &HashMap<TypeLive, usize>) -> Option<ExecResult<PointerLive>> {
+        type_of_helper(&TypeLive::Function, &type_map)
     }
 
     fn as_func(&self) -> Option<ExecResult<FuncLive>> {
@@ -24,8 +27,8 @@ impl LiveData for FuncLive {
 }
 
 impl LiveData for FuncValLive {
-    fn type_tag(&self) -> Type {
-        Type::FunctionVal
+    fn type_of(&self, type_map: &HashMap<TypeLive, usize>) -> Option<ExecResult<PointerLive>> {
+        type_of_helper(&TypeLive::FunctionVal, &type_map)
     }
 
     fn as_func_val(&self) -> Option<ExecResult<FuncValLive>> {
@@ -45,8 +48,8 @@ impl LiveData for FuncValLive {
 }
 
 impl LiveData for FuncOpLive {
-    fn type_tag(&self) -> Type {
-        Type::FunctionOp
+    fn type_of(&self, type_map: &HashMap<TypeLive, usize>) -> Option<ExecResult<PointerLive>> {
+        type_of_helper(&TypeLive::FunctionOp, &type_map)
     }
 
     fn as_func_op(&self) -> Option<ExecResult<FuncOpLive>> {

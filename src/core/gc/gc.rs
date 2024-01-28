@@ -181,7 +181,7 @@ impl<T> GarbageCollector<T> where T: GarbageCollectable<T> {
 
         // Get the object that the pointer points to.
         let obj_result = self.get_obj(ptr.id);
-        let obj = match obj_result {
+        let obj: &GCObject<T> = match obj_result {
             Some(obj) => obj,
             None => return Err(format!("Pointer (id: {}) does not point to a valid object.", ptr.id)),
         };

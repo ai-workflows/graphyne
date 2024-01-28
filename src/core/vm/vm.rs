@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use crate::core::data::live::{LiveData, StringLive};
+use crate::core::data::live::{LiveData, PointerLive, StringLive};
+use crate::core::data::live::live_data::TypeLive;
 use crate::core::data::stored::StoredData;
 use crate::core::ExecResult;
 use crate::core::gc::{GarbageCollector, GCPointer};
@@ -14,8 +16,11 @@ macro_rules! execute_cast_op {
 
             arg_value.clone().as_live().$cast_fn().map_or_else(
                 || {
-                    let arg_type: StringLive = arg_value.as_live().type_code().unwrap_or_else(|_| "unknown".to_string());
-                    Err(format!("Cannot cast {} to target type, operation not supported", arg_type))
+                    let arg_type: TypeLive = match $self.get_stored_type(&arg_value) {
+                        Ok(type_live) => type_live,
+                        Err(msg) => return Err(format!("Cannot cast value to target type with {} (failed to get type of operand: {}) ", stringify!($cast_fn), msg))
+                    };
+                    Err(format!("Cannot cast {} to target type with {}, operation not supported", arg_type.get_name(), stringify!($cast_fn)))
                 },
                 |result| {
                     let result_value = result?;
@@ -69,28 +74,83 @@ macro_rules! execute_three_arg_op {
     };
 }
 
+macro_rules! allocate_primitive_type {
+    ($state:ident, $primitive_types:ident, $type:path) => {
+        match $state.allocate(StoredData::TypeStored($type)) {
+            Ok(ptr) => $primitive_types.insert($type, ptr.id),
+            Err(msg) => return Err(msg),
+        };
+    };
+}
+
 #[derive(Debug)]
 pub struct VM {
     pub state: Arc<RwLock<GarbageCollector<StoredData>>>,
     pub thread_pool: rayon::ThreadPool,
+    pub primitive_types: HashMap<TypeLive, usize>,
 }
 
 impl VM {
+    fn allocate_primitive_types(state: &mut GarbageCollector<StoredData>) -> ExecResult<HashMap<TypeLive, usize>> {
+        let mut primitive_types: HashMap<TypeLive, usize> = HashMap::new();
+
+        allocate_primitive_type!(state, primitive_types, TypeLive::Integer);
+        allocate_primitive_type!(state, primitive_types, TypeLive::Float);
+        allocate_primitive_type!(state, primitive_types, TypeLive::String);
+        allocate_primitive_type!(state, primitive_types, TypeLive::Boolean);
+        allocate_primitive_type!(state, primitive_types, TypeLive::Pointer);
+        allocate_primitive_type!(state, primitive_types, TypeLive::List);
+        allocate_primitive_type!(state, primitive_types, TypeLive::Dictionary);
+        allocate_primitive_type!(state, primitive_types, TypeLive::Function);
+        allocate_primitive_type!(state, primitive_types, TypeLive::FunctionVal);
+        allocate_primitive_type!(state, primitive_types, TypeLive::FunctionOp);
+        allocate_primitive_type!(state, primitive_types, TypeLive::Null);
+        allocate_primitive_type!(state, primitive_types, TypeLive::Type);
+        allocate_primitive_type!(state, primitive_types, TypeLive::Dynamic);
+
+        Ok(primitive_types)
+    }
+
     pub fn new(num_threads: usize) -> Self {
+        let mut state = GarbageCollector::new();
+
+        // load in the primitive types
+        let primitive_types = match VM::allocate_primitive_types(&mut state) {
+            Ok(types) => types,
+            Err(msg) => panic!("Could not allocate primitive types: {}", msg),
+        };
+
         VM {
-            state: Arc::new(RwLock::new(GarbageCollector::new())),
+            state: Arc::new(RwLock::new(state)),
             thread_pool: rayon::ThreadPoolBuilder::new().num_threads(num_threads).build().unwrap(),
+            primitive_types,
         }
     }
 
     /// Reset the VM state, clearing all stored data
     pub fn reset(&mut self) {
         self.state.write().unwrap().clear();
+
+        // load in the primitive types
+        self.primitive_types = match VM::allocate_primitive_types(&mut self.state.write().unwrap()) {
+            Ok(types) => types,
+            Err(msg) => panic!("Could not allocate primitive types: {}", msg),
+        };
     }
 
-    /// Returns the number of objects currently stored in the VM
+    /// Returns the number of objects currently stored in the VM excluding primitive types
     pub fn object_count(&self) -> usize {
+        self.state.read().unwrap().len() - self.primitive_types.len()
+    }
+
+    /// Returns the number of objects currently stored in the VM including primitive types
+    pub fn object_count_full(&self) -> usize {
         self.state.read().unwrap().len()
+    }
+
+    /// Gets the object count of a newly initialized VM (only contains primitive types)
+    pub fn initial_count(&self) -> usize {
+        self.primitive_types.len()
     }
 
     pub fn execute_store(&self, operation: StoreOp) -> ExecResult<Vec<ValueReference>> {
@@ -113,12 +173,14 @@ impl VM {
     pub fn execute_op(&self, operation: Operation) -> ExecResult<Vec<ValueReference>> {
         match operation {
             Operation::SetBuffer(buffer, value) => self.execute_fill_buffer(buffer, value),
+            Operation::TypeOf(arg) => self.execute_type_of(arg),
             Operation::AsInt(arg) => self.execute_as_int(arg),
             Operation::AsFloat(arg) => self.execute_as_float(arg),
             Operation::AsString(arg) => self.execute_as_string(arg),
             Operation::AsPointer(arg) => self.execute_as_pointer(arg),
             Operation::AsList(arg) => self.execute_as_list(arg),
             Operation::AsDictionary(arg) => self.execute_as_dict(arg),
+            Operation::AsType(arg) => self.execute_as_type(arg),
             Operation::Add(lhs, rhs) => self.execute_add(lhs, rhs),
             Operation::Sub(lhs, rhs) => self.execute_sub(lhs, rhs),
             Operation::Mul(lhs, rhs) => self.execute_mul(lhs, rhs),
@@ -270,8 +332,12 @@ impl VM {
     }
 
     fn handle_op_null_result(&self, operand: StoredData, op: &str) -> ExecResult<Vec<ValueReference>> {
-        let arg_type: StringLive = operand.as_live().type_code().unwrap_or_else(|_| "unknown".to_string());
-        Err(format!("Cannot execute {} on type {}, operation not supported", op, arg_type))
+        let operand_type: TypeLive = match self.get_stored_type(&operand) {
+            Ok(type_live) => type_live,
+            Err(msg) => return Err(format!("Cannot execute operation {} on unknown type (failed to get type of operand: {}) ", op, msg))
+        };
+
+        Err(format!("Cannot execute {} on type {}, operation not supported", op, operand_type.get_name()))
     }
 
     fn handle_op_result(&self, result: ExecResult<StoredData>) -> ExecResult<Vec<ValueReference>> {
@@ -282,6 +348,47 @@ impl VM {
             Ok(result) => self.store_value(result),
             Err(msg) => Err(msg)
         }
+    }
+
+    /// Gets a pointer to the type of stored data.
+    fn get_stored_type_ptr(&self, arg: &StoredData) -> ExecResult<PointerLive> {
+        return match arg.as_live().type_of(&self.primitive_types) {
+            Some(Ok(ptr)) => Ok(ptr),
+            Some(Err(msg)) => return Err(format!("Could not get type of argument: {}", msg)),
+            None => Err("Operation type_of not supported for this value".to_string()),
+        };
+    }
+
+    /// Gets the live type of stored data.
+    pub fn get_stored_type(&self, arg: &StoredData) -> ExecResult<TypeLive> {
+        let type_ptr = match self.get_stored_type_ptr(arg) {
+            Ok(ptr) => ptr,
+            Err(msg) => return Err(msg),
+        };
+
+        let type_ref = match self.value_ref_from_ptr(type_ptr) {
+            Ok(type_ref) => type_ref,
+            Err(msg) => return Err(msg),
+        };
+
+        let type_value = match self.get_ref_value(&type_ref) {
+            Ok(type_value) => type_value,
+            Err(msg) => return Err(msg),
+        };
+
+        return match type_value {
+            StoredData::TypeStored(type_live) => Ok(type_live),
+            _ => Err("Could not get type of argument, type is a non-type value".to_string()),
+        };
+    }
+
+    /// Gets the type of the arg and returns a reference to it.
+    fn execute_type_of(&self, arg: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        let arg_value: StoredData = self.get_ref_value(arg).map_err(|msg| msg)?;
+
+        let res: ExecResult<PointerLive> = self.get_stored_type_ptr(&arg_value);
+
+        self.handle_op_result(res.map(|ptr| StoredData::PointerStored(ptr)))
     }
 
     fn execute_as_int(&self, arg: &ValueReference) -> ExecResult<Vec<ValueReference>> {
@@ -311,6 +418,10 @@ impl VM {
 
     fn execute_as_dict(&self, arg: &ValueReference) -> ExecResult<Vec<ValueReference>> {
         execute_cast_op!(self, arg, as_dict, StoredData::DictStored)
+    }
+
+    fn execute_as_type(&self, arg: &ValueReference) -> ExecResult<Vec<ValueReference>> {
+        execute_cast_op!(self, arg, as_type, StoredData::TypeStored)
     }
 
     fn execute_add(&self, lhs: &ValueReference, rhs: &ValueReference) -> ExecResult<Vec<ValueReference>> {
@@ -378,8 +489,11 @@ impl VM {
 
         list_value.clone().as_live().op_len().map_or_else(
             || {
-                let arg_type: StringLive = list_value.as_live().type_code().unwrap_or_else(|_| "unknown".to_string());
-                Err(format!("Cannot execute op_len on type {}, operation not supported", arg_type))
+                let arg_type = match self.get_stored_type(&list_value) {
+                    Ok(type_live) => type_live,
+                    Err(msg) => return Err(format!("Cannot execute operation {} on unknown type (failed to get type of operand: {}) ", stringify!($op), msg))
+                };
+                Err(format!("Cannot execute op_len on type {}, operation not supported", arg_type.get_name()))
             },
             |result| {
                 let result_value = result?;

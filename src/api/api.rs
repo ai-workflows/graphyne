@@ -6,6 +6,7 @@ use crate::api::interface::{VmInterface};
 use crate::core::data::live::{LiveData, IntLive, FloatLive, StringLive, BoolLive, PointerLive};
 use crate::core::data::stored::StoredData;
 use crate::core::{ExecResult, Symbol, SymbolPath};
+use crate::core::data::live::live_data::TypeLive;
 use crate::core::data::stored::StoredData::DictStored;
 use crate::core::vm::ops::Operation;
 use crate::core::vm::store_op::StoreOp;
@@ -399,6 +400,34 @@ impl<'a> GraphiteApi<'a> {
 
                 serde_json::to_string(&map).unwrap_or_else(|_| "null".to_string())
             }
+            StoredData::TypeStored(val) => {
+                return match val {
+                    TypeLive::Custom(name, guid, fields) => {
+                        let mut map = HashMap::new();
+
+                        map.insert("name".to_string(), self.jsonify(&StoredData::StringStored(name.clone())));
+                        map.insert("guid".to_string(), self.jsonify(&StoredData::StringStored(guid.clone())));
+
+                        let mut fields_map: HashMap<String, PointerLive> = HashMap::new();
+
+                        for (field_name, field_type_ptr) in fields {
+                            fields_map.insert(field_name.clone(), field_type_ptr.clone());
+                        }
+
+                        map.insert("fields".to_string(), self.jsonify(&StoredData::DictStored(fields_map)));
+
+                        serde_json::to_string(&map).unwrap_or_else(|_| "null".to_string())
+                    },
+                    _ => val.get_name()
+                };
+            },
+            StoredData::ObjectStored(val) => {
+                let mut map = HashMap::new();
+
+                map.insert("type".to_string(), self.jsonify(&StoredData::PointerStored(val.type_ptr.clone())));
+                map.insert("data".to_string(), self.jsonify(&StoredData::DictStored(val.fields.clone())));
+
+                serde_json::to_string(&map).unwrap_or_else(|_| "null".to_string())}
         }
     }
 }

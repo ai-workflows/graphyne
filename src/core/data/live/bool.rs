@@ -1,11 +1,13 @@
-use crate::core::data::live::live_data::BoolLive;
-use crate::core::data::live::LiveData;
-use crate::core::{ExecResult, Type};
+use std::collections::HashMap;
+use crate::core::data::live::live_data::{BoolLive, TypeLive};
+use crate::core::data::live::{LiveData, PointerLive};
+use crate::core::{ExecResult};
+use crate::core::data::live::helpers::type_of_helper;
 use crate::core::data::stored::StoredData;
 
 impl LiveData for BoolLive {
-    fn type_tag(&self) -> Type {
-        Type::Boolean
+    fn type_of(&self, type_map: &HashMap<TypeLive, usize>) -> Option<ExecResult<PointerLive>> {
+        type_of_helper(&TypeLive::Boolean, &type_map)
     }
 
     fn as_bool(&self) -> Option<ExecResult<BoolLive>> {

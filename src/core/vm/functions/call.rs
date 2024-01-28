@@ -18,8 +18,11 @@ impl VM {
         let func_val = match val {
             StoredData::FuncValStored(func_val) => func_val,
             _ => {
-                let type_code = val.type_code()?;
-                return Err(format!("Expected func val but got type: {}", type_code));
+                return match self.get_stored_type(&val) {
+                    Ok(val_type) => Err(format!("Expected func val but got type: {}", val_type.get_name())),
+                    Err(msg) => Err(format!("Expected func val but got unknown type (failed to get type: {})", msg))
+                };
+                ;
             }
         };
         Ok(func_val)

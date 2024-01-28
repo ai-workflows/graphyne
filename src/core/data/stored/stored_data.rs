@@ -1,5 +1,5 @@
 use crate::core::data::live::{FloatLive, IntLive, StringLive, ListLive, PointerLive, DictLive, FuncLive, FuncValLive, FuncOpLive};
-use crate::core::data::live::live_data::BoolLive;
+use crate::core::data::live::live_data::{BoolLive, ObjectLive, TypeLive};
 use crate::core::gc::GCPointer;
 
 /// Represents data that is currently being stored in memory.
@@ -17,6 +17,8 @@ pub enum StoredData {
     FuncStored(FuncLive),
     FuncValStored(FuncValLive),
     FuncOpStored(FuncOpLive),
+    TypeStored(TypeLive),
+    ObjectStored(ObjectLive),
 }
 
 // Convert from live data to stored data.

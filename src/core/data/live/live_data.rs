@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use crate::core::{ExecResult, Type};
 use crate::core::data::functions::{FuncOp, FuncSig, FuncVal};
+use crate::core::data::live::object::Object;
 use crate::core::data::stored::StoredData;
 use crate::core::gc::GCPointer;
 
@@ -13,6 +14,8 @@ pub type BoolLive = bool;
 pub type PointerLive = GCPointer<StoredData>;
 pub type ListLive = Vec<GCPointer<StoredData>>;
 pub type DictLive = HashMap<StringLive, GCPointer<StoredData>>;
+pub type TypeLive = Type;
+pub type ObjectLive = Object;
 
 // Live function types
 pub type FuncLive = FuncSig;
@@ -23,27 +26,10 @@ pub type FuncOpLive = FuncOp;
 /// Represents data that is currently usable for performing operations.
 #[allow(unused_variables)]
 pub trait LiveData {
-    /// Returns the "language" type of this data.
-    fn type_tag(&self) -> Type;
-
-    /// Returns the "language" type code of this data.
-    fn type_code(&self) -> ExecResult<StringLive> {
-        Ok(match self.type_tag() {
-            Type::Integer => "int",
-            Type::Float => "float",
-            Type::String => "string",
-            Type::Pointer => "pointer",
-            Type::List => "list",
-            Type::Dictionary => "dict",
-            Type::Boolean => "bool",
-            Type::Function => "function",
-            Type::FunctionVal => "function-val",
-            Type::FunctionOp => "function-op",
-            Type::Null => "null",
-        }.to_string())
-    }
-
     /// Operations return None if they are not Implemented
+
+    /// Returns a pointer to the type of this data. Requires passing a type map.
+    fn type_of(&self, type_map: &HashMap<TypeLive, usize>) -> Option<ExecResult<PointerLive>> {None}
 
     /// Type conversions for this data. Converts this to another live data type.
     fn as_int(&self) -> Option<ExecResult<IntLive>> {None}
@@ -57,6 +43,9 @@ pub trait LiveData {
     fn as_func_val(&self) -> Option<ExecResult<FuncValLive>> {None}
     fn as_func_op(&self) -> Option<ExecResult<FuncOpLive>> {None}
     fn as_null(&self) -> Option<ExecResult<NullLive>> {None}
+    fn as_type(&self) -> Option<ExecResult<TypeLive>> {None}
+    fn as_object(&self) -> Option<ExecResult<ObjectLive>> {None}
+
 
     /// Boolean operations
     fn op_if(&self, then: &StoredData, otherwise: &StoredData) -> Option<ExecResult<StoredData>> {None}
