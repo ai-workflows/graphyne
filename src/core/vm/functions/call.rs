@@ -1,10 +1,12 @@
-use std::collections::{HashMap};
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock, RwLockReadGuard};
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{channel, Sender};
 use crossbeam::queue::SegQueue;
 use crate::core::data::live::{LiveData, FuncLive, FuncOpLive, FuncValLive, PointerLive};
 use crate::core::data::stored::StoredData;
 use crate::core::{ExecResult, Symbol};
+use crate::core::data::functions::OpCode;
+use crate::core::vm::ops::Operation;
 use crate::core::vm::value_ref::ValueReference;
 use crate::core::vm::VM;
 
@@ -281,11 +283,19 @@ impl VM {
             .collect()
     }
 
-    /// Handles the call of a function.
-    pub fn handle_call_function<'a>(&'a self, func: &FuncLive, args: &[ValueReference<'a>]) -> ExecResult<Vec<ValueReference<'a>>> {
+    fn validate_func_inputs(&self, func: &FuncLive, args: &[ValueReference]) -> ExecResult<()> {
         // Check if the function has the right number of args
         if func.input_vals.len() != args.len() {
             return Err(format!("Function expected {} arguments, but got {}", func.input_vals.len(), args.len()));
+        }
+        Ok(())
+    }
+
+    /// Handles the call of a function.
+    pub fn handle_call_function<'a>(&'a self, func: &FuncLive, args: &[ValueReference<'a>]) -> ExecResult<Vec<ValueReference<'a>>> {
+        match self.validate_func_inputs(func, args) {
+            Ok(_) => (),
+            Err(msg) => return Err(format!("Function call failed: {}", msg))
         }
 
         let context: Arc<RwLock<HashMap<Symbol, ValueReference>>> = Arc::new(RwLock::new(HashMap::new()));
@@ -298,5 +308,238 @@ impl VM {
         self.manage_op_queue(op_queue, context.clone())?;
 
         self.get_func_call_outputs(func, context)
+    }
+
+    // Version of try_execute_fn_op that returns result values by calling a callback function as soon as they are known.
+    fn try_execute_fn_op_async<'a, F>(&'a self, op: &FuncOpLive, context: Arc<RwLock<HashMap<Symbol, ValueReference<'a>>>>, mut return_callback: Box<fn(usize, ValueReference) -> ExecResult<()>>) -> ExecResult<()>
+    {
+        // if this is not a function call, execute the operation normally
+        if op.opcode != OpCode::Call {
+            let execute_result = self.try_execute_fn_op(op, context);
+            let results = match execute_result {
+                Ok(results) => results,
+                Err(e) => return Err(format!("Error executing operation {}: {}", op.opcode, e))
+            };
+
+            for (i, result) in results.iter().enumerate() {
+                return_callback(i, result.clone())?;
+            }
+
+            return Ok(());
+        }
+
+        // otherwise, return the results as they come in
+
+        // validate the call operation's inputs
+        self.validate_op_inputs(op, context.clone())?;
+
+        let arg_values: Vec<ValueReference> = self.get_func_op_args(op, context)?;
+        let arg_values: Vec<&ValueReference> = arg_values.iter().collect();
+        let func_ref = arg_values[0];
+        let args: Vec<&ValueReference> = arg_values[1..].to_vec();
+
+        // call the function
+        self.execute_call_async(func_ref, args, return_callback)
+    }
+
+    /// Handles a function call with a callback that is executed when a value is returned.
+    pub fn handle_call_function_async<'a>(&'a self, func: &FuncLive, args: &[ValueReference<'a>], mut return_callback: Box<fn(usize, ValueReference) -> ExecResult<()>>) -> ExecResult<()>
+    {
+        // validate the function's inputs
+        match self.validate_func_inputs(func, args) {
+            Ok(_) => (),
+            Err(msg) => return Err(format!("Function call failed: {}", msg))
+        }
+
+        // Get a set of the function's output symbols
+        let output_symbols: HashMap<Symbol, usize> = func.output_vals.iter()
+            .enumerate()
+            .map(|(i, output_ptr)| {
+                let output_val = self.get_func_val(output_ptr)
+                    .map_err(|msg| format!("Function cannot get output value for function: {}", msg))?;
+                Ok((output_val.guid.clone(), i))
+            })
+            .collect::<ExecResult<_>>()?;
+
+        // Context is a map of the function's values (by their symbol) to their values
+        let context: Arc<RwLock<HashMap<Symbol, ValueReference>>> = Arc::new(RwLock::new(HashMap::new()));
+
+        // Queue of operations to execute
+        let op_queue: Arc<SegQueue<FuncOpLive>> = Arc::new(SegQueue::new());
+
+        // Initialize the function call by binding the arguments and constants to the context
+        // and adding their dependent operations to the queue
+        self.initialize_func_call(func, args, context.clone(), op_queue.clone())?;
+
+        // Execute the function's operations
+        while let Some(op) = op_queue.pop() {
+            let channel = channel();
+            let tx: Sender<Box<ExecResult<usize>>> = channel.0;
+            let rx = channel.1;
+
+            // let callback = |i: usize, result: ValueReference| -> ExecResult<()> {
+            //     let ptr = self.counted_ptr_from_value_ref(result)?;
+            //
+            //     tx.send(Ok(i)).expect("Failed to send result");
+            //     Ok(())
+            // };
+
+            let boxed_callback = Box::new(move |i: usize, result: ValueReference| -> ExecResult<()> {
+                let ptr = self.counted_ptr_from_value_ref(result)?;
+
+                let res: Box<ExecResult<usize>> = Box::new(Ok((i)));
+
+
+                // tx.send(res).expect("Failed to send result");
+                Ok(())
+            });
+
+            // let error_callback = |msg: String| -> ExecResult<()> {
+            //     tx.send(Err(msg)).expect("Failed to send result");
+            //     Ok(())
+            // };
+
+            // Spawning a new thread to execute the operation
+            self.thread_pool.scope(|s| {
+                let context = context.clone();
+                let op = op.clone();
+
+                s.spawn(move |_| {
+                    match self.try_execute_fn_op_async(&op, context.clone(), boxed_callback) {
+                        Ok(_) => (),
+                        // Err(e) => {
+                        //     error_callback(e).expect("Failed to send error");
+                        // }
+                        _ => ()
+                    }
+                });
+            });
+
+            // Processing the result to queue dependent operations
+            if let Ok(result) = rx.recv() {
+                // let (i, ptr) = match result {
+                //     Ok((i, ptr)) => (i, ptr),
+                //     Err(e) => return Err(format!("Error executing operation {}: {}", op.opcode, e))
+                // };
+                //
+                // // convert the ptr back to a value ref
+                // let result_val_ref = self.value_ref_from_ptr(ptr)?;
+
+                // unbox
+
+                let i = match *result {
+                    Ok(i) => i,
+                    Err(e) => return Err(format!("Error executing operation {}: {}", op.opcode, e))
+                };
+
+                let output_ptr = op.output_vals.get(i)
+                    .ok_or_else(|| format!("Operation {} has no output value at index {}", op.opcode, i))?;
+
+                // get the func val for the output and add its dependents to the queue
+                let output_val = self.get_func_val(output_ptr)
+                    .map_err(|msg| format!("Function cannot get output value for operation {}: {}", op.opcode, msg))?;
+
+                let new_ops = self.handle_func_val_dependents(&output_val, context.clone())
+                    .map_err(|msg| format!("Function cannot handle dependents for operation {}: {}", op.opcode, msg))?;
+
+                for new_op in new_ops {
+                    op_queue.push(new_op);
+                }
+
+                // call the return callback
+                return_callback(i, self.value_ref_from_ptr(output_ptr.clone())?)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use crate::api::collections::collection::Collection;
+    use crate::api::GraphiteApi;
+    use crate::api::interface::VmInterface;
+    use crate::core::data::live::IntLive;
+    use crate::core::vm::VM;
+    use crate::core::data::live::live_data::{LiveData, FuncLive, FuncOpLive, FuncValLive, PointerLive};
+    use crate::core::ExecResult;
+    use crate::core::vm::value_ref::ValueReference;
+
+    // tests calling a function and receiving results asynchronously
+    #[test]
+    fn test_call_async<'a>() {
+        let vm: &mut VM = &mut VM::new(4);
+
+        {
+            let mut api = GraphiteApi { vm, symbol_table: HashMap::new() };
+
+            let json_collection = r#"{
+                "constants": {},
+                "functions": {
+                    "main": {
+                        "graph": {
+                            "values": [
+                                "initial",
+                                "a",
+                                "b",
+                                "c",
+                                "d",
+                                ["factor", 2]
+                            ],
+                            "ops": [
+                                ["Add", ["c", "factor"], "a"],
+                                ["Add", ["d", "factor"], "b"],
+                                ["Add", ["b", "factor"], "c"],
+                                ["Mul", ["initial", "factor"], "d"]
+                            ],
+                            "input_vals": ["initial"],
+                            "output_vals": ["a", "b", "c", "d"]
+                        }
+                    }
+                },
+                "collections": {},
+                "imports": {}
+            }"#;
+
+            let collection: Collection = match serde_json::from_str(json_collection) {
+                Ok(collection) => collection,
+                Err(e) => {
+                    println!("{}", e);
+                    panic!();
+                }
+            };
+
+            api.store_collection(collection, "my_collection".to_string()).unwrap();
+            let main_func_ref = api.get_path(vec!["my_collection".into(), "main".into()]).unwrap();
+            let main_func = vm.get_ref_value(&main_func_ref).unwrap().as_live().as_func().unwrap().ok().unwrap();
+            drop(main_func_ref);
+            let initial: IntLive = 5.into();
+            api.store_int(initial, "initial".to_string()).unwrap();
+            let initial_ref = api.get_path(vec!["initial".into()]).unwrap();
+
+            // results should be calculated in the order of d, b, c, a
+            let expected_order =vec![(3, 10), (1, 12), (2, 14), (0, 16)];
+
+            let mut results: Vec<IntLive> = Vec::new();
+
+            let callback = |i: usize, result: ValueReference| -> ExecResult<()> {
+                let result = vm.get_ref_value(&result).unwrap().as_live().as_int().unwrap().ok().unwrap();
+                results.push(result);
+                Ok(())
+            };
+
+            vm.handle_call_function_async(&main_func, &[initial_ref], callback).unwrap();
+
+            assert_eq!(results.len(), 4);
+            for (i, result) in results.iter().enumerate() {
+                let expected = expected_order[i].1;
+                assert_eq!(*result, expected);
+            }
+        }
+
+        assert_eq!(vm.object_count(), 0);
     }
 }

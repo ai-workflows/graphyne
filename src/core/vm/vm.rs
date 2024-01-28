@@ -1,5 +1,5 @@
 use std::sync::{Arc, RwLock};
-use crate::core::data::live::{LiveData, StringLive};
+use crate::core::data::live::{LiveData, PointerLive, StringLive};
 use crate::core::data::stored::StoredData;
 use crate::core::ExecResult;
 use crate::core::gc::{GarbageCollector, GCPointer};
@@ -197,6 +197,29 @@ impl VM {
         let result = ValueReference::new(ptr, &self);
 
         return Ok(result)
+    }
+
+    /// Converts a value ref to a pointer (doesn't have a reference to the vm).
+    /// Counts the new pointer so the ref count stays the same.
+    pub fn counted_ptr_from_value_ref(&self, mut value_ref: ValueReference) -> ExecResult<PointerLive> {
+        let mut gc = match self.state.try_write() {
+            Ok(value) => value,
+            Err(_) => return Err("Could not get write lock on VM state".to_string()),
+        };
+
+        // clone the pointer
+        let mut ptr = value_ref.pointer.clone();
+
+        // count the pointer
+        match gc.count_pointer(&mut ptr) {
+            Ok(_) => {},
+            Err(_) => return Err("Could not count pointer".to_string()),
+        }
+
+        // drop the value reference
+        drop(value_ref);
+
+        Ok(ptr)
     }
 
     /// Stores a value in the VM's state, returning a reference to the stored value
@@ -437,6 +460,24 @@ impl VM {
         let result = self.handle_call_function(&func, &args_cloned);
 
         result
+    }
+
+    pub fn execute_call_async<'a>(&'a self, func: &ValueReference<'a>, args: Vec<&ValueReference<'a>>, return_callback: Box<fn(usize, ValueReference) -> ExecResult<()>>) -> ExecResult<()>
+    {
+        // get the function
+        let func = match self.get_ref_value(func) {
+            Ok(val) => val,
+            Err(msg) => return Err(format!("Failed to get function: {}", msg))
+        };
+        let func = func.as_live().as_func().ok_or_else(|| "Cannot call a non-function value".to_string())??;
+
+        // get the args and ensure that there are the correct number of them
+        let mut args_cloned: Vec<ValueReference> = Vec::new();
+        for arg in args {
+            args_cloned.push(self.clone_reference(arg)?);
+        }
+
+        self.handle_call_function_async(&func, &args_cloned, return_callback)
     }
 }
 
