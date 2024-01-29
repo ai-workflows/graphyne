@@ -6,6 +6,8 @@ use crate::core::vm::value_ref::ValueReference;
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum OpCode {
+    #[serde(alias="typeof", alias="typeOf", alias="TypeOf", alias="TYPEOF", alias="TYPE_OF", alias="type_of", alias="Type_Of")]
+    TypeOf,
     #[serde(alias="as_int", alias="asint", alias="asInt", alias="AsInt", alias="AS_INT", alias="ASINT", alias="AS_INT")]
     AsInt,
     #[serde(alias="as_float", alias="asfloat", alias="asFloat", alias="AsFloat", alias="AS_FLOAT", alias="ASFLOAT", alias="AS_FLOAT")]
@@ -20,6 +22,8 @@ pub enum OpCode {
     AsList,
     #[serde(alias="as_dictionary", alias="asdictionary", alias="asDictionary", alias="AsDictionary", alias="AS_DICTIONARY", alias="ASDICTIONARY", alias="AS_DICTIONARY")]
     AsDictionary,
+    #[serde(alias="as_type", alias="astype", alias="asType", alias="AsType", alias="AS_TYPE", alias="ASTYPE", alias="AS_TYPE")]
+    AsType,
     #[serde(alias="if", alias="If", alias="IF")]
     If,
     #[serde(alias="not", alias="Not", alias="NOT")]
@@ -72,6 +76,7 @@ impl OpCode {
     /// Converts a list of arguments to an operation based on the opcode.
     pub fn to_operation<'a>(&self, args: &Vec<&'a ValueReference<'a>>) -> Operation<'a> {
         match self {
+            OpCode::TypeOf => Operation::TypeOf(args[0]),
             OpCode::AsInt => Operation::AsInt(args[0]),
             OpCode::AsFloat => Operation::AsFloat(args[0]),
             OpCode::AsString => Operation::AsString(args[0]),
@@ -79,6 +84,7 @@ impl OpCode {
             OpCode::AsPointer => Operation::AsPointer(args[0]),
             OpCode::AsList => Operation::AsList(args[0]),
             OpCode::AsDictionary => Operation::AsDictionary(args[0]),
+            OpCode::AsType => Operation::AsType(args[0]),
             OpCode::If => Operation::If(args[0], args[1], args[2]),
             OpCode::Not => Operation::Not(args[0]),
             OpCode::And => Operation::And(args[0], args[1]),
@@ -109,6 +115,7 @@ impl OpCode {
 impl fmt::Display for OpCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            OpCode::TypeOf => write!(f, "type_of"),
             OpCode::AsInt => write!(f, "as_int"),
             OpCode::AsFloat => write!(f, "as_float"),
             OpCode::AsString => write!(f, "as_string"),
@@ -116,6 +123,7 @@ impl fmt::Display for OpCode {
             OpCode::AsPointer => write!(f, "as_pointer"),
             OpCode::AsList => write!(f, "as_list"),
             OpCode::AsDictionary => write!(f, "as_dictionary"),
+            OpCode::AsType => write!(f, "as_type"),
             OpCode::If => write!(f, "if"),
             OpCode::Not => write!(f, "not"),
             OpCode::And => write!(f, "and"),
