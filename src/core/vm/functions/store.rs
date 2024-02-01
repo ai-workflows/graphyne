@@ -151,8 +151,8 @@ impl VM {
 
         // Handle class context
         if let Some(class_context) = class_context {
-            // store the class context as a constant with the symbol 'self'
-            let self_symbol = Symbol::from("self");
+            // store the class context as a constant with the symbol 'ctx'
+            let self_symbol = Symbol::from("outer");
             self.validate_symbol(&values, &self_symbol)?;
             let buf = self.create_buffer()?;
             values.insert(self_symbol.clone(), buf.clone());
