@@ -1,6 +1,7 @@
 - lambda functions
 - interop with python
 - exceptions
+- string optimizations (global string map)
 
 - early return from function calls
   - scrap the current implementation.
