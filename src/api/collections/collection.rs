@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use crate::api::collections::func::CollectionFunc;
 use crate::api::collections::c_const::CollectionConst;
+use crate::api::collections::c_type::CustomTypeDef;
 use crate::core::{Symbol, SymbolPath};
 
 /// A grouping of functions, constants, sub-collections, and types (in the future).
@@ -16,6 +17,9 @@ pub struct Collection {
     /// The collection's sub-collections.
     pub collections: HashMap<Symbol, Collection>,
 
+    /// The collection's types
+    pub types: HashMap<Symbol, CustomTypeDef>,
+
     /// Values in other collections (including collections themselves) that are referenced by this collection.
     /// The keys are the local symbols used to reference the values.
     /// The values are a symbol path from root to the value.
@@ -24,11 +28,18 @@ pub struct Collection {
 
 impl Collection {
     /// Creates a new collection with the given functions, constants, and sub-collections.
-    pub fn new(functions: HashMap<Symbol, CollectionFunc>, constants: HashMap<Symbol, CollectionConst>, collections: HashMap<Symbol, Collection>, imports: HashMap<Symbol, SymbolPath>) -> Self {
+    pub fn new(
+        functions: HashMap<Symbol, CollectionFunc>,
+        constants: HashMap<Symbol, CollectionConst>,
+        collections: HashMap<Symbol, Collection>,
+        types: HashMap<Symbol, CustomTypeDef>,
+        imports: HashMap<Symbol, SymbolPath>,
+    ) -> Self {
         Self {
             functions,
             constants,
             collections,
+            types,
             imports,
         }
     }

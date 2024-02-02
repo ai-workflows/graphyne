@@ -70,6 +70,8 @@ pub enum OpCode {
     Reduce,
     #[serde(alias="filter", alias="Filter", alias="FILTER")]
     Filter,
+    #[serde(alias="init", alias="Init", alias="INIT")]
+    Init
 }
 
 impl OpCode {
@@ -108,6 +110,7 @@ impl OpCode {
             OpCode::Map => Operation::Map(args[0], args[1]),
             OpCode::Reduce => Operation::Reduce(args[0], args[1], args[2]),
             OpCode::Filter => Operation::Filter(args[0], args[1]),
+            OpCode::Init => Operation::Init(args[0], args[1..].to_vec()),
         }
     }
 }
@@ -147,6 +150,7 @@ impl fmt::Display for OpCode {
             OpCode::Map => write!(f, "map"),
             OpCode::Reduce => write!(f, "reduce"),
             OpCode::Filter => write!(f, "filter"),
+            OpCode::Init => write!(f, "init"),
         }
     }
 }

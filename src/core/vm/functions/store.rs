@@ -104,8 +104,8 @@ impl VM {
             // Check if the value is a constant
             let const_ref = constants.get(&val_id.to_string());
 
-            // Determine if the current value is 'self' and has context
-            let is_self = val_id == "self" && has_context;
+            // Determine if the current value is 'outer' and has context
+            let is_self = val_id == "outer" && has_context;
 
             // Store the function value in memory
             let store_op = StoreOp::StoreFunctionVal(val_deps.iter().collect(), const_ref, is_self, Some(val_id.clone()));
