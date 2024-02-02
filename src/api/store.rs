@@ -20,47 +20,56 @@ impl<'a> GraphiteApi<'a> {
     fn create_collection_skeleton(&mut self, value: Collection, symbol: Symbol) -> ExecResult<()> {
         let mut buffers: HashMap<Symbol, ValueReference> = HashMap::new();
 
-        for (symbol, _func) in value.functions {
-            let func_ref = match self.vm.execute_store(CreateBuffer) {
-                Ok(result) => result[0].clone(),
-                Err(err) => return Err(format!("Error creating buffer for function {}: {}", symbol, err))
-            };
-            buffers.insert(symbol, func_ref);
+        if let Some(functions) = value.functions {
+            for (symbol, _func) in functions {
+                let func_ref = match self.vm.execute_store(CreateBuffer) {
+                    Ok(result) => result[0].clone(),
+                    Err(err) => return Err(format!("Error creating buffer for function {}: {}", symbol, err))
+                };
+                buffers.insert(symbol, func_ref);
+            }
         }
 
-        for (symbol, _constant) in value.constants {
-            let constant_ref = match self.vm.execute_store(CreateBuffer) {
-                Ok(result) => result[0].clone(),
-                Err(err) => return Err(format!("Error creating buffer for constant {}: {}", symbol, err))
-            };
-            buffers.insert(symbol, constant_ref);
+        if let Some(constants) = value.constants {
+            for (symbol, _constant) in constants {
+                let constant_ref = match self.vm.execute_store(CreateBuffer) {
+                    Ok(result) => result[0].clone(),
+                    Err(err) => return Err(format!("Error creating buffer for constant {}: {}", symbol, err))
+                };
+                buffers.insert(symbol, constant_ref);
+            }
         }
 
-        for (symbol, _type) in value.types {
-            let type_ref = match self.vm.execute_store(CreateBuffer) {
-                Ok(result) => result[0].clone(),
-                Err(err) => return Err(format!("Error creating buffer for type {}: {}", symbol, err))
-            };
-            buffers.insert(symbol, type_ref);
+        if let Some(types) = value.types {
+            for (symbol, _type) in types {
+                let type_ref = match self.vm.execute_store(CreateBuffer) {
+                    Ok(result) => result[0].clone(),
+                    Err(err) => return Err(format!("Error creating buffer for type {}: {}", symbol, err))
+                };
+                buffers.insert(symbol, type_ref);
+            }
         }
 
-        for (symbol, _import) in value.imports {
-            let import_ref = match self.vm.execute_store(CreateBuffer) {
-                Ok(result) => result[0].clone(),
-                Err(err) => return Err(format!("Error creating buffer for import {}: {}", symbol, err))
-            };
-            buffers.insert(symbol, import_ref);
+        if let Some(import) = value.imports {
+            for (symbol, _import) in import {
+                let import_ref = match self.vm.execute_store(CreateBuffer) {
+                    Ok(result) => result[0].clone(),
+                    Err(err) => return Err(format!("Error creating buffer for import {}: {}", symbol, err))
+                };
+                buffers.insert(symbol, import_ref);
+            }
         }
 
-        for (sub_symbol, sub_collection) in value.collections {
-            let sub_collection_symbol = format!("{}.{}", symbol, sub_symbol);
+        if let Some(collections) = value.collections {
+            for (symbol, _sub_collection) in collections {
+                let sub_collection_symbol = format!("{}.{}", symbol, symbol);
+                self.create_collection_skeleton(_sub_collection, sub_collection_symbol.clone())?;
+                let sub_collection_ref = self.symbol_table.get(&sub_collection_symbol).unwrap().clone();
+                buffers.insert(symbol, sub_collection_ref);
 
-            self.create_collection_skeleton(sub_collection, sub_collection_symbol.clone())?;
-            let sub_collection_ref = self.symbol_table.get(&sub_collection_symbol).unwrap().clone();
-            buffers.insert(sub_symbol, sub_collection_ref);
-
-            // drop the sub-collection from the symbol table
-            self.symbol_table.remove(&sub_collection_symbol);
+                // drop the sub-collection from the symbol table
+                self.symbol_table.remove(&sub_collection_symbol);
+            }
         }
 
         // store a dict of the buffers
@@ -128,176 +137,186 @@ impl<'a> GraphiteApi<'a> {
         };
 
         // fill the import buffers with pointers to the external values
-        for (symbol, import_path) in value.imports {
-            let import_ref = match self.get_path(import_path) {
-                Ok(import_ref) => import_ref,
-                Err(err) => return Err(format!("Error getting import {} for collection {}: {}", symbol, symbol, err))
-            };
+        if let Some(imports) = value.imports {
+            for (symbol, import_path) in imports {
+                let import_ref = match self.get_path(import_path) {
+                    Ok(import_ref) => import_ref,
+                    Err(err) => return Err(format!("Error getting import {} for collection {}: {}", symbol, symbol, err))
+                };
 
-            let buffer_ptr = match collection.get(&symbol) {
-                Some(buffer_ptr) => buffer_ptr,
-                None => return Err(format!("Buffer for import {} not found for collection {}.", symbol, symbol))
-            };
-            let buffer_ref = match self.vm.value_ref_from_ptr(buffer_ptr.clone()) {
-                Ok(buffer_ref) => buffer_ref,
-                Err(err) => return Err(format!("Error getting buffer reference for import {} for collection {}: {}", symbol, symbol, err))
-            };
+                let buffer_ptr = match collection.get(&symbol) {
+                    Some(buffer_ptr) => buffer_ptr,
+                    None => return Err(format!("Buffer for import {} not found for collection {}.", symbol, symbol))
+                };
+                let buffer_ref = match self.vm.value_ref_from_ptr(buffer_ptr.clone()) {
+                    Ok(buffer_ref) => buffer_ref,
+                    Err(err) => return Err(format!("Error getting buffer reference for import {} for collection {}: {}", symbol, symbol, err))
+                };
 
-            let fill_result = self.vm.execute_op(Operation::SetBuffer(&buffer_ref, StoredData::PointerStored(import_ref.pointer.clone())));
-            if let Err(err) = fill_result {
-                return Err(format!("Error filling buffer for import {} for collection {}: {}", symbol, symbol, err));
+                let fill_result = self.vm.execute_op(Operation::SetBuffer(&buffer_ref, StoredData::PointerStored(import_ref.pointer.clone())));
+                if let Err(err) = fill_result {
+                    return Err(format!("Error filling buffer for import {} for collection {}: {}", symbol, symbol, err));
+                }
             }
         }
 
         // fill the constant buffers with the constant values
-        for (symbol, constant) in value.constants {
-            let buffer_ptr = match collection.get(&symbol) {
-                Some(buffer_ptr) => buffer_ptr,
-                None => return Err(format!("Buffer for constant {} not found for collection {}.", symbol, symbol))
-            };
-            let buffer_ref = match self.vm.value_ref_from_ptr(buffer_ptr.clone()) {
-                Ok(buffer_ref) => buffer_ref,
-                Err(err) => return Err(format!("Error getting buffer reference for constant {} for collection {}: {}", symbol, symbol, err))
-            };
+        if let Some(constants) = value.constants {
+            for (symbol, constant) in constants {
+                let buffer_ptr = match collection.get(&symbol) {
+                    Some(buffer_ptr) => buffer_ptr,
+                    None => return Err(format!("Buffer for constant {} not found for collection {}.", symbol, symbol))
+                };
+                let buffer_ref = match self.vm.value_ref_from_ptr(buffer_ptr.clone()) {
+                    Ok(buffer_ref) => buffer_ref,
+                    Err(err) => return Err(format!("Error getting buffer reference for constant {} for collection {}: {}", symbol, symbol, err))
+                };
 
-            // store the constant data in memory in a temporary location
-            let stored_ref = self.vm.store_cc_data(constant.into())?[0].clone();
+                // store the constant data in memory in a temporary location
+                let stored_ref = self.vm.store_cc_data(constant.into())?[0].clone();
 
-            // retrieve the value that was stored
-            let stored_value = match self.vm.get_ref_value(&stored_ref) {
-                Ok(stored_value) => stored_value,
-                Err(err) => return Err(format!("Error getting stored value for constant {} for collection {}: {}", symbol, symbol, err))
-            };
+                // retrieve the value that was stored
+                let stored_value = match self.vm.get_ref_value(&stored_ref) {
+                    Ok(stored_value) => stored_value,
+                    Err(err) => return Err(format!("Error getting stored value for constant {} for collection {}: {}", symbol, symbol, err))
+                };
 
-            // fill the buffer with the stored data
-            let fill_result = self.vm.execute_op(Operation::SetBuffer(&buffer_ref, stored_value));
-            if let Err(err) = fill_result {
-                return Err(format!("Error filling buffer for constant {} for collection {}: {}", symbol, symbol, err));
+                // fill the buffer with the stored data
+                let fill_result = self.vm.execute_op(Operation::SetBuffer(&buffer_ref, stored_value));
+                if let Err(err) = fill_result {
+                    return Err(format!("Error filling buffer for constant {} for collection {}: {}", symbol, symbol, err));
+                }
+
+                // drop the reference to the temporary location
             }
-
-            // drop the reference to the temporary location
         }
 
         // fill the function buffers with the function graphs
-        for (symbol, func) in value.functions {
-            let buffer_ptr = match collection.get(&symbol) {
-                Some(buffer_ptr) => buffer_ptr,
-                None => return Err(format!("Buffer for function {} not found for collection {}.", symbol, symbol))
-            };
-            let buffer_ref = match self.vm.value_ref_from_ptr(buffer_ptr.clone()) {
-                Ok(buffer_ref) => buffer_ref,
-                Err(err) => return Err(format!("Error getting buffer reference for function {} for collection {}: {}", symbol, symbol, err))
-            };
+        if let Some(functions) = value.functions {
+            for (symbol, func) in functions {
+                let buffer_ptr = match collection.get(&symbol) {
+                    Some(buffer_ptr) => buffer_ptr,
+                    None => return Err(format!("Buffer for function {} not found for collection {}.", symbol, symbol))
+                };
+                let buffer_ref = match self.vm.value_ref_from_ptr(buffer_ptr.clone()) {
+                    Ok(buffer_ref) => buffer_ref,
+                    Err(err) => return Err(format!("Error getting buffer reference for function {} for collection {}: {}", symbol, symbol, err))
+                };
 
-            // convert the function graph to a proper format by storing the constant values in memory
-            let mut func_constants: Vec<ValueReference> = vec![];
-            let mut func_graph = FunctionGraph {
-                values: vec![],
-                ops: func.graph.ops,
-                input_vals: func.graph.input_vals,
-                output_vals: func.graph.output_vals,
-            };
+                // convert the function graph to a proper format by storing the constant values in memory
+                let mut func_constants: Vec<ValueReference> = vec![];
+                let mut func_graph = FunctionGraph {
+                    values: vec![],
+                    ops: func.graph.ops,
+                    input_vals: func.graph.input_vals,
+                    output_vals: func.graph.output_vals,
+                };
 
-            for c_func_value_node in func.graph.values {
-                let graph;
-                if let Some(constant) = c_func_value_node.constant {
-                    let stored_ref = self.vm.store_cc_data(constant.clone())?[0].clone();
-                    let stored_value = match self.vm.get_ref_value(&stored_ref) {
-                        Ok(stored_value) => stored_value,
-                        Err(err) => return Err(format!("Error getting stored value for constant {} for function {} for collection {}: {}", c_func_value_node.symbol, symbol, symbol, err))
-                    };
-                    graph = FunctionValueNode {
-                        symbol: c_func_value_node.symbol,
-                        constant: Some(stored_value),
-                    };
-                    // temporarily hold on to the the ref to prevent child pointers from being dropped
-                    func_constants.push(stored_ref);
-                } else {
-                    graph = FunctionValueNode {
-                        symbol: c_func_value_node.symbol,
-                        constant: None,
-                    };
+                for c_func_value_node in func.graph.values {
+                    let graph;
+                    if let Some(constant) = c_func_value_node.constant {
+                        let stored_ref = self.vm.store_cc_data(constant.clone())?[0].clone();
+                        let stored_value = match self.vm.get_ref_value(&stored_ref) {
+                            Ok(stored_value) => stored_value,
+                            Err(err) => return Err(format!("Error getting stored value for constant {} for function {} for collection {}: {}", c_func_value_node.symbol, symbol, symbol, err))
+                        };
+                        graph = FunctionValueNode {
+                            symbol: c_func_value_node.symbol,
+                            constant: Some(stored_value),
+                        };
+                        // temporarily hold on to the the ref to prevent child pointers from being dropped
+                        func_constants.push(stored_ref);
+                    } else {
+                        graph = FunctionValueNode {
+                            symbol: c_func_value_node.symbol,
+                            constant: None,
+                        };
+                    }
+                    func_graph.values.push(graph);
                 }
-                func_graph.values.push(graph);
-            }
 
-            // temporarily store the function graph in memory at a random location
-            let func_ref = match self.vm.execute_store(StoreOp::StoreFunctionGraph(func_graph, Some(&collection_ref))) {
-                Ok(result) => result[0].clone(),
-                Err(err) => return Err(format!("Error storing function {} for collection {}: {}", symbol, symbol, err))
-            };
+                // temporarily store the function graph in memory at a random location
+                let func_ref = match self.vm.execute_store(StoreOp::StoreFunctionGraph(func_graph, Some(&collection_ref))) {
+                    Ok(result) => result[0].clone(),
+                    Err(err) => return Err(format!("Error storing function {} for collection {}: {}", symbol, symbol, err))
+                };
 
-            // should now be ok to drop the constant refs
-            drop(func_constants);
+                // should now be ok to drop the constant refs
+                drop(func_constants);
 
-            // get the stored data for the function graph
-            let func_stored = match self.vm.get_ref_value(&func_ref) {
-                Ok(func_stored) => func_stored,
-                Err(err) => return Err(format!("Error getting stored data for function {} for collection {}: {}", symbol, symbol, err))
-            };
+                // get the stored data for the function graph
+                let func_stored = match self.vm.get_ref_value(&func_ref) {
+                    Ok(func_stored) => func_stored,
+                    Err(err) => return Err(format!("Error getting stored data for function {} for collection {}: {}", symbol, symbol, err))
+                };
 
-            // fill the buffer with the stored data
-            let fill_result = self.vm.execute_op(Operation::SetBuffer(&buffer_ref, func_stored));
-            if let Err(err) = fill_result {
-                return Err(format!("Error filling buffer for function {} for collection {}: {}", symbol, symbol, err));
+                // fill the buffer with the stored data
+                let fill_result = self.vm.execute_op(Operation::SetBuffer(&buffer_ref, func_stored));
+                if let Err(err) = fill_result {
+                    return Err(format!("Error filling buffer for function {} for collection {}: {}", symbol, symbol, err));
+                }
             }
         }
 
         // fill the type buffers with the type values
-        for (symbol, type_def) in value.types {
-            let buffer_ptr = match collection.get(&symbol) {
-                Some(buffer_ptr) => buffer_ptr,
-                None => return Err(format!("Buffer for type {} not found for collection {}.", symbol, symbol))
-            };
-            let buffer_ref = match self.vm.value_ref_from_ptr(buffer_ptr.clone()) {
-                Ok(buffer_ref) => buffer_ref,
-                Err(err) => return Err(format!("Error getting buffer reference for type {} for collection {}: {}", symbol, symbol, err))
-            };
-
-            let mut fields: Vec<(Symbol, PointerLive)> = vec![];
-            for (field_symbol, field_type_const) in type_def.0 {
-                // get the type of the field
-                let field_type_ref: ValueReference = match field_type_const.0 {
-                    CollectionType::Any => self.vm.get_primitive_type(&TypeLive::Dynamic).unwrap(),
-                    CollectionType::Null => self.vm.get_primitive_type(&TypeLive::Null).unwrap(),
-                    CollectionType::Int => self.vm.get_primitive_type(&TypeLive::Integer).unwrap(),
-                    CollectionType::Float => self.vm.get_primitive_type(&TypeLive::Float).unwrap(),
-                    CollectionType::Str => self.vm.get_primitive_type(&TypeLive::String).unwrap(),
-                    CollectionType::Bool => self.vm.get_primitive_type(&TypeLive::Boolean).unwrap(),
-                    CollectionType::List => self.vm.get_primitive_type(&TypeLive::List).unwrap(),
-                    CollectionType::Dict => self.vm.get_primitive_type(&TypeLive::Dictionary).unwrap(),
-                    CollectionType::Type => self.vm.get_primitive_type(&TypeLive::Type).unwrap(),
-                    CollectionType::Custom(type_symbol) => {
-                        match self.symbol_table.get(&type_symbol) {
-                            Some(type_ref) => type_ref.clone(),
-                            None => return Err(format!("Type {} not found for field {} for type {} for collection {}.", type_symbol, field_symbol, symbol, symbol))
-                        }
-                    }
+        if let Some(types) = value.types {
+            for (symbol, type_def) in types {
+                let buffer_ptr = match collection.get(&symbol) {
+                    Some(buffer_ptr) => buffer_ptr,
+                    None => return Err(format!("Buffer for type {} not found for collection {}.", symbol, symbol))
+                };
+                let buffer_ref = match self.vm.value_ref_from_ptr(buffer_ptr.clone()) {
+                    Ok(buffer_ref) => buffer_ref,
+                    Err(err) => return Err(format!("Error getting buffer reference for type {} for collection {}: {}", symbol, symbol, err))
                 };
 
-                fields.push((field_symbol, field_type_ref.pointer.clone()));
-            }
+                let mut fields: Vec<(Symbol, PointerLive)> = vec![];
+                for (field_symbol, field_type_const) in type_def.0 {
+                    // get the type of the field
+                    let field_type_ref: ValueReference = match field_type_const.0 {
+                        CollectionType::Any => self.vm.get_primitive_type(&TypeLive::Dynamic).unwrap(),
+                        CollectionType::Null => self.vm.get_primitive_type(&TypeLive::Null).unwrap(),
+                        CollectionType::Int => self.vm.get_primitive_type(&TypeLive::Integer).unwrap(),
+                        CollectionType::Float => self.vm.get_primitive_type(&TypeLive::Float).unwrap(),
+                        CollectionType::Str => self.vm.get_primitive_type(&TypeLive::String).unwrap(),
+                        CollectionType::Bool => self.vm.get_primitive_type(&TypeLive::Boolean).unwrap(),
+                        CollectionType::List => self.vm.get_primitive_type(&TypeLive::List).unwrap(),
+                        CollectionType::Dict => self.vm.get_primitive_type(&TypeLive::Dictionary).unwrap(),
+                        CollectionType::Type => self.vm.get_primitive_type(&TypeLive::Type).unwrap(),
+                        CollectionType::Custom(type_symbol) => {
+                            match self.symbol_table.get(&type_symbol) {
+                                Some(type_ref) => type_ref.clone(),
+                                None => return Err(format!("Type {} not found for field {} for type {} for collection {}.", type_symbol, field_symbol, symbol, symbol))
+                            }
+                        }
+                    };
 
-            let type_stored: StoredData = StoredData::TypeStored(TypeLive::Custom(symbol.clone(), Uuid::new_v4().to_string(), fields));
-            let fill_result = self.vm.execute_op(Operation::SetBuffer(&buffer_ref, type_stored));
-            if let Err(err) = fill_result {
-                return Err(format!("Error filling buffer for type {} for collection {}: {}", symbol, symbol, err));
+                    fields.push((field_symbol, field_type_ref.pointer.clone()));
+                }
+
+                let type_stored: StoredData = StoredData::TypeStored(TypeLive::Custom(symbol.clone(), Uuid::new_v4().to_string(), fields));
+                let fill_result = self.vm.execute_op(Operation::SetBuffer(&buffer_ref, type_stored));
+                if let Err(err) = fill_result {
+                    return Err(format!("Error filling buffer for type {} for collection {}: {}", symbol, symbol, err));
+                }
             }
         }
 
         // fill the sub-collection buffers with the sub-collections
-        for (symbol, sub_collection) in value.collections {
-            let buffer_ptr = match collection.get(&symbol) {
-                Some(buffer_ptr) => buffer_ptr,
-                None => return Err(format!("Buffer for sub-collection {} not found for collection {}.", symbol, symbol))
-            };
+        if let Some(collections) = value.collections {
+            for (symbol, sub_collection) in collections {
+                let buffer_ptr = match collection.get(&symbol) {
+                    Some(buffer_ptr) => buffer_ptr,
+                    None => return Err(format!("Buffer for sub-collection {} not found for collection {}.", symbol, symbol))
+                };
 
-            let sub_collection_ref = match self.vm.value_ref_from_ptr(buffer_ptr.clone()) {
-                Ok(sub_collection_ref) => sub_collection_ref,
-                Err(err) => return Err(format!("Error getting buffer reference for sub-collection {} for collection {}: {}", symbol, symbol, err))
-            };
+                let sub_collection_ref = match self.vm.value_ref_from_ptr(buffer_ptr.clone()) {
+                    Ok(sub_collection_ref) => sub_collection_ref,
+                    Err(err) => return Err(format!("Error getting buffer reference for sub-collection {} for collection {}: {}", symbol, symbol, err))
+                };
 
-            self.fill_collection_skeleton(sub_collection_ref, sub_collection)?;
+                self.fill_collection_skeleton(sub_collection_ref, sub_collection)?;
+            }
         }
 
         Ok(())
@@ -354,15 +373,15 @@ mod tests {
             let my_list = vec![10, 20, 30];
 
             let collection = Collection {
-                constants: hashmap! {
+                constants: Some(hashmap! {
                     "two".into() => 2.into(),
                     "my_list".into() => my_list.iter().map(|v| v.clone().into()).collect::<Vec<CCData>>().into(),
                     "my_dict".into() => hashmap!{
                         "Hello".to_string() => "World".to_string().into(),
                         "Foo".to_string() => "Bar".to_string().into()
                     }.into(),
-                },
-                functions: hashmap! {
+                }),
+                functions: Some(hashmap! {
                     "double".into() => CollectionFunc {graph: CollectionFuncGraph {
                         values: vec![
                             CFnValueNode::constant("_two".into(), CCData::String("two".to_string())),
@@ -400,10 +419,10 @@ mod tests {
                         input_vals: vec![],
                         output_vals: vec!["double_list".into()],
                     }},
-                    },
-                collections: hashmap! {},
-                imports: hashmap! {},
-                types: hashmap! {},
+                }),
+                collections: None,
+                imports: None,
+                types: None,
             };
 
             api.store_collection(collection, "my_collection".to_string()).unwrap();
@@ -643,10 +662,7 @@ mod tests {
                             ]
                         }
                     }
-                },
-                "constants": {},
-                "collections": {},
-                "imports": {}
+                }
             }"#;
 
             let collection: Collection = match serde_json::from_str(json_collection) {

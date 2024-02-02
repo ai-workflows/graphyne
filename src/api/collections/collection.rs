@@ -9,21 +9,21 @@ use crate::core::{Symbol, SymbolPath};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Collection {
     /// The collection's functions.
-    pub functions: HashMap<Symbol, CollectionFunc>,
+    pub functions: Option<HashMap<Symbol, CollectionFunc>>,
 
     /// The collection's constants.
-    pub constants: HashMap<Symbol, CollectionConst>,
+    pub constants: Option<HashMap<Symbol, CollectionConst>>,
 
     /// The collection's sub-collections.
-    pub collections: HashMap<Symbol, Collection>,
-
+    pub collections: Option<HashMap<Symbol, Collection>>,
+    
     /// The collection's types
-    pub types: HashMap<Symbol, CustomTypeDef>,
+    pub types: Option<HashMap<Symbol, CustomTypeDef>>,
 
     /// Values in other collections (including collections themselves) that are referenced by this collection.
     /// The keys are the local symbols used to reference the values.
     /// The values are a symbol path from root to the value.
-    pub imports: HashMap<Symbol, SymbolPath>,
+    pub imports: Option<HashMap<Symbol, SymbolPath>>,
 }
 
 impl Collection {
@@ -36,11 +36,11 @@ impl Collection {
         imports: HashMap<Symbol, SymbolPath>,
     ) -> Self {
         Self {
-            functions,
-            constants,
-            collections,
-            types,
-            imports,
+            functions: Some(functions),
+            constants: Some(constants),
+            collections: Some(collections),
+            types: Some(types),
+            imports: Some(imports),
         }
     }
 }
