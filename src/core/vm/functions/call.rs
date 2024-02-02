@@ -302,4 +302,23 @@ impl VM {
 
         self.get_func_call_outputs(func, context)
     }
+
+    pub fn execute_call(&self, func: &ValueReference, args: Vec<&ValueReference>) -> ExecResult<Vec<ValueReference>> {
+        // get the function
+        let func = match self.get_ref_value(func) {
+            Ok(val) => val,
+            Err(msg) => return Err(format!("Failed to get function: {}", msg))
+        };
+        let func = func.as_live().as_func().ok_or_else(|| "Cannot call a non-function value".to_string())??;
+
+        // get the args and ensure that there are the correct number of them
+        let mut args_cloned: Vec<ValueReference> = Vec::new();
+        for arg in args {
+            args_cloned.push(self.clone_reference(arg)?);
+        }
+
+        let result = self.handle_call_function(&func, &args_cloned);
+
+        result
+    }
 }

@@ -5,6 +5,7 @@ use crate::core::data::live::{LiveData, PointerLive, StringLive};
 use crate::core::{ExecResult, Symbol};
 use crate::core::data::live::helpers::type_of_helper;
 use crate::core::data::stored::StoredData;
+use crate::core::vm::value_ref::ValueReference;
 
 /// Represents the "language" type of a piece of data.
 /// Note: there may not be a one-to-one correspondence between this, rust-types, and stored-types.
@@ -71,7 +72,7 @@ fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 }
 
 impl LiveData for TypeLive {
-    fn type_of(&self, type_map: &HashMap<TypeLive, usize>) -> Option<ExecResult<PointerLive>> {
+    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
         type_of_helper(&TypeLive::Type, &type_map)
     }
 

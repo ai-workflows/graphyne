@@ -81,3 +81,15 @@ impl From<FuncOpLive> for StoredData {
         StoredData::FuncOpStored(value)
     }
 }
+
+impl From<TypeLive> for StoredData {
+    fn from(value: TypeLive) -> Self {
+        StoredData::TypeStored(value)
+    }
+}
+
+impl From<ObjectLive> for StoredData {
+    fn from(value: ObjectLive) -> Self {
+        StoredData::ObjectStored(value)
+    }
+}

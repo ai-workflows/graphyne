@@ -9,8 +9,8 @@ use crate::core::{ExecResult, Symbol, SymbolPath};
 use crate::core::data::live::live_data::TypeLive;
 use crate::core::data::stored::StoredData::DictStored;
 use crate::core::vm::ops::Operation;
-use crate::core::vm::store_op::StoreOp;
-use crate::core::vm::store_op::StoreOp::{CreateBuffer, StoreBool, StoreFloat, StoreInt, StoreString};
+use crate::core::vm::store::store_op::StoreOp;
+use crate::core::vm::store::store_op::StoreOp::{CreateBuffer, StoreBool, StoreFloat, StoreInt, StoreString};
 use crate::core::vm::value_ref::ValueReference;
 use crate::core::vm::VM;
 

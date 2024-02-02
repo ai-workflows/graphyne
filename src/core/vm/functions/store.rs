@@ -3,7 +3,7 @@ use crate::api::functions::FunctionGraph;
 use crate::core::{ExecResult, Symbol};
 use crate::core::data::stored::StoredData;
 use crate::core::vm::ops::Operation;
-use crate::core::vm::store_op::StoreOp;
+use crate::core::vm::store::store_op::StoreOp;
 use crate::core::vm::value_ref::ValueReference;
 use crate::core::vm::VM;
 

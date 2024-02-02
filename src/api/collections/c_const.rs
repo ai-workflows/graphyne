@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use serde::{Serialize};
 use crate::core::data::live::{BoolLive, FloatLive, IntLive, StringLive};
 use crate::core::{ExecResult, Symbol};
-use crate::core::vm::store_op::StoreOp;
-use crate::core::vm::store_op::StoreOp::{StoreBool, StoreFloat, StoreInt, StoreString};
+use crate::core::vm::store::store_op::StoreOp;
+use crate::core::vm::store::store_op::StoreOp::{StoreBool, StoreFloat, StoreInt, StoreString};
 use crate::core::vm::value_ref::ValueReference;
 use crate::core::vm::VM;
 

@@ -5,9 +5,10 @@ use crate::core::{ExecResult, Type};
 use crate::core::data::live::helpers::type_of_helper;
 use crate::core::data::stored::StoredData;
 use crate::core::gc::{GCPointer};
+use crate::core::vm::value_ref::ValueReference;
 
 impl LiveData for ListLive {
-    fn type_of(&self, type_map: &HashMap<TypeLive, usize>) -> Option<ExecResult<PointerLive>> {
+    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
         type_of_helper(&TypeLive::List, &type_map)
     }
 
@@ -118,7 +119,7 @@ mod tests {
     use crate::core::data::live::live_data::LiveData;
     use crate::core::data::live::{IntLive, StringLive};
     use crate::core::vm::ops::Operation;
-    use crate::core::vm::store_op::StoreOp;
+    use crate::core::vm::store::store_op::StoreOp;
     use crate::core::vm::vm::VM;
 
     #[test]

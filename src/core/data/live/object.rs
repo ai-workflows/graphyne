@@ -4,6 +4,7 @@ use crate::core::data::live::live_data::{ObjectLive, TypeLive};
 use crate::core::data::stored::StoredData;
 use crate::core::gc::GCPointer;
 use crate::core::{ExecResult, Symbol};
+use crate::core::vm::value_ref::ValueReference;
 
 #[derive(Debug, Clone)]
 pub struct Object {
@@ -13,7 +14,7 @@ pub struct Object {
 
 impl LiveData for ObjectLive {
     /// Returns a pointer to the type of this data.
-    fn type_of(&self, type_map: &HashMap<TypeLive, usize>) -> Option<ExecResult<PointerLive>> {
+    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
         Some(Ok(self.type_ptr.clone()))
     }
 

@@ -4,6 +4,7 @@ use crate::core::data::functions::{FuncOp, FuncSig, FuncVal};
 use crate::core::data::live::object::Object;
 use crate::core::data::stored::StoredData;
 use crate::core::gc::GCPointer;
+use crate::core::vm::value_ref::ValueReference;
 
 /// Live data types. These are interoperable with rust types and can be used to perform operations.
 pub type NullLive = ();
@@ -29,7 +30,7 @@ pub trait LiveData {
     /// Operations return None if they are not Implemented
 
     /// Returns a pointer to the type of this data. Requires passing a type map.
-    fn type_of(&self, type_map: &HashMap<TypeLive, usize>) -> Option<ExecResult<PointerLive>> {None}
+    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {None}
 
     /// Type conversions for this data. Converts this to another live data type.
     fn as_int(&self) -> Option<ExecResult<IntLive>> {None}

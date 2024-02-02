@@ -12,4 +12,4 @@ mod object;
 mod helpers;
 
 
-pub(crate) use live_data::{BoolLive, DictLive, FloatLive, FuncLive, FuncOpLive, FuncValLive, IntLive, ListLive, LiveData, NullLive, PointerLive, StringLive};
+pub(crate) use live_data::{BoolLive, DictLive, FloatLive, FuncLive, FuncOpLive, FuncValLive, IntLive, ListLive, LiveData, NullLive, PointerLive, StringLive, TypeLive, ObjectLive};

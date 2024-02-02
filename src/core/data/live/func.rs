@@ -4,9 +4,10 @@ use crate::core::{ExecResult, Type};
 use crate::core::data::live::helpers::type_of_helper;
 use crate::core::data::live::live_data::TypeLive;
 use crate::core::data::stored::StoredData;
+use crate::core::vm::value_ref::ValueReference;
 
 impl LiveData for FuncLive {
-    fn type_of(&self, type_map: &HashMap<TypeLive, usize>) -> Option<ExecResult<PointerLive>> {
+    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
         type_of_helper(&TypeLive::Function, &type_map)
     }
 
@@ -27,7 +28,7 @@ impl LiveData for FuncLive {
 }
 
 impl LiveData for FuncValLive {
-    fn type_of(&self, type_map: &HashMap<TypeLive, usize>) -> Option<ExecResult<PointerLive>> {
+    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
         type_of_helper(&TypeLive::FunctionVal, &type_map)
     }
 
@@ -48,7 +49,7 @@ impl LiveData for FuncValLive {
 }
 
 impl LiveData for FuncOpLive {
-    fn type_of(&self, type_map: &HashMap<TypeLive, usize>) -> Option<ExecResult<PointerLive>> {
+    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
         type_of_helper(&TypeLive::FunctionOp, &type_map)
     }
 

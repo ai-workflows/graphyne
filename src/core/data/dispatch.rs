@@ -4,6 +4,7 @@ use crate::core::data::live::{NullLive, IntLive, FloatLive, StringLive, PointerL
 use crate::core::data::live::live_data::{ObjectLive, TypeLive};
 use crate::core::data::stored::StoredData;
 use crate::core::gc::GCPointer;
+use crate::core::vm::value_ref::ValueReference;
 
 /// New type wrapper for StoredData that implements LiveData using enum-based static dispatch.
 struct LiveDispatch<'a>(&'a StoredData);
@@ -40,7 +41,7 @@ macro_rules! static_dispatch {
 
 /// Implement LiveData for LiveDispatch.
 impl LiveData for LiveDispatch<'_> {
-    static_dispatch!{ fn type_of(type_map: &HashMap<TypeLive, usize>) -> Option<ExecResult<PointerLive>> }
+    static_dispatch!{ fn type_of(type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> }
     static_dispatch!{ fn as_int() -> Option<ExecResult<IntLive>> }
     static_dispatch!{ fn as_float() -> Option<ExecResult<FloatLive>> }
     static_dispatch!{ fn as_string() -> Option<ExecResult<StringLive>> }

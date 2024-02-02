@@ -4,9 +4,10 @@ use crate::core::data::live::{BoolLive, IntLive, LiveData, PointerLive};
 use crate::core::{ExecResult, Type};
 use crate::core::data::live::helpers::type_of_helper;
 use crate::core::data::stored::StoredData;
+use crate::core::vm::value_ref::ValueReference;
 
 impl LiveData for NullLive {
-    fn type_of(&self, type_map: &HashMap<TypeLive, usize>) -> Option<ExecResult<PointerLive>> {
+    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
         type_of_helper(&TypeLive::Null, &type_map)
     }
 

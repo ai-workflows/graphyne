@@ -4,6 +4,7 @@ use crate::core::{ExecResult, Type};
 use crate::core::data::live::helpers::type_of_helper;
 use crate::core::data::live::live_data::TypeLive;
 use crate::core::data::stored::StoredData;
+use crate::core::vm::value_ref::ValueReference;
 macro_rules! checked_arithmetic_int_op {
     ($self:ident, $rhs:ident, $op:tt, $op_name:ident) => {
         match $rhs {
@@ -26,7 +27,7 @@ macro_rules! checked_arithmetic_int_op {
 }
 
 impl LiveData for IntLive {
-    fn type_of(&self, type_map: &HashMap<TypeLive, usize>) -> Option<ExecResult<PointerLive>> {
+    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
         type_of_helper(&TypeLive::Integer, &type_map)
     }
 
@@ -129,7 +130,7 @@ macro_rules! checked_arithmetic_float_op {
 }
 
 impl LiveData for FloatLive {
-    fn type_of(&self, type_map: &HashMap<TypeLive, usize>) -> Option<ExecResult<PointerLive>> {
+    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
         type_of_helper(&TypeLive::Float, &type_map)
     }
 
@@ -230,7 +231,7 @@ mod tests {
     use crate::core::data::stored::StoredData;
     use crate::core::data::stored::StoredData::{FloatStored, IntStored};
     use crate::core::vm::ops::Operation;
-    use crate::core::vm::store_op::StoreOp;
+    use crate::core::vm::store::store_op::StoreOp;
     use crate::core::vm::value_ref::ValueReference;
     use crate::core::vm::VM;
 
