@@ -1,5 +1,5 @@
 use serde::{Deserialize, Deserializer, Serialize};
-use serde::de::MapAccess;
+use serde::de::{MapAccess, SeqAccess};
 use crate::core::data::live::TypeLive;
 use crate::core::{Symbol};
 
@@ -78,7 +78,7 @@ impl<'de> Deserialize<'de> for CollectionTypeConst {
     }
 }
 
-// deserialize a map into a custom type definition
+// deserialize a list of fields into a custom type definition
 impl<'de> Deserialize<'de> for CustomTypeDef {
     fn deserialize<D>(deserializer: D) -> Result<CustomTypeDef, D::Error>
     where
@@ -93,19 +93,16 @@ impl<'de> Deserialize<'de> for CustomTypeDef {
                 formatter.write_str("a custom type definition")
             }
 
-            fn visit_map<A>(self, mut map: A) -> Result<CustomTypeDef, A::Error>
-            where
-                A: MapAccess<'de>,
-            {
-                let mut fields = Vec::new();
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: SeqAccess<'de> {
+                let mut fields: Vec<(Symbol, CollectionTypeConst)> = Vec::new();
 
-                while let Some(key) = map.next_key()? {
-                    fields.push((key, map.next_value()?));
+                while let Some(field) = seq.next_element()? {
+                    fields.push(field);
                 }
                 Ok(CustomTypeDef(fields))
             }
         }
 
-        deserializer.deserialize_map(CTypeVisitor)
+        deserializer.deserialize_seq(CTypeVisitor)
     }
 }

@@ -633,10 +633,10 @@ mod tests {
 
             let json_collection = r#"{
                 "types": {
-                    "Person": {
-                        "name": "str",
-                        "age": "int"
-                    }
+                    "Person": [
+                        ["name", "str"],
+                        ["age", "int"]
+                    ]
                 },
                 "functions": {
                     "main": {
