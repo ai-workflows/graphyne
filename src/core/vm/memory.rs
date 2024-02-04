@@ -1,4 +1,4 @@
-use crate::core::data::live::TypeLive;
+use crate::core::data::live::{PointerLive, TypeLive};
 use crate::core::data::stored::StoredData;
 use crate::core::ExecResult;
 use crate::core::gc::GCPointer;
@@ -125,7 +125,7 @@ impl VM {
     }
 
     /// Fills a buffer with the given value
-    pub(crate) fn execute_fill_buffer(&self, buffer: &ValueReference, value: StoredData) -> ExecResult<Vec<ValueReference>> {
+    pub fn execute_fill_buffer(&self, buffer: &ValueReference, value: StoredData) -> ExecResult<Vec<ValueReference>> {
         let mut gc = match self.state.try_write() {
             Ok(value) => value,
             Err(_) => return Err("Could not get write lock on VM state".to_string()),
@@ -163,5 +163,28 @@ impl VM {
             StoredData::TypeStored(type_live) => Ok(type_live),
             _ => Err("Could not get type of argument, type is a non-type value".to_string()),
         };
+    }
+
+    /// Converts a value ref to a pointer (doesn't have a reference to the vm).
+    /// Counts the new pointer so the ref count stays the same.
+    pub fn counted_ptr_from_value_ref(&self, mut value_ref: ValueReference) -> ExecResult<PointerLive> {
+        let mut gc = match self.state.try_write() {
+            Ok(value) => value,
+            Err(_) => return Err("Could not get write lock on VM state".to_string()),
+        };
+
+        // clone the pointer
+        let mut ptr = value_ref.pointer.clone();
+
+        // count the pointer
+        match gc.count_pointer(&mut ptr) {
+            Ok(_) => {},
+            Err(_) => return Err("Could not count pointer".to_string()),
+        }
+
+        // drop the value reference
+        drop(value_ref);
+
+        Ok(ptr)
     }
 }

@@ -332,6 +332,24 @@ impl VM {
         result
     }
 
+    pub fn execute_call_async<'a>(&'a self, func: &ValueReference<'a>, args: Vec<&ValueReference<'a>>, return_callback: Box<fn(usize, ValueReference) -> ExecResult<()>>) -> ExecResult<()>
+    {
+        // get the function
+        let func = match self.get_ref_value(func) {
+            Ok(val) => val,
+            Err(msg) => return Err(format!("Failed to get function: {}", msg))
+        };
+        let func = func.as_live().as_func().ok_or_else(|| "Cannot call a non-function value".to_string())??;
+
+        // get the args and ensure that there are the correct number of them
+        let mut args_cloned: Vec<ValueReference> = Vec::new();
+        for arg in args {
+            args_cloned.push(self.clone_reference(arg)?);
+        }
+
+        self.handle_call_function_async(&func, &args_cloned, return_callback)
+    }
+
     // Version of try_execute_fn_op that returns result values by calling a callback function as soon as they are known.
     fn try_execute_fn_op_async<'a, F>(&'a self, op: &FuncOpLive, context: Arc<RwLock<HashMap<Symbol, ValueReference<'a>>>>, mut return_callback: Box<fn(usize, ValueReference) -> ExecResult<()>>) -> ExecResult<()>
     {
