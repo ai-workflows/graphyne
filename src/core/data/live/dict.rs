@@ -1,11 +1,14 @@
-use crate::core::data::live::live_data::DictLive;
+use std::collections::HashMap;
+use crate::core::data::live::live_data::{DictLive, TypeLive};
 use crate::core::data::live::{BoolLive, IntLive, LiveData, PointerLive, StringLive};
 use crate::core::{ExecResult, Type};
+use crate::core::data::live::helpers::type_of_helper;
 use crate::core::data::stored::StoredData;
+use crate::core::vm::value_ref::ValueReference;
 
 impl LiveData for DictLive {
-    fn type_tag(&self) -> Type {
-        Type::Dictionary
+    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
+        type_of_helper(&TypeLive::Dictionary, &type_map)
     }
 
     fn as_dict(&self) -> Option<ExecResult<DictLive>> {
@@ -61,7 +64,7 @@ mod tests {
     use std::collections::HashMap;
     use crate::core::data::live::{LiveData, StringLive};
     use crate::core::vm::ops::Operation;
-    use crate::core::vm::store_op::StoreOp;
+    use crate::core::vm::store::store_op::StoreOp;
     use crate::core::vm::value_ref::ValueReference;
     use crate::core::vm::VM;
 

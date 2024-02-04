@@ -3,6 +3,7 @@ use crate::core::data::stored::StoredData;
 use crate::core::gc::GCPointer;
 use crate::core::vm::VM;
 
+/// ValueReference is a wrapper for a pointer that manages its lifetime.
 pub struct ValueReference<'a> {
     pub pointer: GCPointer<StoredData>,
     pub(crate) vm: &'a VM,

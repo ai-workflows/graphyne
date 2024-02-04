@@ -20,8 +20,11 @@ impl VM {
         let func_val = match val {
             StoredData::FuncValStored(func_val) => func_val,
             _ => {
-                let type_code = val.type_code()?;
-                return Err(format!("Expected func val but got type: {}", type_code));
+                return match self.get_stored_type(&val) {
+                    Ok(val_type) => Err(format!("Expected func val but got type: {}", val_type.get_name())),
+                    Err(msg) => Err(format!("Expected func val but got unknown type (failed to get type: {})", msg))
+                };
+                ;
             }
         };
         Ok(func_val)
@@ -308,6 +311,25 @@ impl VM {
         self.manage_op_queue(op_queue, context.clone())?;
 
         self.get_func_call_outputs(func, context)
+    }
+
+    pub fn execute_call(&self, func: &ValueReference, args: Vec<&ValueReference>) -> ExecResult<Vec<ValueReference>> {
+        // get the function
+        let func = match self.get_ref_value(func) {
+            Ok(val) => val,
+            Err(msg) => return Err(format!("Failed to get function: {}", msg))
+        };
+        let func = func.as_live().as_func().ok_or_else(|| "Cannot call a non-function value".to_string())??;
+
+        // get the args and ensure that there are the correct number of them
+        let mut args_cloned: Vec<ValueReference> = Vec::new();
+        for arg in args {
+            args_cloned.push(self.clone_reference(arg)?);
+        }
+
+        let result = self.handle_call_function(&func, &args_cloned);
+
+        result
     }
 
     // Version of try_execute_fn_op that returns result values by calling a callback function as soon as they are known.

@@ -44,3 +44,5 @@ impl<T> PartialEq for GCPointer<T> where T: GarbageCollectable<T> {
         self.id == other.id
     }
 }
+
+impl<T> Eq for GCPointer<T> where T: GarbageCollectable<T> {}

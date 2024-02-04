@@ -5,10 +5,12 @@ use crate::core::vm::value_ref::ValueReference;
 /// Represents an operation that can be performed on data.
 /// Each operation contains a pointer to the data for its operands.
 #[derive(Debug)]
-#[allow(dead_code)]
 pub enum Operation<'a> {
     /// Sets the value of a buffer
     SetBuffer(&'a ValueReference<'a>, StoredData),
+
+    /// Get the type of a value
+    TypeOf(&'a ValueReference<'a>),
     
     /// Converts a value to an integer.
     AsInt(&'a ValueReference<'a>),
@@ -30,6 +32,9 @@ pub enum Operation<'a> {
 
     /// Converts a value to a dictionary.
     AsDictionary(&'a ValueReference<'a>),
+
+    /// Converts a value to a type.
+    AsType(&'a ValueReference<'a>),
 
     /// Returns the second value if the first value is true, otherwise returns the third value.
     If(&'a ValueReference<'a>, &'a ValueReference<'a>, &'a ValueReference<'a>),
@@ -99,4 +104,10 @@ pub enum Operation<'a> {
 
     /// Gets the items in a list that match a given predicate.
     Filter(&'a ValueReference<'a>, &'a ValueReference<'a>),
+
+    /// Initializes an object of the given custom type using the given data.
+    Init(&'a ValueReference<'a>, Vec<&'a ValueReference<'a>>),
+    //
+    // /// Casts an object to a different type.
+    // Cast(&'a ValueReference<'a>, &'a ValueReference<'a>),
 }

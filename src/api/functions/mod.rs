@@ -12,7 +12,7 @@ mod tests {
     use crate::api::functions::{FunctionGraph, FunctionOpNode, FunctionValueNode};
     use crate::core::data::functions::OpCode;
     use crate::core::data::live::live_data::LiveData;
-    use crate::core::vm::store_op::StoreOp;
+    use crate::core::vm::store::store_op::StoreOp;
     use crate::core::vm::value_ref::ValueReference;
     use crate::core::vm::VM;
 

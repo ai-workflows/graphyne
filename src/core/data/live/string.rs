@@ -1,10 +1,14 @@
-use crate::core::data::live::{BoolLive, FloatLive, IntLive, LiveData, StringLive};
+use std::collections::HashMap;
+use crate::core::data::live::{BoolLive, FloatLive, IntLive, LiveData, PointerLive, StringLive};
 use crate::core::{ExecResult, Type};
+use crate::core::data::live::helpers::type_of_helper;
+use crate::core::data::live::live_data::TypeLive;
 use crate::core::data::stored::StoredData;
+use crate::core::vm::value_ref::ValueReference;
 
 impl LiveData for StringLive {
-    fn type_tag(&self) -> Type {
-        Type::String
+    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
+        type_of_helper(&TypeLive::String, &type_map)
     }
     fn as_int(&self) -> Option<ExecResult<IntLive>> {
         Some(self.parse::<IntLive>().map_err(|_| "Error parsing int from string".to_string()))
@@ -55,7 +59,7 @@ impl LiveData for StringLive {
 mod tests {
     use crate::core::data::live::live_data::LiveData;
     use crate::core::vm::ops::Operation;
-    use crate::core::vm::store_op::StoreOp;
+    use crate::core::vm::store::store_op::StoreOp;
     use crate::core::vm::value_ref::ValueReference;
     use crate::core::vm::VM;
 
