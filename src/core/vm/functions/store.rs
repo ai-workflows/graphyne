@@ -3,7 +3,7 @@ use crate::api::functions::FunctionGraph;
 use crate::core::{ExecResult, Symbol};
 use crate::core::data::stored::StoredData;
 use crate::core::vm::ops::Operation;
-use crate::core::vm::store_op::StoreOp;
+use crate::core::vm::store::store_op::StoreOp;
 use crate::core::vm::value_ref::ValueReference;
 use crate::core::vm::VM;
 
@@ -104,8 +104,8 @@ impl VM {
             // Check if the value is a constant
             let const_ref = constants.get(&val_id.to_string());
 
-            // Determine if the current value is 'self' and has context
-            let is_self = val_id == "self" && has_context;
+            // Determine if the current value is 'outer' and has context
+            let is_self = val_id == "outer" && has_context;
 
             // Store the function value in memory
             let store_op = StoreOp::StoreFunctionVal(val_deps.iter().collect(), const_ref, is_self, Some(val_id.clone()));
@@ -151,8 +151,8 @@ impl VM {
 
         // Handle class context
         if let Some(class_context) = class_context {
-            // store the class context as a constant with the symbol 'self'
-            let self_symbol = Symbol::from("self");
+            // store the class context as a constant with the symbol 'ctx'
+            let self_symbol = Symbol::from("outer");
             self.validate_symbol(&values, &self_symbol)?;
             let buf = self.create_buffer()?;
             values.insert(self_symbol.clone(), buf.clone());

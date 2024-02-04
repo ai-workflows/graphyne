@@ -1,12 +1,15 @@
 use std::collections::HashMap;
 use crate::api::functions::FunctionGraph;
 use crate::core::data::functions::{FuncOp, FuncSig, FuncVal, OpCode};
-use crate::core::data::live::{BoolLive, FloatLive, IntLive, StringLive};
+use crate::core::data::live::{BoolLive, FloatLive, IntLive, ObjectLive, StringLive, TypeLive};
 use crate::core::data::stored::StoredData;
 use crate::core::Symbol;
 use crate::core::vm::value_ref::ValueReference;
 
 pub enum StoreOp<'a>  {
+    /// Creates a buffer in memory (a pointer to nothing).
+    CreateBuffer,
+
     /// Stores a literal int in memory.
     StoreInt(IntLive),
 
@@ -51,14 +54,24 @@ pub enum StoreOp<'a>  {
     /// The second argument is a reference to the class (as a dict) that the func belongs to (if any).
     StoreFunctionGraph(FunctionGraph, Option<&'a ValueReference<'a>>),
 
-    /// Creates a buffer in memory (a pointer to nothing).
-    CreateBuffer,
+    /// Stores a custom type in memory.
+    /// The name of the type.
+    /// The second argument is a list of fields and references to their types.
+    StoreCustomType(Symbol, Vec<(Symbol, &'a ValueReference<'a>)>),
+
+    /// Stores an object in memory.
+    /// type: The type of the object.
+    /// fields: A list of fields and references to their values.
+    StoreObject(&'a ValueReference<'a>, HashMap<Symbol, &'a ValueReference<'a>>),
+
+
 }
 
 impl<'a> StoreOp<'a> {
     /// Returns the stored data from the args for store operations.
     pub fn get_stored_data(self) -> Option<StoredData> {
         match self {
+            StoreOp::CreateBuffer => None,
             StoreOp::StoreInt(data) => Some(StoredData::IntStored(data)),
             StoreOp::StoreFloat(data) => Some(StoredData::FloatStored(data)),
             StoreOp::StoreString(data) => Some(StoredData::StringStored(data)),
@@ -84,7 +97,16 @@ impl<'a> StoreOp<'a> {
                 input_vals: input_vals.iter().map(|v| v.pointer.clone()).collect(),
                 output_vals: output_val.iter().map(|v| v.pointer.clone()).collect(),
             })),
-            _ => None,
+            StoreOp::StoreFunctionGraph(_, _) => None, // custom implementation
+            StoreOp::StoreCustomType(name, fields) => Some(StoredData::TypeStored(TypeLive::Custom(
+                name,
+                uuid::Uuid::new_v4().to_string(),
+                fields.iter().map(|(k, v)| (k.clone(), v.pointer.clone())).collect(),
+            ))),
+            StoreOp::StoreObject(type_ref, fields) => Some(StoredData::ObjectStored(ObjectLive{
+                type_ptr: type_ref.pointer.clone(),
+                fields: fields.iter().map(|(k, v)| (k.clone(), v.pointer.clone())).collect(),
+            })),
         }
     }
 }

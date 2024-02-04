@@ -1,11 +1,14 @@
-use crate::core::data::live::live_data::BoolLive;
-use crate::core::data::live::LiveData;
-use crate::core::{ExecResult, Type};
+use std::collections::HashMap;
+use crate::core::data::live::live_data::{BoolLive, TypeLive};
+use crate::core::data::live::{LiveData, PointerLive};
+use crate::core::{ExecResult};
+use crate::core::data::live::helpers::type_of_helper;
 use crate::core::data::stored::StoredData;
+use crate::core::vm::value_ref::ValueReference;
 
 impl LiveData for BoolLive {
-    fn type_tag(&self) -> Type {
-        Type::Boolean
+    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
+        type_of_helper(&TypeLive::Boolean, &type_map)
     }
 
     fn as_bool(&self) -> Option<ExecResult<BoolLive>> {
@@ -73,7 +76,7 @@ impl LiveData for BoolLive {
 mod tests {
     use crate::core::data::live::live_data::LiveData;
     use crate::core::vm::ops::Operation;
-    use crate::core::vm::store_op::StoreOp;
+    use crate::core::vm::store::store_op::StoreOp;
     use crate::core::vm::value_ref::ValueReference;
     use crate::core::vm::VM;
 

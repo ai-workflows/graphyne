@@ -1,7 +1,10 @@
-use crate::core::{ExecResult, Type};
+use std::collections::HashMap;
+use crate::core::{ExecResult};
 use crate::core::data::live::{NullLive, IntLive, FloatLive, StringLive, PointerLive, ListLive, LiveData, DictLive, BoolLive, FuncLive, FuncValLive, FuncOpLive};
+use crate::core::data::live::live_data::{ObjectLive, TypeLive};
 use crate::core::data::stored::StoredData;
 use crate::core::gc::GCPointer;
+use crate::core::vm::value_ref::ValueReference;
 
 /// New type wrapper for StoredData that implements LiveData using enum-based static dispatch.
 struct LiveDispatch<'a>(&'a StoredData);
@@ -10,15 +13,6 @@ struct LiveDispatch<'a>(&'a StoredData);
 impl StoredData {
     pub fn as_live(&self) -> impl LiveData + '_ {
         LiveDispatch(self)
-    }
-
-    #[allow(dead_code)]
-    pub fn type_tag(&self) -> Type {
-        self.as_live().type_tag()
-    }
-
-    pub fn type_code(&self) -> ExecResult<StringLive> {
-        self.as_live().type_code()
     }
 }
 
@@ -37,6 +31,8 @@ macro_rules! static_dispatch {
                 StoredData::FuncStored(value) => <FuncLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::FuncValStored(value) => <FuncValLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::FuncOpStored(value) => <FuncOpLive as LiveData>::$name(value, $( $arg ),* ),
+                StoredData::TypeStored(value) => <TypeLive as LiveData>::$name(value, $( $arg ),* ),
+                StoredData::ObjectStored(value) => <ObjectLive as LiveData>::$name(value, $( $arg ),* ),
             }
         }
     };
@@ -45,8 +41,7 @@ macro_rules! static_dispatch {
 
 /// Implement LiveData for LiveDispatch.
 impl LiveData for LiveDispatch<'_> {
-    static_dispatch!{ fn type_tag() -> Type }
-    static_dispatch!{ fn type_code() -> ExecResult<StringLive> }
+    static_dispatch!{ fn type_of(type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> }
     static_dispatch!{ fn as_int() -> Option<ExecResult<IntLive>> }
     static_dispatch!{ fn as_float() -> Option<ExecResult<FloatLive>> }
     static_dispatch!{ fn as_string() -> Option<ExecResult<StringLive>> }
@@ -58,6 +53,8 @@ impl LiveData for LiveDispatch<'_> {
     static_dispatch!{ fn as_func_val() -> Option<ExecResult<FuncValLive>> }
     static_dispatch!{ fn as_func_op() -> Option<ExecResult<FuncOpLive>> }
     static_dispatch!{ fn as_null() -> Option<ExecResult<NullLive>> }
+    static_dispatch!{ fn as_type() -> Option<ExecResult<TypeLive>> }
+    static_dispatch!{ fn as_object() -> Option<ExecResult<ObjectLive>> }
     static_dispatch!{ fn op_if(then: &StoredData, otherwise: &StoredData) -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_not() -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_and(rhs: &StoredData) -> Option<ExecResult<StoredData>>}

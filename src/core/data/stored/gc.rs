@@ -18,6 +18,8 @@ impl GarbageCollectable<StoredData> for StoredData {
             GCObjectType::Func => object.as_func().map(|func_data| StoredData::FuncStored(func_data.clone())),
             GCObjectType::FuncVal => object.as_func_val().map(|func_val_data| StoredData::FuncValStored(func_val_data.clone())),
             GCObjectType::FuncOp => object.as_func_op().map(|func_op_data| StoredData::FuncOpStored(func_op_data.clone())),
+            GCObjectType::Type => object.as_type().map(|type_data| StoredData::TypeStored(type_data.clone())),
+            GCObjectType::Object => object.as_object().map(|object_data| StoredData::ObjectStored(object_data.clone())),
         }
     }
 
@@ -118,6 +120,24 @@ impl GarbageCollectable<StoredData> for StoredData {
                 let data = GCObjectData::FuncOp(func_op_live);
                 GCObject {
                     data_type: GCObjectType::FuncOp,
+                    data,
+                    ref_count: 0,
+                    phantom: PhantomData
+                }
+            }
+            StoredData::TypeStored(type_live) => {
+                let data = GCObjectData::Type(type_live);
+                GCObject {
+                    data_type: GCObjectType::Type,
+                    data,
+                    ref_count: 0,
+                    phantom: PhantomData
+                }
+            }
+            StoredData::ObjectStored(object_live) => {
+                let data = GCObjectData::Object(object_live);
+                GCObject {
+                    data_type: GCObjectType::Object,
                     data,
                     ref_count: 0,
                     phantom: PhantomData

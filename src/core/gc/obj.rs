@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use crate::core::data::live::{DictLive, FloatLive, FuncLive, FuncOpLive, FuncValLive, IntLive, ListLive, PointerLive, StringLive};
-use crate::core::data::live::live_data::BoolLive;
+use crate::core::data::live::live_data::{BoolLive, ObjectLive, TypeLive};
 use crate::core::data::stored::StoredData;
 use crate::core::ExecResult;
 use crate::core::gc::{GCPointer};
@@ -20,6 +20,8 @@ pub enum GCObjectType {
     Func,
     FuncVal,
     FuncOp,
+    Type,
+    Object,
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +37,8 @@ pub enum GCObjectData {
     Func(FuncLive),
     FuncVal(FuncValLive),
     FuncOp(FuncOpLive),
+    Type(TypeLive),
+    Object(ObjectLive),
 }
 
 #[derive(Clone)]
@@ -129,6 +133,15 @@ impl<T> GCObject<T> {
                     result.push(pointer);
                 }
             },
+            GCObjectType::Object => {
+                let object: &mut ObjectLive = self.as_object_mut().unwrap();
+
+                result.push(&mut object.type_ptr);
+
+                for pointer in object.fields.values_mut() {
+                    result.push(pointer);
+                }
+            }
             _ => {}
         }
 
@@ -310,6 +323,27 @@ impl<T> GCObject<T> {
             }
         } else {
             Err("Invalid data type".to_string())
+        }
+    }
+
+    pub fn as_type(&self) -> ExecResult<&TypeLive> {
+        match (&self.data_type, &self.data) {
+            (GCObjectType::Type, GCObjectData::Type(value)) => Ok(value),
+            _ => Err("Invalid data type".to_string()),
+        }
+    }
+
+    pub fn as_object(&self) -> ExecResult<&ObjectLive> {
+        match (&self.data_type, &self.data) {
+            (GCObjectType::Object, GCObjectData::Object(value)) => Ok(value),
+            _ => Err("Invalid data type".to_string()),
+        }
+    }
+
+    pub fn as_object_mut(&mut self) -> ExecResult<&mut ObjectLive> {
+        match (&self.data_type, &mut self.data) {
+            (GCObjectType::Object, GCObjectData::Object(value)) => Ok(value),
+            _ => Err("Invalid data type".to_string()),
         }
     }
 }
