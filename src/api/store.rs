@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use uuid::Uuid;
-use crate::api::collections::c_const::CCData;
+use crate::api::collections::c_const::{CCData, store_cc_data};
 use crate::api::collections::c_type::CollectionType;
 use crate::api::collections::collection::Collection;
 use crate::api::functions::{FunctionGraph, FunctionValueNode};
@@ -9,12 +9,14 @@ use crate::core::data::live::{PointerLive, TypeLive};
 use crate::core::data::stored::StoredData;
 use crate::core::data::stored::StoredData::DictStored;
 use crate::core::{ExecResult, Symbol};
-use crate::core::vm::ops::Operation;
+use crate::core::vm::mmu::mmu::{execute_store, get_primitive_type, value_ref_from_ptr};
+use crate::core::vm::operator::operator::execute_op;
+use crate::core::vm::operator::ops::Operation;
 use crate::core::vm::store::store_op::StoreOp;
 use crate::core::vm::store::store_op::StoreOp::CreateBuffer;
 use crate::core::vm::value_ref::ValueReference;
 
-impl<'a> GraphiteApi<'a> {
+impl GraphiteApi {
     /// Create buffers for each member of the collection and stores a dictionary of the buffers in the symbol table.
     /// If it has any sub-collections, it will recursively create buffers for those as well.
     fn create_collection_skeleton(&mut self, value: Collection, symbol: Symbol) -> ExecResult<()> {
@@ -22,7 +24,7 @@ impl<'a> GraphiteApi<'a> {
 
         if let Some(functions) = value.functions {
             for (symbol, _func) in functions {
-                let func_ref = match self.vm.execute_store(CreateBuffer) {
+                let func_ref = match execute_store(self.mmu.clone(), CreateBuffer) {
                     Ok(result) => result[0].clone(),
                     Err(err) => return Err(format!("Error creating buffer for function {}: {}", symbol, err))
                 };
@@ -32,7 +34,7 @@ impl<'a> GraphiteApi<'a> {
 
         if let Some(constants) = value.constants {
             for (symbol, _constant) in constants {
-                let constant_ref = match self.vm.execute_store(CreateBuffer) {
+                let constant_ref = match execute_store(self.mmu.clone(), CreateBuffer) {
                     Ok(result) => result[0].clone(),
                     Err(err) => return Err(format!("Error creating buffer for constant {}: {}", symbol, err))
                 };
@@ -42,7 +44,7 @@ impl<'a> GraphiteApi<'a> {
 
         if let Some(types) = value.types {
             for (symbol, _type) in types {
-                let type_ref = match self.vm.execute_store(CreateBuffer) {
+                let type_ref = match execute_store(self.mmu.clone(), CreateBuffer) {
                     Ok(result) => result[0].clone(),
                     Err(err) => return Err(format!("Error creating buffer for type {}: {}", symbol, err))
                 };
@@ -52,7 +54,7 @@ impl<'a> GraphiteApi<'a> {
 
         if let Some(import) = value.imports {
             for (symbol, _import) in import {
-                let import_ref = match self.vm.execute_store(CreateBuffer) {
+                let import_ref = match execute_store(self.mmu.clone(), CreateBuffer) {
                     Ok(result) => result[0].clone(),
                     Err(err) => return Err(format!("Error creating buffer for import {}: {}", symbol, err))
                 };
@@ -73,7 +75,7 @@ impl<'a> GraphiteApi<'a> {
         }
 
         // store a dict of the buffers
-        let buffers_ref = match self.vm.execute_store(StoreOp::StoreDict(buffers.iter().map(|(symbol, val_ref)| (symbol.clone(), val_ref)).collect())) {
+        let buffers_ref = match execute_store(self.mmu.clone(), StoreOp::StoreDict(buffers.iter().map(|(symbol, val_ref)| (symbol.clone(), val_ref)).collect())) {
             Ok(result) => result[0].clone(),
             Err(err) => return Err(format!("Error creating buffer for collection {}: {}", symbol, err))
         };
@@ -105,19 +107,19 @@ impl<'a> GraphiteApi<'a> {
     //     }
     // }
 
-    pub fn store_named_cc_data(&'a mut self, data: CCData, symbol: Symbol) -> ExecResult<()> {
-        let data_refs = self.vm.store_cc_data(data)?;
+    pub fn store_named_cc_data(&mut self, data: CCData, symbol: Symbol) -> ExecResult<()> {
+        let data_refs = store_cc_data(self.mmu.clone(), data)?;
         self.symbol_table.insert(symbol, data_refs[0].clone());
         Ok(())
     }
 
-    pub fn store_multiple_named_cc_data(&'a mut self, data: Vec<CCData>, prefix: Symbol) -> ExecResult<Vec<Symbol>> {
+    pub fn store_multiple_named_cc_data(&mut self, data: Vec<CCData>, prefix: Symbol) -> ExecResult<Vec<Symbol>> {
         let mut symbol_table: HashMap<Symbol, ValueReference> = HashMap::new();
         let mut symbols: Vec<Symbol> = Vec::new();
 
         for (i, data) in data.into_iter().enumerate() {
             let symbol = format!("{}{}", prefix, i);
-            let data_refs = self.vm.store_cc_data(data)?;
+            let data_refs = store_cc_data(self.mmu.clone(), data)?;
             symbol_table.insert(symbol.clone(), data_refs[0].clone());
             symbols.push(symbol);
         }
@@ -127,7 +129,7 @@ impl<'a> GraphiteApi<'a> {
     }
 
     fn fill_collection_skeleton(&mut self, collection_ref: ValueReference, value: Collection) -> ExecResult<()> {
-        let collection_val = match self.vm.get_ref_value(&collection_ref) {
+        let collection_val = match self.mmu.get_ref_value(&collection_ref) {
             Ok(collection_val) => collection_val,
             Err(err) => return Err(format!("Error getting collection: {}", err))
         };
@@ -148,12 +150,12 @@ impl<'a> GraphiteApi<'a> {
                     Some(buffer_ptr) => buffer_ptr,
                     None => return Err(format!("Buffer for import {} not found for collection {}.", symbol, symbol))
                 };
-                let buffer_ref = match self.vm.value_ref_from_ptr(buffer_ptr.clone()) {
+                let buffer_ref = match value_ref_from_ptr(self.mmu.clone(), buffer_ptr.clone()) {
                     Ok(buffer_ref) => buffer_ref,
                     Err(err) => return Err(format!("Error getting buffer reference for import {} for collection {}: {}", symbol, symbol, err))
                 };
 
-                let fill_result = self.vm.execute_op(Operation::SetBuffer(&buffer_ref, StoredData::PointerStored(import_ref.pointer.clone())));
+                let fill_result = execute_op(self.mmu.clone(), Operation::SetBuffer(&buffer_ref, StoredData::PointerStored(import_ref.pointer.clone())));
                 if let Err(err) = fill_result {
                     return Err(format!("Error filling buffer for import {} for collection {}: {}", symbol, symbol, err));
                 }
@@ -167,22 +169,22 @@ impl<'a> GraphiteApi<'a> {
                     Some(buffer_ptr) => buffer_ptr,
                     None => return Err(format!("Buffer for constant {} not found for collection {}.", symbol, symbol))
                 };
-                let buffer_ref = match self.vm.value_ref_from_ptr(buffer_ptr.clone()) {
+                let buffer_ref = match value_ref_from_ptr(self.mmu.clone(), buffer_ptr.clone()) {
                     Ok(buffer_ref) => buffer_ref,
                     Err(err) => return Err(format!("Error getting buffer reference for constant {} for collection {}: {}", symbol, symbol, err))
                 };
 
                 // store the constant data in memory in a temporary location
-                let stored_ref = self.vm.store_cc_data(constant.into())?[0].clone();
+                let stored_ref = store_cc_data(self.mmu.clone(), constant.into())?[0].clone();
 
                 // retrieve the value that was stored
-                let stored_value = match self.vm.get_ref_value(&stored_ref) {
+                let stored_value = match self.mmu.get_ref_value(&stored_ref) {
                     Ok(stored_value) => stored_value,
                     Err(err) => return Err(format!("Error getting stored value for constant {} for collection {}: {}", symbol, symbol, err))
                 };
 
                 // fill the buffer with the stored data
-                let fill_result = self.vm.execute_op(Operation::SetBuffer(&buffer_ref, stored_value));
+                let fill_result = execute_op(self.mmu.clone(), Operation::SetBuffer(&buffer_ref, stored_value));
                 if let Err(err) = fill_result {
                     return Err(format!("Error filling buffer for constant {} for collection {}: {}", symbol, symbol, err));
                 }
@@ -198,7 +200,7 @@ impl<'a> GraphiteApi<'a> {
                     Some(buffer_ptr) => buffer_ptr,
                     None => return Err(format!("Buffer for function {} not found for collection {}.", symbol, symbol))
                 };
-                let buffer_ref = match self.vm.value_ref_from_ptr(buffer_ptr.clone()) {
+                let buffer_ref = match value_ref_from_ptr(self.mmu.clone(), buffer_ptr.clone()) {
                     Ok(buffer_ref) => buffer_ref,
                     Err(err) => return Err(format!("Error getting buffer reference for function {} for collection {}: {}", symbol, symbol, err))
                 };
@@ -215,8 +217,8 @@ impl<'a> GraphiteApi<'a> {
                 for c_func_value_node in func.graph.values {
                     let graph;
                     if let Some(constant) = c_func_value_node.constant {
-                        let stored_ref = self.vm.store_cc_data(constant.clone())?[0].clone();
-                        let stored_value = match self.vm.get_ref_value(&stored_ref) {
+                        let stored_ref = store_cc_data(self.mmu.clone(), constant.clone())?[0].clone();
+                        let stored_value = match self.mmu.get_ref_value(&stored_ref) {
                             Ok(stored_value) => stored_value,
                             Err(err) => return Err(format!("Error getting stored value for constant {} for function {} for collection {}: {}", c_func_value_node.symbol, symbol, symbol, err))
                         };
@@ -236,7 +238,7 @@ impl<'a> GraphiteApi<'a> {
                 }
 
                 // temporarily store the function graph in memory at a random location
-                let func_ref = match self.vm.execute_store(StoreOp::StoreFunctionGraph(func_graph, Some(&collection_ref))) {
+                let func_ref = match execute_store(self.mmu.clone(), StoreOp::StoreFunctionGraph(func_graph, Some(&collection_ref))) {
                     Ok(result) => result[0].clone(),
                     Err(err) => return Err(format!("Error storing function {} for collection {}: {}", symbol, symbol, err))
                 };
@@ -245,13 +247,13 @@ impl<'a> GraphiteApi<'a> {
                 drop(func_constants);
 
                 // get the stored data for the function graph
-                let func_stored = match self.vm.get_ref_value(&func_ref) {
+                let func_stored = match self.mmu.get_ref_value(&func_ref) {
                     Ok(func_stored) => func_stored,
                     Err(err) => return Err(format!("Error getting stored data for function {} for collection {}: {}", symbol, symbol, err))
                 };
 
                 // fill the buffer with the stored data
-                let fill_result = self.vm.execute_op(Operation::SetBuffer(&buffer_ref, func_stored));
+                let fill_result = execute_op(self.mmu.clone(), Operation::SetBuffer(&buffer_ref, func_stored));
                 if let Err(err) = fill_result {
                     return Err(format!("Error filling buffer for function {} for collection {}: {}", symbol, symbol, err));
                 }
@@ -265,7 +267,7 @@ impl<'a> GraphiteApi<'a> {
                     Some(buffer_ptr) => buffer_ptr,
                     None => return Err(format!("Buffer for type {} not found for collection {}.", symbol, symbol))
                 };
-                let buffer_ref = match self.vm.value_ref_from_ptr(buffer_ptr.clone()) {
+                let buffer_ref = match value_ref_from_ptr(self.mmu.clone(), buffer_ptr.clone()) {
                     Ok(buffer_ref) => buffer_ref,
                     Err(err) => return Err(format!("Error getting buffer reference for type {} for collection {}: {}", symbol, symbol, err))
                 };
@@ -274,15 +276,15 @@ impl<'a> GraphiteApi<'a> {
                 for (field_symbol, field_type_const) in type_def.0 {
                     // get the type of the field
                     let field_type_ref: ValueReference = match field_type_const.0 {
-                        CollectionType::Any => self.vm.get_primitive_type(&TypeLive::Dynamic).unwrap(),
-                        CollectionType::Null => self.vm.get_primitive_type(&TypeLive::Null).unwrap(),
-                        CollectionType::Int => self.vm.get_primitive_type(&TypeLive::Integer).unwrap(),
-                        CollectionType::Float => self.vm.get_primitive_type(&TypeLive::Float).unwrap(),
-                        CollectionType::Str => self.vm.get_primitive_type(&TypeLive::String).unwrap(),
-                        CollectionType::Bool => self.vm.get_primitive_type(&TypeLive::Boolean).unwrap(),
-                        CollectionType::List => self.vm.get_primitive_type(&TypeLive::List).unwrap(),
-                        CollectionType::Dict => self.vm.get_primitive_type(&TypeLive::Dictionary).unwrap(),
-                        CollectionType::Type => self.vm.get_primitive_type(&TypeLive::Type).unwrap(),
+                        CollectionType::Any => get_primitive_type(self.mmu.clone(), &TypeLive::Dynamic).unwrap(),
+                        CollectionType::Null => get_primitive_type(self.mmu.clone(), &TypeLive::Null).unwrap(),
+                        CollectionType::Int => get_primitive_type(self.mmu.clone() ,&TypeLive::Integer).unwrap(),
+                        CollectionType::Float => get_primitive_type(self.mmu.clone(), &TypeLive::Float).unwrap(),
+                        CollectionType::Str => get_primitive_type(self.mmu.clone(), &TypeLive::String).unwrap(),
+                        CollectionType::Bool => get_primitive_type(self.mmu.clone(), &TypeLive::Boolean).unwrap(),
+                        CollectionType::List => get_primitive_type(self.mmu.clone(), &TypeLive::List).unwrap(),
+                        CollectionType::Dict => get_primitive_type(self.mmu.clone(), &TypeLive::Dictionary).unwrap(),
+                        CollectionType::Type => get_primitive_type(self.mmu.clone(), &TypeLive::Type).unwrap(),
                         CollectionType::Custom(type_symbol) => {
                             match self.symbol_table.get(&type_symbol) {
                                 Some(type_ref) => type_ref.clone(),
@@ -295,7 +297,7 @@ impl<'a> GraphiteApi<'a> {
                 }
 
                 let type_stored: StoredData = StoredData::TypeStored(TypeLive::Custom(symbol.clone(), Uuid::new_v4().to_string(), fields));
-                let fill_result = self.vm.execute_op(Operation::SetBuffer(&buffer_ref, type_stored));
+                let fill_result = execute_op(self.mmu.clone(), Operation::SetBuffer(&buffer_ref, type_stored));
                 if let Err(err) = fill_result {
                     return Err(format!("Error filling buffer for type {} for collection {}: {}", symbol, symbol, err));
                 }
@@ -310,7 +312,7 @@ impl<'a> GraphiteApi<'a> {
                     None => return Err(format!("Buffer for sub-collection {} not found for collection {}.", symbol, symbol))
                 };
 
-                let sub_collection_ref = match self.vm.value_ref_from_ptr(buffer_ptr.clone()) {
+                let sub_collection_ref = match value_ref_from_ptr(self.mmu.clone(), buffer_ptr.clone()) {
                     Ok(sub_collection_ref) => sub_collection_ref,
                     Err(err) => return Err(format!("Error getting buffer reference for sub-collection {} for collection {}: {}", symbol, symbol, err))
                 };
@@ -365,7 +367,7 @@ mod tests {
 
     #[test]
     fn test_store_coded_collection() {
-        let vm: &mut VM = &mut VM::new(4);
+        let vm: &mut VM = &mut VM::new(2, 2);
 
         {
             let mut api = GraphiteApi { vm, symbol_table: HashMap::new() };
@@ -451,7 +453,7 @@ mod tests {
 
     #[test]
     fn test_deserialize_store_collection() {
-        let vm: &mut VM = &mut VM::new(4);
+        let vm: &mut VM = &mut VM::new(2, 2);
 
         {
             let mut api = GraphiteApi { vm, symbol_table: HashMap::new() };
@@ -538,7 +540,7 @@ mod tests {
 
     #[test]
     fn test_test_deserialize_store_collection_literal_list() {
-        let vm: &mut VM = &mut VM::new(4);
+        let vm: &mut VM = &mut VM::new(2, 2);
 
         {
             let mut api = GraphiteApi { vm, symbol_table: HashMap::new() };
@@ -626,7 +628,7 @@ mod tests {
 
     #[test]
     fn test_store_collection_with_types<'a>() {
-        let vm: &mut VM = &mut VM::new(4);
+        let vm: &mut VM = &mut VM::new(2, 2);
         {
 
             let mut api = GraphiteApi { vm, symbol_table: HashMap::new() };

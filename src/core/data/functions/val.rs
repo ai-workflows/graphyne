@@ -1,6 +1,8 @@
 use crate::core::data::live::{PointerLive, StringLive};
 use crate::core::Symbol;
 
+pub type FuncValId = StringLive;
+
 /// Represents a value that exists within the scope of a function call.
 #[derive(Debug, Clone)]
 pub struct FuncVal {
@@ -8,7 +10,7 @@ pub struct FuncVal {
     pub symbol: Option<Symbol>,
 
     /// A globally unique identifier for this value.
-    pub guid: StringLive,
+    pub guid: FuncValId,
 
     /// A list of pointers to the func op nodes that depend on this value.
     pub dependents: Vec<PointerLive>,

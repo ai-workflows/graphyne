@@ -3,6 +3,8 @@ use crate::api::GraphiteApi;
 use crate::core::{ExecResult, Symbol, SymbolPath};
 use crate::core::data::live::FuncLive;
 use crate::core::data::stored::StoredData;
+use crate::core::vm::mmu::mmu::value_ref_from_ptr;
+use crate::core::vm::operator::functions::call::handle_call_function;
 use crate::core::vm::value_ref::ValueReference;
 
 // #[derive(Debug, Clone, Deserialize)]
@@ -20,7 +22,7 @@ use crate::core::vm::value_ref::ValueReference;
 //     pub outputs: Vec<Symbol>,
 // }
 
-impl<'a> GraphiteApi<'a>  {
+impl GraphiteApi {
     pub fn execute_program(&mut self, program: &Collection) -> ExecResult<Vec<(Symbol, Option<Symbol>)>> {
         // store the main collection
         match self.store_collection(program.clone(), "main".to_string()) {
@@ -34,7 +36,7 @@ impl<'a> GraphiteApi<'a>  {
             Ok(v) => v,
             Err(e) => return Err(e),
         };
-        let main: FuncLive = match self.vm.get_ref_value(&main_ref) {
+        let main: FuncLive = match self.mmu.get_ref_value(&main_ref) {
             Ok(v) => match v {
                 StoredData::FuncStored(f) => f,
                 _ => return Err("Main function is not a function".to_string()),
@@ -44,7 +46,7 @@ impl<'a> GraphiteApi<'a>  {
         drop(main_ref);
 
         // call the main func
-        let result: Vec<ValueReference> = match self.vm.handle_call_function(&main, &vec![]) {
+        let result: Vec<ValueReference> = match handle_call_function(self.mmu.clone(), &main, &vec![]) {
             Ok(v) => v,
             Err(e) => return Err(e),
         };
@@ -58,8 +60,8 @@ impl<'a> GraphiteApi<'a>  {
         let mut results: Vec<(Symbol, Option<Symbol>)> = vec![];
 
         for (i, output_val_ptr) in main.output_vals.iter().enumerate() {
-            let output_val_ref = self.vm.value_ref_from_ptr(output_val_ptr.clone()).unwrap();
-            let output_val = match self.vm.get_ref_value(&output_val_ref) {
+            let output_val_ref = value_ref_from_ptr(self.mmu.clone(), output_val_ptr.clone()).unwrap();
+            let output_val = match self.mmu.get_ref_value(&output_val_ref) {
                 Ok(v) => match v {
                     StoredData::FuncValStored(f) => f,
                     _ => return Err("Output value is not a function value".to_string()),

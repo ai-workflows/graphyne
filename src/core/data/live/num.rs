@@ -248,7 +248,7 @@ mod tests {
 
     #[test]
     fn test_add() {
-        let vm = VM::new(4);
+        let vm = VM::new(2, 2);
 
         add_helper(&vm, IntStored(1), IntStored(2), 3.0);
         assert_eq!(vm.object_count(), 0);
@@ -303,7 +303,7 @@ mod tests {
 
     #[test]
     fn test_sub() {
-        let vm = VM::new(4);
+        let vm = VM::new(2, 2);
 
         sub_helper(&vm, IntStored(1), IntStored(2), -1.0);
         assert_eq!(vm.object_count(), 0);
@@ -358,7 +358,7 @@ mod tests {
 
     #[test]
     fn test_mul() {
-        let vm = VM::new(4);
+        let vm = VM::new(2, 2);
 
         mul_helper(&vm, IntStored(1), IntStored(2), 2.0);
         assert_eq!(vm.object_count(), 0);
@@ -413,7 +413,7 @@ mod tests {
 
     #[test]
     fn test_div() {
-        let vm = VM::new(4);
+        let vm = VM::new(2, 2);
 
         div_helper(&vm, IntStored(1), IntStored(2), 0.0);
         assert_eq!(vm.object_count(), 0);
@@ -468,7 +468,7 @@ mod tests {
 
     #[test]
     fn test_mod() {
-        let vm = VM::new(4);
+        let vm = VM::new(2, 2);
 
         mod_helper(&vm, IntStored(1), IntStored(2), 1.0);
         assert_eq!(vm.object_count(), 0);
@@ -518,7 +518,7 @@ mod tests {
 
     #[test]
     fn test_pow() {
-        let vm = VM::new(4);
+        let vm = VM::new(2, 2);
 
         pow_helper(&vm, IntStored(1), IntStored(2), 1.0);
         assert_eq!(vm.object_count(), 0);

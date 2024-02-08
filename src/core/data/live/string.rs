@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn test_concat() {
-        let mut vm = VM::new(4);
+        let mut vm = VM::new(2, 2);
 
         test_concat_helper(&mut vm, "test", "test");
         assert_eq!(vm.object_count(), 0);
@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn test_eq() {
-        let mut vm = VM::new(4);
+        let mut vm = VM::new(2, 2);
 
         test_eq_helper(&mut vm, "test", "test", true);
         assert_eq!(vm.object_count(), 0);
@@ -151,7 +151,7 @@ mod tests {
 
     #[test]
     fn test_parse_int() {
-        let mut vm = VM::new(4);
+        let mut vm = VM::new(2, 2);
 
         test_parse_int_helper(&mut vm, "123", 123);
         assert_eq!(vm.object_count(), 0);
@@ -191,7 +191,7 @@ mod tests {
 
     #[test]
     fn test_parse_float() {
-        let mut vm = VM::new(4);
+        let mut vm = VM::new(2, 2);
 
         test_parse_float_helper(&mut vm, "123.0", 123.0);
         assert_eq!(vm.object_count(), 0);

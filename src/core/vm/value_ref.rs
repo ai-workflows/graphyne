@@ -1,20 +1,21 @@
 use std::fmt::Debug;
+use std::sync::Arc;
 use crate::core::data::stored::StoredData;
 use crate::core::gc::GCPointer;
-use crate::core::vm::VM;
+use crate::core::vm::mmu::mmu::{clone_reference, MMU};
 
 /// ValueReference is a wrapper for a pointer that manages its lifetime.
-pub struct ValueReference<'a> {
+pub struct ValueReference {
     pub pointer: GCPointer<StoredData>,
-    pub(crate) vm: &'a VM,
+    pub mmu: Arc<MMU>,
     alive: bool,
 }
 
-impl<'a> ValueReference<'a> {
-    pub fn new(pointer: GCPointer<StoredData>, vm: &'a VM) -> Self {
+impl ValueReference {
+    pub fn new(pointer: GCPointer<StoredData>, mmu: Arc<MMU>) -> Self {
         Self {
             pointer,
-            vm,
+            mmu,
             alive: true,
         }
     }
@@ -24,17 +25,19 @@ impl<'a> ValueReference<'a> {
     }
 }
 
-impl<'a> Drop for ValueReference<'a> {
+impl Drop for ValueReference {
     fn drop(&mut self) {
         if !self.alive {
             panic!("Cannot drop a dead ValueReference")
         }
 
-        self.vm.drop_reference(self);
+        let mmu = self.mmu.clone();
+
+        mmu.drop_reference(self);
     }
 }
 
-impl Debug for ValueReference<'_> {
+impl Debug for ValueReference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ValueReference")
             .field("pointer", &self.pointer)
@@ -43,12 +46,12 @@ impl Debug for ValueReference<'_> {
     }
 }
 
-impl<'a> Clone for ValueReference<'a> {
+impl Clone for ValueReference {
     fn clone(&self) -> Self {
         if !self.alive {
             panic!("Cannot clone a dead ValueReference")
         }
 
-        self.vm.clone_reference(&self).unwrap()
+        clone_reference(self.mmu.clone(), &self).unwrap()
     }
 }

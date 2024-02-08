@@ -1,10 +1,12 @@
 use crate::core::data::functions::op_code::OpCode;
-use crate::core::data::live::PointerLive;
+use crate::core::data::live::{PointerLive, StringLive};
+
+pub type FuncOpId = StringLive;
 
 /// Represents an operation that is executed within a function.
 #[derive(Debug, Clone)]
 pub struct FuncOp {
-    pub guid: String,
+    pub guid: FuncOpId,
 
     /// The opcode of the operation.
     pub opcode: OpCode,

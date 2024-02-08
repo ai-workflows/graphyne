@@ -1,6 +1,5 @@
 pub(crate) mod call;
 pub(crate) mod meta;
-pub(crate) mod store;
 
 #[cfg(test)]
 mod tests {
@@ -9,14 +8,14 @@ mod tests {
     use crate::core::data::functions::OpCode;
     use crate::core::data::live::live_data::LiveData;
     use crate::core::Symbol;
-    use crate::core::vm::ops::Operation;
+    use crate::core::vm::operator::ops::Operation;
     use crate::core::vm::store::store_op::StoreOp;
     use crate::core::vm::value_ref::ValueReference;
     use crate::core::vm::VM;
 
     #[test]
     fn test_func_build() {
-        let vm: &mut VM = &mut VM::new(4);
+        let vm: &mut VM = &mut VM::new(2, 2);
 
         {
             let st_return_val_result = vm.execute_store(StoreOp::StoreFunctionVal(Vec::new(), None, false, None)).unwrap();
@@ -67,7 +66,7 @@ mod tests {
 
     #[test]
     fn test_add_func() {
-        let vm: &mut VM = &mut VM::new(4);
+        let vm: &mut VM = &mut VM::new(2, 2);
 
         {
             let st_return_val_result = vm.execute_store(StoreOp::StoreFunctionVal(Vec::new(), None, false, None)).unwrap();

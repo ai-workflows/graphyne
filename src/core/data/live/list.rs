@@ -124,7 +124,7 @@ mod tests {
 
     #[test]
     fn test_combine_lists() {
-        let mut vm = VM::new(4);
+        let mut vm = VM::new(2, 2);
 
         let l1 = vec![
             StringLive::from("a"),
@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn test_list_len() {
-        let mut vm = VM::new(4);
+        let mut vm = VM::new(2, 2);
 
         let l1 = vec![
             StringLive::from("a"),
@@ -301,7 +301,7 @@ mod tests {
 
     #[test]
     fn test_list_get_item() {
-        let mut vm = VM::new(4);
+        let mut vm = VM::new(2, 2);
 
         let l1 = vec![
             StringLive::from("a"),
@@ -372,7 +372,7 @@ mod tests {
 
     #[test]
     fn test_list_set_item() {
-        let mut vm = VM::new(4);
+        let mut vm = VM::new(2, 2);
 
         let l1 = vec![
             StringLive::from("a"),
@@ -460,7 +460,7 @@ mod tests {
 
     #[test]
     fn test_list_push() {
-        let mut vm = VM::new(4);
+        let mut vm = VM::new(2, 2);
 
         let l1 = vec![
             IntLive::from(1),
@@ -549,7 +549,7 @@ mod tests {
 
     #[test]
     fn test_list_remove() {
-        let mut vm = VM::new(4);
+        let mut vm = VM::new(2, 2);
 
         let l1 = vec![
             IntLive::from(1),

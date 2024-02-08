@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn test_bool() {
-        let mut vm = VM::new(4);
+        let mut vm = VM::new(2, 2);
 
         {
             vm.reset();

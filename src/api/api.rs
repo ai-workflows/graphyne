@@ -1,30 +1,26 @@
 use std::collections::HashMap;
-use uuid::Uuid;
-use crate::api::collections::c_const::CCData;
-use crate::api::collections::c_type::CollectionType;
-use crate::api::collections::collection::Collection;
-use crate::api::functions::{FunctionGraph, FunctionValueNode};
+use std::sync::Arc;
+use crate::api::functions::{FunctionGraph};
 use crate::api::interface::{VmInterface};
 use crate::core::data::live::{LiveData, IntLive, FloatLive, StringLive, BoolLive, PointerLive};
 use crate::core::data::stored::StoredData;
 use crate::core::{ExecResult, Symbol, SymbolPath};
 use crate::core::data::live::live_data::TypeLive;
 use crate::core::data::stored::StoredData::DictStored;
-use crate::core::vm::ops::Operation;
+use crate::core::vm::mmu::mmu::{execute_store, MMU, value_ref_from_ptr};
+use crate::core::vm::operator::functions::call::handle_call_function;
 use crate::core::vm::store::store_op::StoreOp;
-use crate::core::vm::store::store_op::StoreOp::{CreateBuffer, StoreBool, StoreFloat, StoreInt, StoreString};
+use crate::core::vm::store::store_op::StoreOp::{StoreBool, StoreFloat, StoreInt, StoreString};
 use crate::core::vm::value_ref::ValueReference;
-use crate::core::vm::VM;
 
-
-pub struct GraphiteApi<'a> {
-    pub vm: &'a VM,
-    pub symbol_table: HashMap<Symbol, ValueReference<'a>>,
+pub struct GraphiteApi {
+    pub mmu: Arc<MMU>,
+    pub symbol_table: HashMap<Symbol, ValueReference>,
 }
 
-impl<'a> GraphiteApi<'a> {
+impl GraphiteApi {
     fn store_value(&mut self, operation: StoreOp, symbol: Symbol) -> ExecResult<()> {
-        let store_result: Vec<ValueReference> = self.vm.execute_store(operation).unwrap();
+        let store_result: Vec<ValueReference> = execute_store(self.mmu.clone(), operation).unwrap();
         self.symbol_table.insert(symbol, store_result[0].clone());
         Ok(())
     }
@@ -37,7 +33,7 @@ impl<'a> GraphiteApi<'a> {
         for symbol in path.clone() {
             // get the value of the current context, or convert the symbol table to a dict if this is the first iteration
             let context_value: StoredData = match context {
-                Some(context) => match self.vm.get_ref_value(&context) {
+                Some(context) => match self.mmu.get_ref_value(&context) {
                     Ok(context_stored) => context_stored,
                     Err(err) => return Err(format!("Error getting symbol {} for path {:?}: {}", symbol, path.clone(), err))
                 },
@@ -59,7 +55,7 @@ impl<'a> GraphiteApi<'a> {
             };
 
             // convert the pointer to a value reference
-            context = match self.vm.value_ref_from_ptr(symbol_ptr.clone()) {
+            context = match value_ref_from_ptr(self.mmu.clone(), symbol_ptr.clone()) {
                 Ok(symbol_ref) => Some(symbol_ref),
                 Err(err) => return Err(format!("Error getting value reference for symbol {} for path {:?}: {}", symbol, path, err))
             };
@@ -78,11 +74,11 @@ impl<'a> GraphiteApi<'a> {
             StoredData::StringStored(val) => val.clone(),
             StoredData::BoolStored(val) => val.to_string(),
             StoredData::PointerStored(ptr) => {
-                let val_ref = match self.vm.value_ref_from_ptr(ptr.clone()) {
+                let val_ref = match value_ref_from_ptr(self.mmu.clone(), ptr.clone()) {
                     Ok(val_ref) => val_ref,
                     Err(_) => return "null".to_string(),
                 };
-                match self.vm.get_ref_value(&val_ref) {
+                match self.mmu.get_ref_value(&val_ref) {
                     Ok(val) => self.jsonify(&val),
                     Err(_) => return "null".to_string(),
                 }
@@ -173,7 +169,7 @@ impl<'a> GraphiteApi<'a> {
     }
 }
 
-impl<'a> VmInterface for GraphiteApi<'a> {
+impl VmInterface for GraphiteApi {
     fn store_int(&mut self, value: IntLive, symbol: Symbol) -> ExecResult<()> {
         self.store_value(StoreInt(value), symbol)
     }
@@ -196,7 +192,7 @@ impl<'a> VmInterface for GraphiteApi<'a> {
             .collect();
 
         let store_op = StoreOp::StoreList(value_refs);
-        let store_result: Vec<ValueReference> = self.vm.execute_store(store_op).unwrap();
+        let store_result: Vec<ValueReference> = execute_store(self.mmu.clone(), store_op).unwrap();
         self.symbol_table.insert(symbol, store_result[0].clone());
         Ok(())
     }
@@ -210,7 +206,7 @@ impl<'a> VmInterface for GraphiteApi<'a> {
         }
 
         let store_op = StoreOp::StoreDict(value_refs);
-        let store_result: Vec<ValueReference> = self.vm.execute_store(store_op).unwrap();
+        let store_result: Vec<ValueReference> = execute_store(self.mmu.clone(), store_op).unwrap();
         self.symbol_table.insert(symbol, store_result[0].clone());
         Ok(())
     }
@@ -223,7 +219,7 @@ impl<'a> VmInterface for GraphiteApi<'a> {
         };
 
         let store_op = StoreOp::StoreFunctionGraph(func, context_val.as_ref());
-        let store_result: Vec<ValueReference> = self.vm.execute_store(store_op).unwrap();
+        let store_result: Vec<ValueReference> = execute_store(self.mmu.clone(), store_op).unwrap();
 
         drop(context_val);
 
@@ -237,7 +233,7 @@ impl<'a> VmInterface for GraphiteApi<'a> {
 
         for (i, value) in values.into_iter().enumerate() {
             let symbol = format!("{}{}", prefix, i);
-            let store_result: Vec<ValueReference> = self.vm.execute_store(value).unwrap();
+            let store_result: Vec<ValueReference> = execute_store(self.mmu.clone(), value).unwrap();
             symbol_table.insert(symbol.clone(), store_result[0].clone());
             symbols.push(symbol);
         }
@@ -254,7 +250,7 @@ impl<'a> VmInterface for GraphiteApi<'a> {
             None => return Err(format!("Symbol {} not found.", symbol)),
         };
 
-        self.vm.get_ref_value(val_ref).map(|stored| stored)
+        self.mmu.get_ref_value(val_ref).map(|stored| stored)
     }
 
     fn get_ptr(&self, symbol: Symbol) -> ExecResult<PointerLive> {
@@ -284,7 +280,7 @@ impl<'a> VmInterface for GraphiteApi<'a> {
 
     fn execute(&mut self, func: SymbolPath, inputs: Vec<Symbol>, outputs: Vec<Symbol>) -> ExecResult<()> {
         let func_ref = self.get_path(func.clone())?;
-        let get_func_result: StoredData = self.vm.get_ref_value(&func_ref).unwrap();
+        let get_func_result: StoredData = self.mmu.get_ref_value(&func_ref).unwrap();
         let func_sig = get_func_result.as_live().as_func().unwrap().unwrap();
 
         // verify that the number of inputs is correct
@@ -302,7 +298,7 @@ impl<'a> VmInterface for GraphiteApi<'a> {
             input_refs.push(input_ref);
         }
 
-        let exec_result: Vec<ValueReference> = match self.vm.handle_call_function(&func_sig, &input_refs) {
+        let exec_result: Vec<ValueReference> = match handle_call_function(self.mmu.clone(), &func_sig, &input_refs) {
             Ok(result) => result,
             Err(err) => return Err(format!("Error executing function {:?}: {}", func, err)),
         };
@@ -339,7 +335,7 @@ mod tests {
 
     #[test]
     fn test_api<'a>() {
-        let vm: &mut VM = &mut VM::new(4);
+        let vm: &mut VM = &mut VM::new(2, 2);
 
         {
             let symbol_table: HashMap<Symbol, ValueReference<'a>> = HashMap::new();
@@ -374,7 +370,7 @@ mod tests {
 
     #[test]
     fn test_calculate_statistics<'a>() {
-        let vm: &mut VM = &mut VM::new(4);
+        let vm: &mut VM = &mut VM::new(2, 2);
 
         {
             let symbol_table: HashMap<Symbol, ValueReference<'a>> = HashMap::new();

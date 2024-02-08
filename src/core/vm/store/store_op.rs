@@ -10,6 +10,8 @@ pub enum StoreOp<'a>  {
     /// Creates a buffer in memory (a pointer to nothing).
     CreateBuffer,
 
+    FillBuffer(&'a ValueReference, StoredData),
+
     /// Stores a literal int in memory.
     StoreInt(IntLive),
 
@@ -23,46 +25,46 @@ pub enum StoreOp<'a>  {
     StoreBool(BoolLive),
 
     /// Stores a literal pointer in memory.
-    StorePointer(&'a ValueReference<'a>),
+    StorePointer(&'a ValueReference),
 
     /// Stores a literal list in memory.
-    StoreList(Vec<&'a ValueReference<'a>>),
+    StoreList(Vec<&'a ValueReference>),
 
     /// Stores a literal dictionary in memory.
-    StoreDict(HashMap<Symbol, &'a ValueReference<'a>>),
+    StoreDict(HashMap<Symbol, &'a ValueReference>),
 
     /// Stores a literal function in memory.
     /// input_vals: Reference to the func value nodes that args will be binded to when the function is called.
     /// output_vals: Reference to the func value nodes that the function will return when it is called.
     /// constants: Reference to the func value nodes that are constants used by the function.
-    StoreFunction(Vec<&'a ValueReference<'a>>, Vec<&'a ValueReference<'a>>, Vec<&'a ValueReference<'a>>),
+    StoreFunction(Vec<&'a ValueReference>, Vec<&'a ValueReference>, Vec<&'a ValueReference>),
 
     /// Stores a literal function value in memory.
     /// dependents: list of refs to the func op nodes that depend on this func val.
     /// constant: an optional ref to a constant value that this func val is initialized to.
     /// is_self: whether this func val is a pointer to the function's class context.
     /// symbol: the local symbol for this value.
-    StoreFunctionVal(Vec<&'a ValueReference<'a>>, Option<&'a ValueReference<'a>>, bool, Option<Symbol>),
+    StoreFunctionVal(Vec<&'a ValueReference>, Option<&'a ValueReference>, bool, Option<Symbol>),
 
     /// Stores a literal function operation in memory.
     /// opcode: The opcode of the operation.
     /// input_vals: Reference to the func value nodes that are used as inputs for this operation.
     /// output_vals: Reference to the func value nodes that are the outputs of this operation.
-    StoreFunctionOp(OpCode, Vec<&'a ValueReference<'a>>, Vec<&'a ValueReference<'a>>),
+    StoreFunctionOp(OpCode, Vec<&'a ValueReference>, Vec<&'a ValueReference>),
 
     /// Stores a function graph in memory.
     /// The second argument is a reference to the class (as a dict) that the func belongs to (if any).
-    StoreFunctionGraph(FunctionGraph, Option<&'a ValueReference<'a>>),
+    StoreFunctionGraph(FunctionGraph, Option<&'a ValueReference>),
 
     /// Stores a custom type in memory.
     /// The name of the type.
     /// The second argument is a list of fields and references to their types.
-    StoreCustomType(Symbol, Vec<(Symbol, &'a ValueReference<'a>)>),
+    StoreCustomType(Symbol, Vec<(Symbol, &'a ValueReference)>),
 
     /// Stores an object in memory.
-    /// type: The type of the object.
+    /// type: The type of the object.`
     /// fields: A list of fields and references to their values.
-    StoreObject(&'a ValueReference<'a>, HashMap<Symbol, &'a ValueReference<'a>>),
+    StoreObject(&'a ValueReference, HashMap<Symbol, &'a ValueReference>),
 
 
 }
@@ -72,6 +74,7 @@ impl<'a> StoreOp<'a> {
     pub fn get_stored_data(self) -> Option<StoredData> {
         match self {
             StoreOp::CreateBuffer => None,
+            StoreOp::FillBuffer(_, data) => Some(data),
             StoreOp::StoreInt(data) => Some(StoredData::IntStored(data)),
             StoreOp::StoreFloat(data) => Some(StoredData::FloatStored(data)),
             StoreOp::StoreString(data) => Some(StoredData::StringStored(data)),
@@ -83,6 +86,7 @@ impl<'a> StoreOp<'a> {
                 input_vals: input_vals.iter().map(|v| v.pointer.clone()).collect(),
                 output_vals: output_vals.iter().map(|v| v.pointer.clone()).collect(),
                 constant_vals: constants.iter().map(|v| v.pointer.clone()).collect(),
+                guid: uuid::Uuid::new_v4().to_string(),
             })),
             StoreOp::StoreFunctionVal(dependents, constant, is_self, symbol) => Some(StoredData::FuncValStored(FuncVal{
                 guid: uuid::Uuid::new_v4().to_string(),

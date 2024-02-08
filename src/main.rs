@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::fs;
+use std::sync::Arc;
 use crate::api::collections::collection::Collection;
 use crate::api::GraphiteApi;
 use crate::api::interface::VmInterface;
 // use crate::api::program::Program;
 use crate::core::Symbol;
+use crate::core::vm::mmu::mmu::MMU;
 use crate::core::vm::value_ref::ValueReference;
-use crate::core::vm::VM;
 
 
 mod core;
@@ -50,9 +51,11 @@ fn main() {
                 },
             };
 
-            let vm = VM::new(4);
+            let mmu: MMU = MMU::new();
+
+            // let vm = VM::new(2, 2);
             let symbol_table: HashMap<Symbol, ValueReference> = HashMap::new();
-            let mut api = GraphiteApi { vm: &vm, symbol_table };
+            let mut api = GraphiteApi { mmu: Arc::new(mmu), symbol_table };
 
             let results = match api.execute_program(&program) {
                 Ok(v) => v,

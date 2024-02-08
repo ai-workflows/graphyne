@@ -1,11 +1,12 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 use serde::{Serialize};
 use crate::core::data::live::{BoolLive, FloatLive, IntLive, StringLive};
 use crate::core::{ExecResult, Symbol};
+use crate::core::vm::mmu::mmu::{execute_store, MMU};
 use crate::core::vm::store::store_op::StoreOp;
 use crate::core::vm::store::store_op::StoreOp::{StoreBool, StoreFloat, StoreInt, StoreString};
 use crate::core::vm::value_ref::ValueReference;
-use crate::core::vm::VM;
 
 /// The types of constants that can be stored in a collection.
 #[derive(Debug, Clone, Serialize)]
@@ -101,28 +102,26 @@ impl From<CollectionConst> for CCData {
     }
 }
 
-impl VM {
-    pub fn store_cc_data(&self, data: CCData) -> ExecResult<Vec<ValueReference>> {
-        match data {
-            CCData::Int(i) => self.execute_store(StoreInt(i)),
-            CCData::Float(f) => self.execute_store(StoreFloat(f)),
-            CCData::String(s) => self.execute_store(StoreString(s)),
-            CCData::Bool(b) => self.execute_store(StoreBool(b)),
-            CCData::List(l) => {
-                let item_refs: Vec<Vec<ValueReference>> = l.iter().map(|c| self.store_cc_data(c.clone()).unwrap()).collect::<Vec<Vec<ValueReference>>>();
-                let item_refs: Vec<ValueReference> = item_refs.into_iter().flatten().collect();
+pub fn store_cc_data(mmu: Arc<MMU>, data: CCData) -> ExecResult<Vec<ValueReference>> {
+    match data {
+        CCData::Int(i) => execute_store(mmu, StoreInt(i)),
+        CCData::Float(f) => execute_store(mmu, StoreFloat(f)),
+        CCData::String(s) => execute_store(mmu, StoreString(s)),
+        CCData::Bool(b) => execute_store(mmu, StoreBool(b)),
+        CCData::List(l) => {
+            let item_refs: Vec<Vec<ValueReference>> = l.iter().map(|c| store_cc_data(mmu.clone(), c.clone()).unwrap()).collect::<Vec<Vec<ValueReference>>>();
+            let item_refs: Vec<ValueReference> = item_refs.into_iter().flatten().collect();
 
-                self.execute_store(StoreOp::StoreList(item_refs.iter().collect()))
-            }
-            CCData::Dict(d) => {
-                let item_refs: Vec<(String, Vec<ValueReference>)> = d.iter().map(|(k, v)| (k.clone(), self.store_cc_data(v.clone()).unwrap())).collect::<Vec<(String, Vec<ValueReference>)>>();
-                let item_refs: HashMap<String, ValueReference> = item_refs.into_iter().map(|(k, v)| (k, v[0].clone())).collect();
-                let item_refs: HashMap<String, &ValueReference> = item_refs.iter().map(|(k, v)| (k.clone(), v)).collect();
-
-                self.execute_store(StoreOp::StoreDict(item_refs))
-            }
-            CCData::Null => self.execute_store(StoreOp::CreateBuffer),
+            execute_store(mmu, StoreOp::StoreList(item_refs.iter().collect()))
         }
+        CCData::Dict(d) => {
+            let item_refs: Vec<(String, Vec<ValueReference>)> = d.iter().map(|(k, v)| (k.clone(), store_cc_data(mmu.clone(), v.clone()).unwrap())).collect::<Vec<(String, Vec<ValueReference>)>>();
+            let item_refs: HashMap<String, ValueReference> = item_refs.into_iter().map(|(k, v)| (k, v[0].clone())).collect();
+            let item_refs: HashMap<String, &ValueReference> = item_refs.iter().map(|(k, v)| (k.clone(), v)).collect();
+
+            execute_store(mmu, StoreOp::StoreDict(item_refs))
+        }
+        CCData::Null => execute_store(mmu, StoreOp::CreateBuffer),
     }
 }
 

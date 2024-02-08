@@ -70,7 +70,7 @@ mod tests {
 
     #[test]
     fn test_dict() {
-        let mut vm = VM::new(4);
+        let mut vm = VM::new(2, 2);
         let dict = vec![
             ("Hello".to_string(), "World".to_string()),
             ("Foo".to_string(), "Bar".to_string()),

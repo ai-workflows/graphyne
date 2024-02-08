@@ -1,6 +1,6 @@
 use std::fmt;
 use serde::{Deserialize, Serialize};
-use crate::core::vm::ops::Operation;
+use crate::core::vm::operator::ops::Operation;
 use crate::core::vm::value_ref::ValueReference;
 
 #[allow(dead_code)]
@@ -76,7 +76,7 @@ pub enum OpCode {
 
 impl OpCode {
     /// Converts a list of arguments to an operation based on the opcode.
-    pub fn to_operation<'a>(&self, args: &Vec<&'a ValueReference<'a>>) -> Operation<'a> {
+    pub fn to_operation<'a>(&self, args: &Vec<&'a ValueReference>) -> Operation<'a> {
         match self {
             OpCode::TypeOf => Operation::TypeOf(args[0]),
             OpCode::AsInt => Operation::AsInt(args[0]),

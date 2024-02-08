@@ -18,7 +18,7 @@ mod tests {
 
     #[test]
     fn test_load_fn() {
-        let vm = VM::new(4);
+        let vm = VM::new(2, 2);
 
         let values: Vec<FunctionValueNode> = vec![
             FunctionValueNode::var("num1".into()),

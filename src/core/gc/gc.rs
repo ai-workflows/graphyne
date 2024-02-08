@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn test_gc() {
-        let mut vm = VM::new(4);
+        let mut vm = VM::new(2, 2);
 
         test_gc_helper1(&mut vm, "test");
         assert_eq!(vm.object_count(), 0);
