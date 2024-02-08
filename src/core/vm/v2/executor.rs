@@ -2,17 +2,18 @@ use std::sync::{Arc};
 use crate::core::data::live::{FuncOpLive, FuncValLive};
 use crate::core::{ExecResult};
 use crate::core::data::functions::OpCode;
-use crate::core::vm::functions::v2::shared::{CallContextId, SharedCallState, get_func_vals_from_ptrs};
-use crate::core::vm::ops::Operation;
+use crate::core::vm::operator::operator::execute_op;
+use crate::core::vm::operator::ops::Operation;
+use crate::core::vm::v2::shared::{CallContextId, get_func_vals_from_ptrs, SharedCallState};
 use crate::core::vm::value_ref::ValueReference;
 
 /// A worker responsible for executing
 
 /// Executes an operation within the scope of a function call context.
 /// Retrieves the arg values from the state, executes the operation, and returns the result values.
-pub fn try_execute_fn_op<'a>(shared_state: Arc<SharedCallState<'a>>, op: &FuncOpLive, call_context_id: &CallContextId) -> ExecResult<Vec<(ValueReference<'a>, FuncValLive)>> {
+pub fn try_execute_fn_op(shared_state: Arc<SharedCallState>, op: &FuncOpLive, call_context_id: &CallContextId) -> ExecResult<Vec<(ValueReference, FuncValLive)>> {
     // get the func vals for the arguments
-    let arg_fn_vals: Vec<FuncValLive> = match get_func_vals_from_ptrs(shared_state.vm.clone(), &op.input_vals) {
+    let arg_fn_vals: Vec<FuncValLive> = match get_func_vals_from_ptrs(shared_state.mmu.clone(), &op.input_vals) {
         Ok(vals) => vals,
         Err(msg) => return Err(format!("Error getting input func vals for operation: {}", msg))
     };
@@ -27,7 +28,7 @@ pub fn try_execute_fn_op<'a>(shared_state: Arc<SharedCallState<'a>>, op: &FuncOp
     }
 
     // get the output func vals
-    let output_func_vals: Vec<FuncValLive> = match get_func_vals_from_ptrs(shared_state.vm.clone(), &op.output_vals) {
+    let output_func_vals: Vec<FuncValLive> = match get_func_vals_from_ptrs(shared_state.mmu.clone(), &op.output_vals) {
         Ok(vals) => vals,
         Err(msg) => return Err(format!("Error getting output func vals for operation: {}", msg))
     };
@@ -54,32 +55,16 @@ fn validate_op_inputs(shared_state: &Arc<SharedCallState>, args: &Vec<FuncValLiv
 
 /// Handles the call of an operation that is part of a function.
 /// Gets the arguments from the context, executes the operation, and returns the result values.
-pub fn handle_call_function_op<'a>(shared_state: Arc<SharedCallState<'a>>, op_code: &OpCode, args: &Vec<FuncValLive>, call_context_id: &CallContextId, ) -> ExecResult<Vec<ValueReference<'a>>> {
+pub fn handle_call_function_op(shared_state: Arc<SharedCallState>, op_code: &OpCode, args: &Vec<FuncValLive>, call_context_id: &CallContextId, ) -> ExecResult<Vec<ValueReference>> {
     let arg_values: Vec<ValueReference> = get_func_op_args(shared_state.clone(), args, call_context_id)?;
     let arg_values: Vec<&ValueReference> = arg_values.iter().collect();
     let op: Operation = op_code.to_operation(&arg_values);
     
-    let res = shared_state.vm.execute_op(op);
-    
-    if let Err(msg) = res {
-        return Err(format!("Operation execution failed: {}", msg));
-    }
-    
-    let res = res.unwrap();
-    
-    let mut res2: Vec<ValueReference> = vec![];
-    
-    for val in res {
-        let val2 = ValueReference::new(val.pointer, shared_state.vm.clone());
-        
-        res2.push(val);
-    }
-
-    Ok(res2)
+    execute_op(shared_state.mmu.clone(), op)
 }
 
 /// Gets the arguments to a function's operation from the state manager
-fn get_func_op_args<'a>(shared_state: Arc<SharedCallState<'a>>, args: &Vec<FuncValLive>, call_context_id: &CallContextId) -> ExecResult<Vec<ValueReference<'a>>> {
+fn get_func_op_args(shared_state: Arc<SharedCallState>, args: &Vec<FuncValLive>, call_context_id: &CallContextId) -> ExecResult<Vec<ValueReference>> {
     args.iter()
         .map(move |arg_fn_val| {
             match shared_state.get_val(call_context_id, arg_fn_val) {

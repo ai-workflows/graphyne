@@ -1,16 +1,6 @@
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
-use crate::core::data::live::live_data::TypeLive;
-use crate::core::data::live::PointerLive;
-use crate::core::data::stored::StoredData;
-use crate::core::ExecResult;
-use crate::core::gc::{GarbageCollector};
-use crate::core::vm::store::store_op::StoreOp;
-use crate::core::vm::value_ref::ValueReference;
-
 #[cfg(test)]
 mod tests {
-    use crate::core::vm::store::store_op::StoreOp;
+    use crate::core::vm::mmu::store_op::StoreOp;
     use crate::core::vm::VM;
     use crate::core::data::live::{LiveData};
     use crate::core::vm::value_ref::ValueReference;

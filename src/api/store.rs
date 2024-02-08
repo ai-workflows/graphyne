@@ -12,8 +12,8 @@ use crate::core::{ExecResult, Symbol};
 use crate::core::vm::mmu::mmu::{execute_store, get_primitive_type, value_ref_from_ptr};
 use crate::core::vm::operator::operator::execute_op;
 use crate::core::vm::operator::ops::Operation;
-use crate::core::vm::store::store_op::StoreOp;
-use crate::core::vm::store::store_op::StoreOp::CreateBuffer;
+use crate::core::vm::mmu::store_op::StoreOp;
+use crate::core::vm::mmu::store_op::StoreOp::CreateBuffer;
 use crate::core::vm::value_ref::ValueReference;
 
 impl GraphiteApi {

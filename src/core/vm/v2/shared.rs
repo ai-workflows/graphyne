@@ -6,9 +6,8 @@ use crate::core::data::live::{FuncLive, FuncOpLive, FuncValLive, PointerLive};
 use crate::core::data::stored::StoredData;
 use crate::core::{ExecResult};
 use crate::core::data::functions::op::FuncOpId;
-use crate::core::vm::functions::v2::orchestrator;
+use crate::core::vm::mmu::mmu::{MMU, value_ref_from_ptr};
 use crate::core::vm::value_ref::ValueReference;
-use crate::core::vm::VM;
 
 pub type CallContextId = String;
 pub type MetaValueId = String;
@@ -16,7 +15,7 @@ pub type MetaValueId = String;
 
 /// Represents a message sent to the orchestrator to indicate that a new value has been calculated.
 #[derive(Clone)]
-pub struct NewValMessage<'a> {
+pub struct NewValMessage {
     /// The id of the call context that the operation that calculated the value is part of.
     pub call_context_id: CallContextId,
 
@@ -24,7 +23,7 @@ pub struct NewValMessage<'a> {
     pub func_val: FuncValLive,
 
     /// A reference to the newly calculated value.
-    pub value: ValueReference<'a>
+    pub value: ValueReference
 }
 
 /// Represents a message sent to the executor to indicate that a new operation should be executed.
@@ -38,11 +37,11 @@ pub struct NewOpMessage {
 
 
 /// Represents data that is shared between the orchestrator and executor.
-pub struct SharedCallState<'a> {
+pub struct SharedCallState {
     /// A two-level lookup map for getting the value for a given pair of CallContextId, FuncValId
     /// Note: multiple call contexts/func values can point to the same value.
     /// This will happen if a value is passed as an input/output between function call contexts.
-    val_lookup: Arc<RwLock<HashMap<CallContextId, HashMap<FuncValId, ValueReference<'a>>>>>,
+    val_lookup: Arc<RwLock<HashMap<CallContextId, HashMap<FuncValId, ValueReference>>>>,
 
     /// A two-level lookup map for storing the remaining outputs for a given call context.
     /// The values of the child map is the linked func val id of the output in the parent call context.
@@ -64,10 +63,11 @@ pub struct SharedCallState<'a> {
     // error_callback: Box<dyn Fn(CallContextId, String)>,
 
     /// The virtual machine that this shared state is associated with.
-    pub vm: Arc<VM>,
+    // pub vm: Arc<VM>,
+    pub mmu: Arc<MMU>,
 
     new_op_sender: mpsc::Sender<NewOpMessage>,
-    new_val_sender: mpsc::Sender<NewValMessage<'a>>,
+    new_val_sender: mpsc::Sender<NewValMessage>,
 
     halt_flag: Arc<AtomicBool>,
 
@@ -75,12 +75,12 @@ pub struct SharedCallState<'a> {
     // once the queue is empty, the value can be removed from the val_lookup.
 }
 
-impl<'a> SharedCallState<'a> {
+impl SharedCallState {
     /// Creates a new shared call state.
     pub fn new(
-        vm: Arc<VM>,
+        mmu: Arc<MMU>,
         new_op_sender: mpsc::Sender<NewOpMessage>,
-        new_val_sender: mpsc::Sender<NewValMessage<'a>>,
+        new_val_sender: mpsc::Sender<NewValMessage>,
         // func: ValueReference<'a>,
         // args: Vec<ValueReference<'a>>,
         // output_sender: mpsc::Sender<NewValMessage<'a>>,
@@ -109,7 +109,7 @@ impl<'a> SharedCallState<'a> {
             // final_outputs: Arc::new(RwLock::new(final_outputs)),
             // output_callback,
             // error_callback,
-            vm,
+            mmu
         });
 
         // match orchestrator::handle_anonymous_fn_call(&state, &main_ccid, &func_live, args) {
@@ -132,7 +132,7 @@ impl<'a> SharedCallState<'a> {
     }
 
     /// Gets the value reference associated with a given call context and function value.
-    pub fn get_val(&self, call_context_id: &CallContextId, func_val: &FuncValLive) -> Option<ValueReference<'a>> {
+    pub fn get_val(&self, call_context_id: &CallContextId, func_val: &FuncValLive) -> Option<ValueReference> {
         let val_lookup = self.val_lookup.read().expect("val_lookup lock is poisoned");
         let call_context_map = match val_lookup.get(call_context_id) {
             Some(map) => map,
@@ -145,13 +145,19 @@ impl<'a> SharedCallState<'a> {
     }
 
     /// Sets the value reference associated with a given call context and function value.
-    pub fn set_val(&self, call_context_id: CallContextId, func_val: FuncValLive, value: ValueReference<'a>) {
+    pub fn set_val(&self, call_context_id: CallContextId, func_val: FuncValLive, value: ValueReference) {
         let mut val_lookup = self.val_lookup.write().expect("val_lookup lock is poisoned");
-        let call_context_map = val_lookup.get_mut(&call_context_id).unwrap_or_else(|| {
-            let map = HashMap::new();
-            val_lookup.insert(call_context_id.clone(), map);
-            val_lookup.get_mut(&call_context_id).unwrap()
-        });
+        // let call_context_map = val_lookup.get_mut(&call_context_id).unwrap_or_else(|| {
+        //     let map = HashMap::new();
+        //     val_lookup.insert(call_context_id.clone(), map);
+        //     val_lookup.get_mut(&call_context_id).unwrap()
+        // });
+
+        if !val_lookup.contains_key(&call_context_id) {
+            val_lookup.insert(call_context_id.clone(), HashMap::new());
+        }
+
+        let call_context_map = val_lookup.get_mut(&call_context_id).unwrap();
         call_context_map.insert(func_val.guid.clone(), value);
     }
 
@@ -165,7 +171,7 @@ impl<'a> SharedCallState<'a> {
     }
 
     /// Sends a new value to be handled by the orchestrator.
-    pub fn send_new_val(&self, call_context_id: CallContextId, func_val: FuncValLive, value: ValueReference<'a>) {
+    pub fn send_new_val(&self, call_context_id: CallContextId, func_val: FuncValLive, value: ValueReference) {
         let message = NewValMessage {
             call_context_id: call_context_id.clone(),
             func_val,
@@ -227,11 +233,19 @@ impl<'a> SharedCallState<'a> {
     /// Registers the output of a function call.
     pub fn register_output(&self, call_context_id: &CallContextId, func_val: &FuncValLive, parent_call_context_id: &CallContextId) {
         let mut output_lookup = self.output_lookup.write().expect("output_lookup lock is poisoned");
-        let outputs = output_lookup.get_mut(call_context_id).unwrap_or_else(|| {
+        // let outputs = output_lookup.get_mut(call_context_id).unwrap_or_else(|| {
+        //     output_lookup.insert(call_context_id.clone(), HashMap::new());
+        //     output_lookup.get_mut(call_context_id).unwrap()
+        // });
+        // outputs.insert(func_val.guid.clone(), (parent_call_context_id.clone(), func_val.guid.clone()));
+
+        if !output_lookup.contains_key(call_context_id) {
             output_lookup.insert(call_context_id.clone(), HashMap::new());
-            output_lookup.get_mut(call_context_id).unwrap()
-        });
-        outputs.insert(func_val.guid.clone(), (parent_call_context_id.clone(), func_val.guid.clone()));
+        }
+
+        if let Some(outputs) = output_lookup.get_mut(call_context_id) {
+            outputs.insert(func_val.guid.clone(), (parent_call_context_id.clone(), func_val.guid.clone()));
+        }
     }
 
     pub fn remove_output(&self, call_context_id: &CallContextId, func_val: &FuncValLive) {
@@ -271,11 +285,21 @@ impl<'a> SharedCallState<'a> {
         new_call_context_id: &CallContextId
     ) {
         let mut call_lookup = self.call_lookup.write().expect("call_lookup lock is poisoned");
-        let calls = call_lookup.get_mut(parent_call_context_id).unwrap_or_else(|| {
+
+        // let mut call_lookup = self.call_lookup.write().expect("call_lookup lock is poisoned");
+        // let calls = call_lookup.get_mut(parent_call_context_id).unwrap_or_else(|| {
+        //     call_lookup.insert(parent_call_context_id.clone(), HashMap::new());
+        //     call_lookup.get_mut(parent_call_context_id).unwrap()
+        // });
+        // calls.insert(func_op_id.clone(), new_call_context_id.clone());
+
+        if !call_lookup.contains_key(parent_call_context_id) {
             call_lookup.insert(parent_call_context_id.clone(), HashMap::new());
-            call_lookup.get_mut(parent_call_context_id).unwrap()
-        });
-        calls.insert(func_op_id.clone(), new_call_context_id.clone());
+        }
+
+        if let Some(calls) = call_lookup.get_mut(parent_call_context_id) {
+            calls.insert(func_op_id.clone(), new_call_context_id.clone());
+        }
     }
 
     pub fn is_call_registered(
@@ -322,18 +346,18 @@ impl<'a> SharedCallState<'a> {
     }
 
     pub fn value_ref_from_ptr(
-        &'a self,
+        &self,
         ptr: PointerLive
-    ) -> ExecResult<ValueReference<'a>> {
-        self.vm.value_ref_from_ptr(ptr)
+    ) -> ExecResult<ValueReference> {
+        value_ref_from_ptr(self.mmu.clone(), ptr)
     }
 }
 
 pub fn get_func_from_ptr(
-    vm: Arc<VM>,
+    mmu: Arc<MMU>,
     func_ptr: &PointerLive
 ) -> ExecResult<FuncLive> {
-    match vm.get_ptr_value(func_ptr) {
+    match mmu.get_ptr_value(func_ptr) {
         Ok(value_stored) => match value_stored {
             StoredData::FuncStored(func) => Ok(func),
             _ => return Err(format!("Expected Func, got: {:?}", value_stored))
@@ -343,10 +367,10 @@ pub fn get_func_from_ptr(
 }
 
 pub fn get_func_val_from_ptr(
-    vm: Arc<VM>,
+    mmu: Arc<MMU>,
     func_val_ptr: &PointerLive
 ) -> ExecResult<FuncValLive> {
-    match vm.get_ptr_value(func_val_ptr) {
+    match mmu.get_ptr_value(func_val_ptr) {
         Ok(value_stored) => match value_stored {
             StoredData::FuncValStored(func_val) => Ok(func_val),
             _ => return Err(format!("Expected FuncVal, got: {:?}", value_stored))
@@ -355,17 +379,17 @@ pub fn get_func_val_from_ptr(
     }
 }
 
-pub fn get_func_vals_from_ptrs(vm: Arc<VM>, ptrs: &Vec<PointerLive>) -> ExecResult<Vec<FuncValLive>> {
+pub fn get_func_vals_from_ptrs(mmu: Arc<MMU>, ptrs: &Vec<PointerLive>) -> ExecResult<Vec<FuncValLive>> {
     ptrs.iter()
-        .map(|ptr| get_func_val_from_ptr(vm.clone(), ptr))
+        .map(|ptr| get_func_val_from_ptr(mmu.clone(), ptr))
         .collect()
 }
 
 pub fn get_func_op_from_ptr(
-    vm: Arc<VM>,
+    mmu: Arc<MMU>,
     func_op_ptr: &PointerLive
 ) -> ExecResult<FuncOpLive> {
-    match vm.get_ptr_value(func_op_ptr) {
+    match mmu.get_ptr_value(func_op_ptr) {
         Ok(value_stored) => match value_stored {
             StoredData::FuncOpStored(func_op) => Ok(func_op),
             _ => return Err(format!("Expected FuncOp, got: {:?}", value_stored))

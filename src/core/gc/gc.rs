@@ -229,7 +229,7 @@ impl<T> Clone for GCPointer<T> where T: GarbageCollectable<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::vm::store::store_op::StoreOp;
+    use crate::core::vm::mmu::store_op::StoreOp;
     use crate::core::vm::VM;
     use crate::core::data::live::LiveData;
 

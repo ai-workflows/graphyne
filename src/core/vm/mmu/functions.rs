@@ -4,7 +4,7 @@ use crate::api::functions::FunctionGraph;
 use crate::core::{ExecResult, Symbol};
 use crate::core::data::stored::StoredData;
 use crate::core::vm::mmu::mmu::{execute_store, MMU, store_value, value_ref_from_ptr};
-use crate::core::vm::store::store_op::StoreOp;
+use crate::core::vm::mmu::store_op::StoreOp;
 use crate::core::vm::value_ref::ValueReference;
 
 /// Stores a function in the VM given its graph representation.

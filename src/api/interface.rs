@@ -3,7 +3,7 @@ use crate::api::functions::FunctionGraph;
 use crate::core::data::live::{BoolLive, FloatLive, IntLive, PointerLive, StringLive};
 use crate::core::data::stored::StoredData;
 use crate::core::{ExecResult, Symbol, SymbolPath};
-use crate::core::vm::store::store_op::StoreOp;
+use crate::core::vm::mmu::store_op::StoreOp;
 
 pub trait VmInterface {
     fn store_int(&mut self, value: IntLive, symbol: Symbol) -> ExecResult<()>;

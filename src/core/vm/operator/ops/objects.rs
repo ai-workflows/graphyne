@@ -4,7 +4,7 @@ use crate::core::data::live::{LiveData, PointerLive, TypeLive};
 use crate::core::data::stored::StoredData;
 use crate::core::{ExecResult};
 use crate::core::vm::mmu::mmu::{execute_store, MMU};
-use crate::core::vm::store::store_op::StoreOp;
+use crate::core::vm::mmu::store_op::StoreOp;
 use crate::core::vm::value_ref::ValueReference;
 
 pub fn execute_init(mmu: Arc<MMU>, obj_type_ref: &ValueReference, args: Vec<&ValueReference>) -> ExecResult<Vec<ValueReference>> {
@@ -69,7 +69,7 @@ mod tests {
     use super::*;
     use crate::core::data::live::{TypeLive, PointerLive};
     use crate::core::data::stored::StoredData;
-    use crate::core::vm::store::store_op::StoreOp;
+    use crate::core::vm::mmu::store_op::StoreOp;
     use crate::core::vm::value_ref::ValueReference;
     use crate::core::vm::VM;
     use std::collections::HashMap;

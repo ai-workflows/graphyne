@@ -107,7 +107,7 @@ mod tests {
     use crate::core::data::live::{LiveData};
     use crate::core::data::stored::StoredData::{FloatStored, IntStored};
     use crate::core::Symbol;
-    use crate::core::vm::store::store_op::StoreOp;
+    use crate::core::vm::mmu::store_op::StoreOp;
     use crate::core::vm::value_ref::ValueReference;
     use crate::core::vm::VM;
 

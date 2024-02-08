@@ -9,8 +9,8 @@ use crate::core::data::live::live_data::TypeLive;
 use crate::core::data::stored::StoredData::DictStored;
 use crate::core::vm::mmu::mmu::{execute_store, MMU, value_ref_from_ptr};
 use crate::core::vm::operator::functions::call::handle_call_function;
-use crate::core::vm::store::store_op::StoreOp;
-use crate::core::vm::store::store_op::StoreOp::{StoreBool, StoreFloat, StoreInt, StoreString};
+use crate::core::vm::mmu::store_op::StoreOp;
+use crate::core::vm::mmu::store_op::StoreOp::{StoreBool, StoreFloat, StoreInt, StoreString};
 use crate::core::vm::value_ref::ValueReference;
 
 pub struct GraphiteApi {

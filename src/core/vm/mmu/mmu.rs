@@ -6,7 +6,7 @@ use crate::core::ExecResult;
 use crate::core::gc::{GarbageCollector, GCPointer};
 use crate::core::vm::mmu::functions::store_function;
 use crate::core::vm::operator::ops::results::get_stored_type_ptr;
-use crate::core::vm::store::store_op::StoreOp;
+use crate::core::vm::mmu::store_op::StoreOp;
 use crate::core::vm::value_ref::ValueReference;
 
 macro_rules! allocate_primitive_type {

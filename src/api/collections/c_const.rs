@@ -4,8 +4,8 @@ use serde::{Serialize};
 use crate::core::data::live::{BoolLive, FloatLive, IntLive, StringLive};
 use crate::core::{ExecResult, Symbol};
 use crate::core::vm::mmu::mmu::{execute_store, MMU};
-use crate::core::vm::store::store_op::StoreOp;
-use crate::core::vm::store::store_op::StoreOp::{StoreBool, StoreFloat, StoreInt, StoreString};
+use crate::core::vm::mmu::store_op::StoreOp;
+use crate::core::vm::mmu::store_op::StoreOp::{StoreBool, StoreFloat, StoreInt, StoreString};
 use crate::core::vm::value_ref::ValueReference;
 
 /// The types of constants that can be stored in a collection.

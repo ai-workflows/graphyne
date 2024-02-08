@@ -1,19 +1,19 @@
 use std::sync::{Arc, mpsc};
 use std::thread;
 use rayon::ThreadPool;
-use crate::core::vm::functions::v2::{executor, orchestrator};
-use crate::core::vm::functions::v2::shared::{NewOpMessage, NewValMessage, SharedCallState};
-use crate::core::vm::VM;
+use crate::core::vm::mmu::mmu::MMU;
+use crate::core::vm::v2::{executor, orchestrator};
+use crate::core::vm::v2::shared::{NewOpMessage, NewValMessage, SharedCallState};
 
 pub fn start_call<'a>(
-    vm: Arc<VM>,
+    mmu: Arc<MMU>,
     max_workers: usize,
 ) {
     let (new_op_sender, new_op_receiver) = mpsc::channel::<NewOpMessage>();
     let (new_val_sender, new_val_receiver) = mpsc::channel::<NewValMessage>();
 
     let shared_state = SharedCallState::new(
-        vm,
+        mmu,
         new_op_sender,
         new_val_sender,
     );

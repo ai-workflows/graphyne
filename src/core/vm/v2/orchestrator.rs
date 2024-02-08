@@ -2,24 +2,24 @@ use std::sync::{Arc};
 use crate::core::data::functions::OpCode;
 use crate::core::data::live::{FuncLive, FuncOpLive, FuncValLive};
 use crate::core::ExecResult;
-use crate::core::vm::functions::v2::shared::{CallContextId, SharedCallState, get_func_from_ptr, get_func_op_from_ptr, get_func_val_from_ptr, get_func_vals_from_ptrs};
+use crate::core::vm::v2::shared::{CallContextId, get_func_from_ptr, get_func_op_from_ptr, get_func_val_from_ptr, get_func_vals_from_ptrs, SharedCallState};
 use crate::core::vm::value_ref::ValueReference;
 
 /// The orchestrator receives messages that new values are known, stores/links them, and determines which operations
 /// need to be executed next. It then sends messages to the executor to execute these operations.
 
-pub fn handle_new_value_v2<'a>(
-    shared_state: Arc<SharedCallState<'a>>,
+pub fn handle_new_value_v2(
+    shared_state: Arc<SharedCallState>,
     call_context_id: &CallContextId,
     func_val: &FuncValLive,
-    value: ValueReference<'a>
+    value: ValueReference
 ) -> ExecResult<()> {
     // set the val in the state manager
     shared_state.set_val(call_context_id.clone(), func_val.clone(), value.clone());
 
     // get the dependent ops for the value
     let dependent_ops: Vec<FuncOpLive> = match func_val.dependents.iter()
-        .map(|op_ptr| get_func_op_from_ptr(shared_state.vm.clone(), op_ptr))
+        .map(|op_ptr| get_func_op_from_ptr(shared_state.mmu.clone(), op_ptr))
         .collect() {
         Ok(ops) => ops,
         Err(e) => return Err(format!("Error getting dependent ops: {}", e))
@@ -55,16 +55,16 @@ pub fn handle_new_value_v2<'a>(
     Ok(())
 }
 
-fn handle_call_op<'a>(
-    shared_state: Arc<SharedCallState<'a>>,
+fn handle_call_op(
+    shared_state: Arc<SharedCallState>,
     op: &FuncOpLive,
     call_context_id: &CallContextId,
     fn_val: &FuncValLive,
-    value: ValueReference<'a>
+    value: ValueReference
 ) -> ExecResult<()> {
     // check if the value is the first arg (the function being called)
     let first_arg_fn_val = match op.input_vals.get(0) {
-        Some(ptr) => match get_func_val_from_ptr(shared_state.vm.clone(), ptr) {
+        Some(ptr) => match get_func_val_from_ptr(shared_state.mmu.clone(), ptr) {
             Ok(val) => val,
             Err(e) => return Err(format!("Error getting first arg val: {}", e))
         }
@@ -81,13 +81,13 @@ fn handle_call_op<'a>(
 }
 
 fn handle_func_call<'a>(
-    shared_state: Arc<SharedCallState<'a>>,
+    shared_state: Arc<SharedCallState>,
     op: &FuncOpLive,
     parent_call_context_id: &CallContextId,
-    value: ValueReference<'a>
+    value: ValueReference
 ) -> ExecResult<()> {
     // get the value for the called function
-    let called_fn = match get_func_from_ptr(shared_state.vm.clone(), &value.pointer) {
+    let called_fn = match get_func_from_ptr(shared_state.mmu.clone(), &value.pointer) {
         Ok(val) => val,
         Err(e) => return Err(format!("Error getting called function: {}", e))
     };
@@ -100,7 +100,7 @@ fn handle_func_call<'a>(
 
     // register the function outputs in the output lookup
     for output_ptr in op.output_vals.iter() {
-        let output_fn_val = match get_func_val_from_ptr(shared_state.vm.clone(), output_ptr) {
+        let output_fn_val = match get_func_val_from_ptr(shared_state.mmu.clone(), output_ptr) {
             Ok(val) => val,
             Err(e) => return Err(format!("Error getting output val: {}", e))
         };
@@ -109,7 +109,7 @@ fn handle_func_call<'a>(
 
     // loop over the arg values. If any are known, send a new value message
     for arg_ptr in op.input_vals.iter() {
-        let arg_fn_val = match get_func_val_from_ptr(shared_state.vm.clone(), arg_ptr) {
+        let arg_fn_val = match get_func_val_from_ptr(shared_state.mmu.clone(), arg_ptr) {
             Ok(val) => val,
             Err(e) => return Err(format!("Error getting arg val: {}", e))
         };
@@ -128,16 +128,16 @@ fn handle_func_call<'a>(
 }
 
 /// Handles an anonymous function call, such as for the main invocation of a program.
-pub fn handle_anonymous_fn_call<'a>(
-    shared_state: Arc<SharedCallState<'a>>,
+pub fn handle_anonymous_fn_call(
+    shared_state: Arc<SharedCallState>,
     call_context_id: &CallContextId,
     called_fn: &FuncLive,
-    args: Vec<ValueReference<'a>>,
+    args: Vec<ValueReference>,
 ) -> ExecResult<()> {
     // no need to register call or outputs, as this is an anonymous function
     // send new value messages for the args
     for (arg_ptr, arg_val) in called_fn.input_vals.iter().zip(args) {
-        let arg_fn_val = match get_func_val_from_ptr(shared_state.vm.clone(), arg_ptr) {
+        let arg_fn_val = match get_func_val_from_ptr(shared_state.mmu.clone(), arg_ptr) {
             Ok(val) => val,
             Err(e) => {
                 shared_state.handle_error(call_context_id, format!("Error getting arg val: {}", e));
@@ -153,14 +153,14 @@ pub fn handle_anonymous_fn_call<'a>(
     Ok(())
 }
 
-fn handle_called_fn_constants<'a>(
-    shared_state: Arc<SharedCallState<'a>>,
+fn handle_called_fn_constants(
+    shared_state: Arc<SharedCallState>,
     call_context_id: &CallContextId,
     called_fn: &FuncLive
 ) -> ExecResult<()> {
     // loop over the constant values. Send a new value message for each
     for constant_ptr in called_fn.constant_vals.iter() {
-        let constant_fn_val = match get_func_val_from_ptr(shared_state.vm.clone(), constant_ptr) {
+        let constant_fn_val = match get_func_val_from_ptr(shared_state.mmu.clone(), constant_ptr) {
             Ok(val) => val,
             Err(e) => return Err(format!("Error getting constant val: {}", e))
         };
@@ -177,8 +177,8 @@ fn handle_called_fn_constants<'a>(
     Ok(())
 }
 
-fn handle_call_arg<'a>(
-    shared_state: Arc<SharedCallState<'a>>,
+fn handle_call_arg(
+    shared_state: Arc<SharedCallState>,
     op: &FuncOpLive,
     call_context_id: &CallContextId,
     first_arg_fn_val: &FuncValLive
@@ -190,7 +190,7 @@ fn handle_call_arg<'a>(
     };
 
     // get the function being called
-    let called_fn = match get_func_from_ptr(shared_state.vm.clone(), &first_arg_val.pointer) {
+    let called_fn = match get_func_from_ptr(shared_state.mmu.clone(), &first_arg_val.pointer) {
         Ok(val) => val,
         Err(e) => return Err(format!("Error getting called function: {}", e))
     };
@@ -205,7 +205,7 @@ fn handle_call_arg<'a>(
     // get the index of this val in the args of the dependent call op
     let mut arg_index = 0;
     for op_input_ptr in op.input_vals.iter() {
-        let input_fn_val = get_func_val_from_ptr(shared_state.vm.clone(), op_input_ptr)?;
+        let input_fn_val = get_func_val_from_ptr(shared_state.mmu.clone(), op_input_ptr)?;
         if input_fn_val.guid == first_arg_fn_val.guid {
             break;
         }
@@ -219,7 +219,7 @@ fn handle_call_arg<'a>(
     // match to the input func val in the called function's context
     let matching_input_ptr = called_fn.input_vals.get(arg_index)
         .ok_or(format!("Could not find matching input for arg index: {}", arg_index))?;
-    let matching_input_val = get_func_val_from_ptr(shared_state.vm.clone(), matching_input_ptr)?;
+    let matching_input_val = get_func_val_from_ptr(shared_state.mmu.clone(), matching_input_ptr)?;
 
     // send a new value message for the matching input val
     shared_state.send_new_val(called_fn_context_id.clone(), matching_input_val, first_arg_val.clone());
@@ -227,20 +227,20 @@ fn handle_call_arg<'a>(
     Ok(())
 }
 
-fn handle_normal_op<'a>(
-    shared_state: Arc<SharedCallState<'a>>,
+fn handle_normal_op(
+    shared_state: Arc<SharedCallState>,
     op: &FuncOpLive,
     call_context_id: &CallContextId,
 ) -> ExecResult<()> {
     // check if the op has already been executed (output vals are known)
-    for output_fn_val in get_func_vals_from_ptrs(shared_state.vm.clone(), &op.output_vals)? {
+    for output_fn_val in get_func_vals_from_ptrs(shared_state.mmu.clone(), &op.output_vals)? {
         if shared_state.contains_val(call_context_id, &output_fn_val) {
             return Err(format!("Operation {} has already been executed.", op.opcode));
         }
     }
 
     // check if all input vals are known
-    let input_fn_vals = get_func_vals_from_ptrs(shared_state.vm.clone(), &op.input_vals)?;
+    let input_fn_vals = get_func_vals_from_ptrs(shared_state.mmu.clone(), &op.input_vals)?;
     for input_fn_val in input_fn_vals {
         if !shared_state.contains_val(call_context_id, &input_fn_val) {
             // The operation will be executed later, when the last input value is known

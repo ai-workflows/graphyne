@@ -64,7 +64,7 @@ mod tests {
     use std::collections::HashMap;
     use crate::core::data::live::{LiveData, StringLive};
     use crate::core::vm::ops::Operation;
-    use crate::core::vm::store::store_op::StoreOp;
+    use crate::core::vm::mmu::store_op::StoreOp;
     use crate::core::vm::value_ref::ValueReference;
     use crate::core::vm::VM;
 
