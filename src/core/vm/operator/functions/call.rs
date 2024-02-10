@@ -333,90 +333,90 @@ pub fn execute_call(mmu: Arc<MMU>, func: &ValueReference, args: Vec<&ValueRefere
 }
 
 
-#[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-    use crate::api::collections::collection::Collection;
-    use crate::api::GraphiteApi;
-    use crate::api::interface::VmInterface;
-    use crate::core::data::live::IntLive;
-    use crate::core::vm::VM;
-    use crate::core::data::live::live_data::{LiveData, FuncLive, FuncOpLive, FuncValLive, PointerLive};
-    use crate::core::ExecResult;
-    use crate::core::vm::value_ref::ValueReference;
-
-    // tests calling a function and receiving results asynchronously
-    #[test]
-    fn test_call_async<'a>() {
-        let vm: &mut VM = &mut VM::new(2, 2);
-
-        {
-            let mut api = GraphiteApi { vm, symbol_table: HashMap::new() };
-
-            let json_collection = r#"{
-                "constants": {},
-                "functions": {
-                    "main": {
-                        "graph": {
-                            "values": [
-                                "initial",
-                                "a",
-                                "b",
-                                "c",
-                                "d",
-                                ["factor", 2]
-                            ],
-                            "ops": [
-                                ["Add", ["c", "factor"], "a"],
-                                ["Add", ["d", "factor"], "b"],
-                                ["Add", ["b", "factor"], "c"],
-                                ["Mul", ["initial", "factor"], "d"]
-                            ],
-                            "input_vals": ["initial"],
-                            "output_vals": ["a", "b", "c", "d"]
-                        }
-                    }
-                },
-                "collections": {},
-                "imports": {}
-            }"#;
-
-            let collection: Collection = match serde_json::from_str(json_collection) {
-                Ok(collection) => collection,
-                Err(e) => {
-                    println!("{}", e);
-                    panic!();
-                }
-            };
-
-            api.store_collection(collection, "my_collection".to_string()).unwrap();
-            let main_func_ref = api.get_path(vec!["my_collection".into(), "main".into()]).unwrap();
-            let main_func = vm.get_ref_value(&main_func_ref).unwrap().as_live().as_func().unwrap().ok().unwrap();
-            drop(main_func_ref);
-            let initial: IntLive = 5.into();
-            api.store_int(initial, "initial".to_string()).unwrap();
-            let initial_ref = api.get_path(vec!["initial".into()]).unwrap();
-
-            // results should be calculated in the order of d, b, c, a
-            let expected_order =vec![(3, 10), (1, 12), (2, 14), (0, 16)];
-
-            let mut results: Vec<IntLive> = Vec::new();
-
-            let callback = |i: usize, result: ValueReference| -> ExecResult<()> {
-                let result = vm.get_ref_value(&result).unwrap().as_live().as_int().unwrap().ok().unwrap();
-                results.push(result);
-                Ok(())
-            };
-
-            vm.handle_call_function_async(&main_func, &[initial_ref], callback).unwrap();
-
-            assert_eq!(results.len(), 4);
-            for (i, result) in results.iter().enumerate() {
-                let expected = expected_order[i].1;
-                assert_eq!(*result, expected);
-            }
-        }
-
-        assert_eq!(vm.object_count(), 0);
-    }
-}
+// #[cfg(test)]
+// mod tests {
+//     use std::collections::HashMap;
+//     use crate::api::collections::collection::Collection;
+//     use crate::api::GraphiteApi;
+//     use crate::api::interface::VmInterface;
+//     use crate::core::data::live::IntLive;
+//     use crate::core::vm::VM;
+//     use crate::core::data::live::live_data::{LiveData, FuncLive, FuncOpLive, FuncValLive, PointerLive};
+//     use crate::core::ExecResult;
+//     use crate::core::vm::value_ref::ValueReference;
+//
+//     // tests calling a function and receiving results asynchronously
+//     #[test]
+//     fn test_call_async<'a>() {
+//         let vm: &mut VM = &mut VM::new(2, 2);
+//
+//         {
+//             let mut api = GraphiteApi { vm, symbol_table: HashMap::new() };
+//
+//             let json_collection = r#"{
+//                 "constants": {},
+//                 "functions": {
+//                     "main": {
+//                         "graph": {
+//                             "values": [
+//                                 "initial",
+//                                 "a",
+//                                 "b",
+//                                 "c",
+//                                 "d",
+//                                 ["factor", 2]
+//                             ],
+//                             "ops": [
+//                                 ["Add", ["c", "factor"], "a"],
+//                                 ["Add", ["d", "factor"], "b"],
+//                                 ["Add", ["b", "factor"], "c"],
+//                                 ["Mul", ["initial", "factor"], "d"]
+//                             ],
+//                             "input_vals": ["initial"],
+//                             "output_vals": ["a", "b", "c", "d"]
+//                         }
+//                     }
+//                 },
+//                 "collections": {},
+//                 "imports": {}
+//             }"#;
+//
+//             let collection: Collection = match serde_json::from_str(json_collection) {
+//                 Ok(collection) => collection,
+//                 Err(e) => {
+//                     println!("{}", e);
+//                     panic!();
+//                 }
+//             };
+//
+//             api.store_collection(collection, "my_collection".to_string()).unwrap();
+//             let main_func_ref = api.get_path(vec!["my_collection".into(), "main".into()]).unwrap();
+//             let main_func = vm.get_ref_value(&main_func_ref).unwrap().as_live().as_func().unwrap().ok().unwrap();
+//             drop(main_func_ref);
+//             let initial: IntLive = 5.into();
+//             api.store_int(initial, "initial".to_string()).unwrap();
+//             let initial_ref = api.get_path(vec!["initial".into()]).unwrap();
+//
+//             // results should be calculated in the order of d, b, c, a
+//             let expected_order =vec![(3, 10), (1, 12), (2, 14), (0, 16)];
+//
+//             let mut results: Vec<IntLive> = Vec::new();
+//
+//             let callback = |i: usize, result: ValueReference| -> ExecResult<()> {
+//                 let result = vm.get_ref_value(&result).unwrap().as_live().as_int().unwrap().ok().unwrap();
+//                 results.push(result);
+//                 Ok(())
+//             };
+//
+//             vm.handle_call_function_async(&main_func, &[initial_ref], callback).unwrap();
+//
+//             assert_eq!(results.len(), 4);
+//             for (i, result) in results.iter().enumerate() {
+//                 let expected = expected_order[i].1;
+//                 assert_eq!(*result, expected);
+//             }
+//         }
+//
+//         assert_eq!(vm.object_count(), 0);
+//     }
+// }

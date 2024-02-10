@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 use std::sync::Arc;
 use crate::core::data::stored::StoredData;
+use crate::core::ExecResult;
 use crate::core::gc::GCPointer;
 use crate::core::vm::mmu::mmu::{clone_reference, MMU};
 
@@ -18,6 +19,10 @@ impl ValueReference {
             mmu,
             alive: true,
         }
+    }
+
+    pub fn deref(&self) -> ExecResult<StoredData> {
+        self.mmu.get_ptr_value(&self.pointer)
     }
 
     pub fn is_alive(&self) -> bool {

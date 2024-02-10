@@ -4,7 +4,7 @@ use crate::core::{ExecResult};
 use crate::core::data::functions::OpCode;
 use crate::core::vm::operator::operator::execute_op;
 use crate::core::vm::operator::ops::Operation;
-use crate::core::vm::v2::shared::{CallContextId, get_func_vals_from_ptrs, SharedCallState};
+use crate::core::vm::v2::shared::{CallContextId, get_func_vals_from_ptrs, log_async, SharedCallState};
 use crate::core::vm::value_ref::ValueReference;
 
 /// A worker responsible for executing
@@ -12,6 +12,8 @@ use crate::core::vm::value_ref::ValueReference;
 /// Executes an operation within the scope of a function call context.
 /// Retrieves the arg values from the state, executes the operation, and returns the result values.
 pub fn try_execute_fn_op(shared_state: Arc<SharedCallState>, op: &FuncOpLive, call_context_id: &CallContextId) -> ExecResult<Vec<(ValueReference, FuncValLive)>> {
+    log_async(call_context_id, &format!("Executing operation: {}", op.opcode));
+
     // get the func vals for the arguments
     let arg_fn_vals: Vec<FuncValLive> = match get_func_vals_from_ptrs(shared_state.mmu.clone(), &op.input_vals) {
         Ok(vals) => vals,
@@ -38,6 +40,8 @@ pub fn try_execute_fn_op(shared_state: Arc<SharedCallState>, op: &FuncOpLive, ca
         .zip(output_func_vals)
         .map(|(val_ref, func_val)| (val_ref.clone(), func_val))
         .collect();
+
+    log_async(call_context_id, &format!("Operation ({}) executed successfully with result: {:?}", op.opcode, result[0].1.symbol));
 
     Ok(result)
 }

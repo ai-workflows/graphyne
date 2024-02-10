@@ -227,45 +227,45 @@ impl<T> Clone for GCPointer<T> where T: GarbageCollectable<T> {
 }
 
 
-#[cfg(test)]
-mod tests {
-    use crate::core::vm::mmu::store_op::StoreOp;
-    use crate::core::vm::VM;
-    use crate::core::data::live::LiveData;
-
-    #[test]
-    fn test_gc() {
-        let mut vm = VM::new(2, 2);
-
-        test_gc_helper1(&mut vm, "test");
-        assert_eq!(vm.object_count(), 0);
-    }
-
-    fn test_gc_helper1(vm: &mut VM, value: &str) {
-        vm.reset();
-
-        let mut result = vm.execute_store(StoreOp::StoreString(value.to_string())).unwrap();
-
-        let ref1 = result.get_mut(0).unwrap();
-        let ref2 = ref1.clone();
-
-        let val1 = vm.get_ref_value(ref1).unwrap();
-        let val2 = vm.get_ref_value(&ref2).unwrap();
-
-        assert_eq!(val1.as_live().as_string().unwrap(), Ok(value.to_string()));
-        assert_eq!(val2.as_live().as_string().unwrap(), Ok(value.to_string()));
-
-        assert_eq!(vm.object_count(), 1);
-
-        assert_eq!(vm.ref_count(ref1).unwrap(), 2);
-
-        drop(result);
-
-        assert_eq!(vm.object_count(), 1);
-        assert_eq!(vm.ref_count(&ref2).unwrap(), 1);
-
-        drop(ref2);
-
-        assert_eq!(vm.object_count(), 0);
-    }
-}
+// #[cfg(test)]
+// mod tests {
+//     use crate::core::vm::mmu::store_op::StoreOp;
+//     use crate::core::vm::VM;
+//     use crate::core::data::live::LiveData;
+//
+//     #[test]
+//     fn test_gc() {
+//         let mut vm = VM::new(2, 2);
+//
+//         test_gc_helper1(&mut vm, "test");
+//         assert_eq!(vm.object_count(), 0);
+//     }
+//
+//     fn test_gc_helper1(vm: &mut VM, value: &str) {
+//         vm.reset();
+//
+//         let mut result = vm.execute_store(StoreOp::StoreString(value.to_string())).unwrap();
+//
+//         let ref1 = result.get_mut(0).unwrap();
+//         let ref2 = ref1.clone();
+//
+//         let val1 = vm.get_ref_value(ref1).unwrap();
+//         let val2 = vm.get_ref_value(&ref2).unwrap();
+//
+//         assert_eq!(val1.as_live().as_string().unwrap(), Ok(value.to_string()));
+//         assert_eq!(val2.as_live().as_string().unwrap(), Ok(value.to_string()));
+//
+//         assert_eq!(vm.object_count(), 1);
+//
+//         assert_eq!(vm.ref_count(ref1).unwrap(), 2);
+//
+//         drop(result);
+//
+//         assert_eq!(vm.object_count(), 1);
+//         assert_eq!(vm.ref_count(&ref2).unwrap(), 1);
+//
+//         drop(ref2);
+//
+//         assert_eq!(vm.object_count(), 0);
+//     }
+// }

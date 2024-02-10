@@ -1,10 +1,14 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, mpsc, RwLock};
 use std::sync::atomic::AtomicBool;
+use std::thread;
+use std::io;
+use std::io::Write;
 use crate::core::data::functions::val::FuncValId;
 use crate::core::data::live::{FuncLive, FuncOpLive, FuncValLive, PointerLive};
 use crate::core::data::stored::StoredData;
 use crate::core::{ExecResult};
+use crate::core::data::functions::FuncVal;
 use crate::core::data::functions::op::FuncOpId;
 use crate::core::vm::mmu::mmu::{MMU, value_ref_from_ptr};
 use crate::core::vm::value_ref::ValueReference;
@@ -45,13 +49,13 @@ pub struct SharedCallState {
 
     /// A two-level lookup map for storing the remaining outputs for a given call context.
     /// The values of the child map is the linked func val id of the output in the parent call context.
-    output_lookup: Arc<RwLock<HashMap<CallContextId, HashMap<FuncValId, (CallContextId, FuncValId)>>>>,
+    output_lookup: Arc<RwLock<HashMap<CallContextId, HashMap<FuncValId, (CallContextId, FuncVal)>>>>,
 
     /// A two-level map for looking up the call context id of a call operation that is inside a given call context.
     call_lookup: Arc<RwLock<HashMap<CallContextId, HashMap<FuncOpId, CallContextId>>>>,
 
     /// A set of func values that if calculated, will cause a message to be sent back to the main thread.
-    // final_outputs: Arc<RwLock<HashSet<(CallContextId, FuncValId)>>>,
+    final_outputs: Arc<RwLock<HashSet<(CallContextId, FuncValId)>>>,
 
     /// A sender for sending outputs back to the main thread.
     // output_sender: mpsc::Sender<NewValMessage<'a>>,
@@ -81,6 +85,7 @@ impl SharedCallState {
         mmu: Arc<MMU>,
         new_op_sender: mpsc::Sender<NewOpMessage>,
         new_val_sender: mpsc::Sender<NewValMessage>,
+        final_outputs: HashSet<(CallContextId, FuncValId)>,
         // func: ValueReference<'a>,
         // args: Vec<ValueReference<'a>>,
         // output_sender: mpsc::Sender<NewValMessage<'a>>,
@@ -106,7 +111,7 @@ impl SharedCallState {
             new_val_sender,
             halt_flag: Arc::new(AtomicBool::new(false)),
             // output_sender,
-            // final_outputs: Arc::new(RwLock::new(final_outputs)),
+            final_outputs: Arc::new(RwLock::new(final_outputs)),
             // output_callback,
             // error_callback,
             mmu
@@ -167,6 +172,10 @@ impl SharedCallState {
             call_context_id: call_context_id.clone(),
             op
         };
+
+        // println!("Sending new operation: {:?}", message.op.opcode);
+        log_async(&call_context_id, &format!("Sending new operation: {:?}", message.op.opcode));
+
         self.new_op_sender.send(message).unwrap();
     }
 
@@ -177,6 +186,11 @@ impl SharedCallState {
             func_val,
             value
         };
+
+        log_async(&call_context_id, &format!(
+            "Sending new value: {} in {}",
+            message.func_val.symbol.clone().unwrap_or("(unknown symbol)".into()),
+            message.call_context_id));
 
         // // check if it is a final output
         // if self.final_outputs.read().unwrap().contains(&(call_context_id.clone(), func_val.guid.clone())) {
@@ -193,15 +207,12 @@ impl SharedCallState {
         val_lookup.remove(call_context_id);
     }
 
-    pub fn handle_error(&self, call_context_id: &CallContextId, error: String) {
+    pub fn halt_execution(&self, call_context_id: &CallContextId, reason: String) {
         // raise the halt flag
         self.halt_flag.store(true, std::sync::atomic::Ordering::Relaxed);
 
-        // call the error callback
-        // TODO: send an async message instead of calling the callback directly.
-        // (self.error_callback)(call_context_id.clone(), format!("Call context {} halted: {}", call_context_id, error));
-
-        eprintln!("Call context {} halted: {}", call_context_id, error);
+        // println!("Call context {} halted: {}", call_context_id, reason);
+        log_async(&call_context_id, &format!("Call context {} halted: {}", call_context_id, reason));
     }
 
     pub fn is_halted(&self) -> bool {
@@ -218,7 +229,7 @@ impl SharedCallState {
     }
 
     /// Gets the parent call context id and id of the func val in the parent call context that matches the given func val.
-    pub fn get_output_info(&self, call_context_id: &CallContextId, func_val: &FuncValLive) -> Option<(CallContextId, FuncValId)> {
+    pub fn get_output_info(&self, call_context_id: &CallContextId, func_val: &FuncValLive) -> Option<(CallContextId, FuncVal)> {
         let output_lookup = self.output_lookup.read().expect("output_lookup lock is poisoned");
         let outputs = match output_lookup.get(call_context_id) {
             Some(outputs) => outputs,
@@ -231,7 +242,13 @@ impl SharedCallState {
     }
 
     /// Registers the output of a function call.
-    pub fn register_output(&self, call_context_id: &CallContextId, func_val: &FuncValLive, parent_call_context_id: &CallContextId) {
+    pub fn register_output(&self,
+                           call_context_id: &CallContextId,
+                           func_val: &FuncValLive,
+                           parent_call_context_id: &CallContextId,
+                           parent_func_val: &FuncValLive
+
+    ) {
         let mut output_lookup = self.output_lookup.write().expect("output_lookup lock is poisoned");
         // let outputs = output_lookup.get_mut(call_context_id).unwrap_or_else(|| {
         //     output_lookup.insert(call_context_id.clone(), HashMap::new());
@@ -244,8 +261,13 @@ impl SharedCallState {
         }
 
         if let Some(outputs) = output_lookup.get_mut(call_context_id) {
-            outputs.insert(func_val.guid.clone(), (parent_call_context_id.clone(), func_val.guid.clone()));
+            outputs.insert(func_val.guid.clone(), (parent_call_context_id.clone(), parent_func_val.clone()));
         }
+
+        log_async(&call_context_id, &format!(
+            "Registered output: {} linked to {}",
+            func_val.symbol.clone().unwrap_or("(unknown symbol)".into()),
+            parent_call_context_id));
     }
 
     pub fn remove_output(&self, call_context_id: &CallContextId, func_val: &FuncValLive) {
@@ -265,16 +287,6 @@ impl SharedCallState {
             Some(outputs) => outputs.len(),
             None => 0
         }
-    }
-
-    pub fn handle_output(&self, call_context_id: &CallContextId, func_val: &FuncValLive, value: ValueReference) {
-        // call the output callback
-        // TODO: send an async message instead of calling the callback directly.
-        // (self.output_callback)(call_context_id.clone(), func_val, value.clone());
-        println!("{}: {:?}", match &func_val.symbol {
-            None => "Unnamed",
-            Some(symbol) => symbol
-        }, value);
     }
 
     /// registers a new call operation with the new call context id that is created within the given parent call context.
@@ -300,6 +312,8 @@ impl SharedCallState {
         if let Some(calls) = call_lookup.get_mut(parent_call_context_id) {
             calls.insert(func_op_id.clone(), new_call_context_id.clone());
         }
+
+        log_async(&parent_call_context_id, &format!("Registered call -> {}", new_call_context_id));
     }
 
     pub fn is_call_registered(
@@ -351,6 +365,22 @@ impl SharedCallState {
     ) -> ExecResult<ValueReference> {
         value_ref_from_ptr(self.mmu.clone(), ptr)
     }
+
+    /// Checks if a new value is a final output. If so, removes it from the final outputs set.
+    pub fn check_for_final_output(&self, call_context_id: &CallContextId, func_val: &FuncValLive) -> bool {
+        let mut final_outputs = self.final_outputs.write().expect("final_outputs lock is poisoned");
+        let is_final_output = final_outputs.contains(&(call_context_id.clone(), func_val.guid.clone()));
+        if is_final_output {
+            final_outputs.remove(&(call_context_id.clone(), func_val.guid.clone()));
+        }
+        is_final_output
+    }
+
+    /// Checks if there are any remaining final outputs.
+    pub fn has_remaining_final_outputs(&self) -> bool {
+        let final_outputs = self.final_outputs.read().expect("final_outputs lock is poisoned");
+        !final_outputs.is_empty()
+    }
 }
 
 pub fn get_func_from_ptr(
@@ -397,4 +427,13 @@ pub fn get_func_op_from_ptr(
         }
         Err(e) => return Err(format!("Error getting FuncOp: {}", e))
     }
+}
+
+pub fn log_async(call_context_id: &CallContextId, msg: &str) {
+    let stdout = io::stdout();
+    let _ = writeln!(&mut stdout.lock(),
+                     "[{}] {}",
+                     call_context_id,
+                     msg
+    );
 }

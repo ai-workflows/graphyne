@@ -2,7 +2,7 @@ use std::sync::{Arc};
 use crate::core::data::functions::OpCode;
 use crate::core::data::live::{FuncLive, FuncOpLive, FuncValLive};
 use crate::core::ExecResult;
-use crate::core::vm::v2::shared::{CallContextId, get_func_from_ptr, get_func_op_from_ptr, get_func_val_from_ptr, get_func_vals_from_ptrs, SharedCallState};
+use crate::core::vm::v2::shared::{CallContextId, get_func_from_ptr, get_func_op_from_ptr, get_func_val_from_ptr, get_func_vals_from_ptrs, log_async, SharedCallState};
 use crate::core::vm::value_ref::ValueReference;
 
 /// The orchestrator receives messages that new values are known, stores/links them, and determines which operations
@@ -14,6 +14,23 @@ pub fn handle_new_value_v2(
     func_val: &FuncValLive,
     value: ValueReference
 ) -> ExecResult<()> {
+    log_async(call_context_id, &format!(
+        "Orchestrating ops for new value: {}",
+        func_val.symbol.clone().unwrap_or("(Unknown symbol)".to_string())
+    ));
+
+    // if func_val.symbol == Some("two".to_string()) {
+    //     let t = 2 + 2;
+    // }
+    //
+    // if func_val.symbol == Some("num".to_string()) {
+    //     let t = 3 + 3;
+    // }
+
+    if func_val.symbol == Some("doubled".to_string()) {
+        let t = 3 + 3;
+    }
+
     // set the val in the state manager
     shared_state.set_val(call_context_id.clone(), func_val.clone(), value.clone());
 
@@ -42,9 +59,16 @@ pub fn handle_new_value_v2(
     // if the val is an output we need to link it to the func val in the parent context
     // if it is the last output for this call context, we need to clean up
     if shared_state.is_output(call_context_id, func_val) {
-        shared_state.handle_output(call_context_id, func_val, value.clone());
+        // get the output info
+        let (parent_call_context, parent_output_fn_val) =
+            shared_state.get_output_info(call_context_id, func_val)
+            .ok_or(format!("Output info not found for call context: {}", call_context_id))?;
 
+        // deregister the output
         shared_state.remove_output(call_context_id, func_val);
+
+        // send the new value message to the parent context
+        shared_state.send_new_val(parent_call_context, parent_output_fn_val, value);
 
         // if this was the last output, the call context has been fully executed and can be cleaned up
         if shared_state.num_remaining_outputs(call_context_id) == 0 {
@@ -99,26 +123,52 @@ fn handle_func_call<'a>(
     shared_state.register_call(&parent_call_context_id, &op.guid, &call_context_id);
 
     // register the function outputs in the output lookup
-    for output_ptr in op.output_vals.iter() {
-        let output_fn_val = match get_func_val_from_ptr(shared_state.mmu.clone(), output_ptr) {
+    for (i, output_ptr) in op.output_vals.iter().enumerate() {
+        let parent_output_fn_val = match get_func_val_from_ptr(shared_state.mmu.clone(), output_ptr) {
             Ok(val) => val,
             Err(e) => return Err(format!("Error getting output val: {}", e))
         };
-        shared_state.register_output(&call_context_id, &output_fn_val, parent_call_context_id);
+
+        // get the matching output fn val in the called function's context
+        let called_fn_output_ptr = called_fn.output_vals.get(i)
+            .ok_or(format!("Could not find matching output for output index: {}", i))?;
+        let output_fn_val = get_func_val_from_ptr(shared_state.mmu.clone(), called_fn_output_ptr)?;
+
+        shared_state.register_output(&call_context_id, &output_fn_val, parent_call_context_id, &parent_output_fn_val);
     }
 
-    // loop over the arg values. If any are known, send a new value message
-    for arg_ptr in op.input_vals.iter() {
+    // loop over the arg values. If any are known, send a new value message for the matching input val in the called function's context
+    for (i, arg_ptr) in op.input_vals.iter().enumerate() {
+        // Skip the first element (the function being called)
+        if i == 0 {
+            continue;
+        }
+
+        // get the fn val for the arg in the parent context
         let arg_fn_val = match get_func_val_from_ptr(shared_state.mmu.clone(), arg_ptr) {
             Ok(val) => val,
             Err(e) => return Err(format!("Error getting arg val: {}", e))
         };
 
-        if shared_state.contains_val(parent_call_context_id, &arg_fn_val) {
-            let arg_val = shared_state.get_val(parent_call_context_id, &arg_fn_val)
-                .ok_or(format!("Arg val not found in parent call context: {}", parent_call_context_id))?;
-            shared_state.send_new_val(call_context_id.clone(), arg_fn_val, arg_val);
+        // if the value is not known, we will handle this arg later
+        if !shared_state.contains_val(parent_call_context_id, &arg_fn_val) {
+            continue;
         }
+
+        // get the value for the arg in the parent context
+        let arg_val: ValueReference = match shared_state.get_val(parent_call_context_id, &arg_fn_val) {
+            Some(val) => val,
+            None => return Err(format!("Arg val not found in parent call context: {}", parent_call_context_id))
+        };
+
+        // get the to matching input fn val in the called function's context
+        let called_fn_input_ptr = called_fn.input_vals.get(i - 1)
+            .ok_or(format!("Could not find matching input for arg index: {}", i - 1))?;
+
+        let call_input_fn_val = get_func_val_from_ptr(shared_state.mmu.clone(), called_fn_input_ptr)?;
+
+        // send a new value message for the matching input val
+        shared_state.send_new_val(call_context_id.clone(), call_input_fn_val, arg_val);
     }
 
     // handle the constants
@@ -127,33 +177,33 @@ fn handle_func_call<'a>(
     Ok(())
 }
 
-/// Handles an anonymous function call, such as for the main invocation of a program.
-pub fn handle_anonymous_fn_call(
-    shared_state: Arc<SharedCallState>,
-    call_context_id: &CallContextId,
-    called_fn: &FuncLive,
-    args: Vec<ValueReference>,
-) -> ExecResult<()> {
-    // no need to register call or outputs, as this is an anonymous function
-    // send new value messages for the args
-    for (arg_ptr, arg_val) in called_fn.input_vals.iter().zip(args) {
-        let arg_fn_val = match get_func_val_from_ptr(shared_state.mmu.clone(), arg_ptr) {
-            Ok(val) => val,
-            Err(e) => {
-                shared_state.handle_error(call_context_id, format!("Error getting arg val: {}", e));
-                continue;
-            }
-        };
-        shared_state.send_new_val(call_context_id.clone(), arg_fn_val, arg_val);
-    }
+// /// Handles an anonymous function call, such as for the main invocation of a program.
+// pub fn handle_anonymous_fn_call(
+//     shared_state: Arc<SharedCallState>,
+//     call_context_id: &CallContextId,
+//     called_fn: &FuncLive,
+//     args: Vec<ValueReference>,
+// ) -> ExecResult<()> {
+//     // no need to register call or outputs, as this is an anonymous function
+//     // send new value messages for the args
+//     for (arg_ptr, arg_val) in called_fn.input_vals.iter().zip(args) {
+//         let arg_fn_val = match get_func_val_from_ptr(shared_state.mmu.clone(), arg_ptr) {
+//             Ok(val) => val,
+//             Err(e) => {
+//                 shared_state.handle_error(call_context_id, format!("Error getting arg val: {}", e));
+//                 continue;
+//             }
+//         };
+//         shared_state.send_new_val(call_context_id.clone(), arg_fn_val, arg_val);
+//     }
+//
+//     // handle the constants
+//     handle_called_fn_constants(shared_state, call_context_id, called_fn)?;
+//
+//     Ok(())
+// }
 
-    // handle the constants
-    handle_called_fn_constants(shared_state, call_context_id, called_fn)?;
-
-    Ok(())
-}
-
-fn handle_called_fn_constants(
+pub fn handle_called_fn_constants(
     shared_state: Arc<SharedCallState>,
     call_context_id: &CallContextId,
     called_fn: &FuncLive

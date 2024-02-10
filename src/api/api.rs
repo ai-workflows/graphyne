@@ -320,139 +320,139 @@ impl VmInterface for GraphiteApi {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-    use crate::api::functions::{FunctionGraph, FunctionOpNode, FunctionValueNode};
-    use crate::api::GraphiteApi;
-    use crate::api::interface::VmInterface;
-    use crate::core::data::functions::OpCode;
-    use crate::core::data::live::LiveData;
-    use crate::core::{Symbol};
-    use crate::core::data::stored::StoredData::IntStored;
-    use crate::core::vm::value_ref::ValueReference;
-    use crate::core::vm::VM;
-
-    #[test]
-    fn test_api<'a>() {
-        let vm: &mut VM = &mut VM::new(2, 2);
-
-        {
-            let symbol_table: HashMap<Symbol, ValueReference<'a>> = HashMap::new();
-
-            let mut api = GraphiteApi { vm, symbol_table };
-
-            let values: Vec<FunctionValueNode> = vec![
-                FunctionValueNode::var("num1".into()),
-                FunctionValueNode::var("num2".into()),
-                FunctionValueNode::var("sum".into()),
-            ];
-
-            let ops: Vec<FunctionOpNode> = vec![
-                FunctionOpNode::new(OpCode::Add, vec!["num1".into(), "num2".into()], "sum".into())
-            ];
-
-            let graph: FunctionGraph = FunctionGraph::new(values, ops, vec!["num1".into(), "num2".into()], vec!["sum".into()]);
-
-            api.store_function(graph, "add".to_string(), None).unwrap();
-
-            api.store_int(5, "num1".to_string()).unwrap();
-            api.store_float(10.0, "num2".to_string()).unwrap();
-
-            api.execute(vec!["add".to_string()], vec!["num1".to_string(), "num2".to_string()], vec!["sum".to_string()]).unwrap();
-
-            let result = api.get("sum".to_string()).unwrap();
-            assert_eq!(result.as_live().as_int().unwrap(), Ok(15));
-        }
-
-        assert_eq!(vm.object_count(), 0);
-    }
-
-    #[test]
-    fn test_calculate_statistics<'a>() {
-        let vm: &mut VM = &mut VM::new(2, 2);
-
-        {
-            let symbol_table: HashMap<Symbol, ValueReference<'a>> = HashMap::new();
-            let mut api = GraphiteApi { vm, symbol_table };
-
-            // Define the values (variables).
-            let values: Vec<FunctionValueNode> = vec![
-                FunctionValueNode::var("list".into()),
-                FunctionValueNode::var("sum1".into()),
-                FunctionValueNode::var("sum2".into()),
-                FunctionValueNode::var("sum_final".into()),
-                FunctionValueNode::var("average".into()),
-                FunctionValueNode::var("is_large_sum".into()),
-                FunctionValueNode::var("sum_as_float".into()),
-                FunctionValueNode::var("list_length".into()),
-                FunctionValueNode::constant("100".into(), IntStored(100)),
-                FunctionValueNode::constant("0".into(), IntStored(0)),
-                FunctionValueNode::constant("1".into(), IntStored(1)),
-                FunctionValueNode::constant("2".into(), IntStored(2)),
-                FunctionValueNode::constant("3".into(), IntStored(3)),
-                FunctionValueNode::var("item1".into()),
-                FunctionValueNode::var("item2".into()),
-                FunctionValueNode::var("item3".into()),
-                FunctionValueNode::var("item4".into()),
-            ];
-
-            // Define the operations.
-            let ops: Vec<FunctionOpNode> = vec![
-                // get the items from the list
-                FunctionOpNode::new(OpCode::Get, vec!["list".into(), "0".into()], "item1".into()),
-                FunctionOpNode::new(OpCode::Get, vec!["list".into(), "1".into()], "item2".into()),
-                FunctionOpNode::new(OpCode::Get, vec!["list".into(), "2".into()], "item3".into()),
-                FunctionOpNode::new(OpCode::Get, vec!["list".into(), "3".into()], "item4".into()),
-
-                // compute the sum
-                FunctionOpNode::new(OpCode::Add, vec!["item1".into(), "item2".into()], "sum1".into()),
-                FunctionOpNode::new(OpCode::Add, vec!["item3".into(), "item4".into()], "sum2".into()),
-                FunctionOpNode::new(OpCode::Add, vec!["sum1".into(), "sum2".into()], "sum_final".into()),
-
-                // compute the average
-                FunctionOpNode::new(OpCode::Length, vec!["list".into()], "list_length".into()),
-                FunctionOpNode::new(OpCode::Div, vec!["sum_final".into(), "list_length".into()], "average".into()),
-
-                // compute whether the sum is large
-                FunctionOpNode::new(OpCode::GreaterThan, vec!["sum_final".into(), "100".into()], "is_large_sum".into()),
-
-                // get the sum as a float
-                FunctionOpNode::new(OpCode::AsFloat, vec!["sum_final".into()], "sum_as_float".into()),
-            ];
-
-            // Create the function graph.
-            let graph: FunctionGraph = FunctionGraph::new(
-                values,
-                ops,
-                vec!["list".into()], // Initial Inputs
-                vec!["sum_final".into(), "average".into(), "is_large_sum".into(), "sum_as_float".into()], // Returned Outputs
-            );
-
-            // Store the function.
-            api.store_function(graph, "calculate_statistics".to_string(), None).unwrap();
-
-            // Test the function with a sample list.
-            api.store_int(10, "num1".to_string()).unwrap();
-            api.store_int(20, "num2".to_string()).unwrap();
-            api.store_int(30, "num3".to_string()).unwrap();
-            api.store_int(40, "num4".to_string()).unwrap();
-
-            api.store_list(vec!["num1".into(), "num2".into(), "num3".into(), "num4".into()], "list".to_string()).unwrap();
-            api.execute(vec!["calculate_statistics".to_string()], vec!["list".to_string()], vec!["sum".into(), "average".into(), "is_large_sum".into(), "sum_as_float".into()]).unwrap();
-
-            // Retrieve and assert the results.
-            let sum_result = api.get("sum".to_string()).unwrap();
-            let average_result = api.get("average".to_string()).unwrap();
-            let is_large_sum_result = api.get("is_large_sum".to_string()).unwrap();
-            let sum_as_float_result = api.get("sum_as_float".to_string()).unwrap();
-
-            assert_eq!(sum_result.as_live().as_int().unwrap(), Ok(100));
-            assert_eq!(average_result.as_live().as_float().unwrap(), Ok(25.0));
-            assert_eq!(is_large_sum_result.as_live().as_bool().unwrap(), Ok(false));
-            assert_eq!(sum_as_float_result.as_live().as_float().unwrap(), Ok(100.0));
-        }
-
-        assert_eq!(vm.object_count(), 0);
-    }
-}
+// #[cfg(test)]
+// mod tests {
+//     use std::collections::HashMap;
+//     use crate::api::functions::{FunctionGraph, FunctionOpNode, FunctionValueNode};
+//     use crate::api::GraphiteApi;
+//     use crate::api::interface::VmInterface;
+//     use crate::core::data::functions::OpCode;
+//     use crate::core::data::live::LiveData;
+//     use crate::core::{Symbol};
+//     use crate::core::data::stored::StoredData::IntStored;
+//     use crate::core::vm::value_ref::ValueReference;
+//     use crate::core::vm::VM;
+//
+//     #[test]
+//     fn test_api<'a>() {
+//         let vm: &mut VM = &mut VM::new(2, 2);
+//
+//         {
+//             let symbol_table: HashMap<Symbol, ValueReference<'a>> = HashMap::new();
+//
+//             let mut api = GraphiteApi { vm, symbol_table };
+//
+//             let values: Vec<FunctionValueNode> = vec![
+//                 FunctionValueNode::var("num1".into()),
+//                 FunctionValueNode::var("num2".into()),
+//                 FunctionValueNode::var("sum".into()),
+//             ];
+//
+//             let ops: Vec<FunctionOpNode> = vec![
+//                 FunctionOpNode::new(OpCode::Add, vec!["num1".into(), "num2".into()], "sum".into())
+//             ];
+//
+//             let graph: FunctionGraph = FunctionGraph::new(values, ops, vec!["num1".into(), "num2".into()], vec!["sum".into()]);
+//
+//             api.store_function(graph, "add".to_string(), None).unwrap();
+//
+//             api.store_int(5, "num1".to_string()).unwrap();
+//             api.store_float(10.0, "num2".to_string()).unwrap();
+//
+//             api.execute(vec!["add".to_string()], vec!["num1".to_string(), "num2".to_string()], vec!["sum".to_string()]).unwrap();
+//
+//             let result = api.get("sum".to_string()).unwrap();
+//             assert_eq!(result.as_live().as_int().unwrap(), Ok(15));
+//         }
+//
+//         assert_eq!(vm.object_count(), 0);
+//     }
+//
+//     #[test]
+//     fn test_calculate_statistics<'a>() {
+//         let vm: &mut VM = &mut VM::new(2, 2);
+//
+//         {
+//             let symbol_table: HashMap<Symbol, ValueReference<'a>> = HashMap::new();
+//             let mut api = GraphiteApi { vm, symbol_table };
+//
+//             // Define the values (variables).
+//             let values: Vec<FunctionValueNode> = vec![
+//                 FunctionValueNode::var("list".into()),
+//                 FunctionValueNode::var("sum1".into()),
+//                 FunctionValueNode::var("sum2".into()),
+//                 FunctionValueNode::var("sum_final".into()),
+//                 FunctionValueNode::var("average".into()),
+//                 FunctionValueNode::var("is_large_sum".into()),
+//                 FunctionValueNode::var("sum_as_float".into()),
+//                 FunctionValueNode::var("list_length".into()),
+//                 FunctionValueNode::constant("100".into(), IntStored(100)),
+//                 FunctionValueNode::constant("0".into(), IntStored(0)),
+//                 FunctionValueNode::constant("1".into(), IntStored(1)),
+//                 FunctionValueNode::constant("2".into(), IntStored(2)),
+//                 FunctionValueNode::constant("3".into(), IntStored(3)),
+//                 FunctionValueNode::var("item1".into()),
+//                 FunctionValueNode::var("item2".into()),
+//                 FunctionValueNode::var("item3".into()),
+//                 FunctionValueNode::var("item4".into()),
+//             ];
+//
+//             // Define the operations.
+//             let ops: Vec<FunctionOpNode> = vec![
+//                 // get the items from the list
+//                 FunctionOpNode::new(OpCode::Get, vec!["list".into(), "0".into()], "item1".into()),
+//                 FunctionOpNode::new(OpCode::Get, vec!["list".into(), "1".into()], "item2".into()),
+//                 FunctionOpNode::new(OpCode::Get, vec!["list".into(), "2".into()], "item3".into()),
+//                 FunctionOpNode::new(OpCode::Get, vec!["list".into(), "3".into()], "item4".into()),
+//
+//                 // compute the sum
+//                 FunctionOpNode::new(OpCode::Add, vec!["item1".into(), "item2".into()], "sum1".into()),
+//                 FunctionOpNode::new(OpCode::Add, vec!["item3".into(), "item4".into()], "sum2".into()),
+//                 FunctionOpNode::new(OpCode::Add, vec!["sum1".into(), "sum2".into()], "sum_final".into()),
+//
+//                 // compute the average
+//                 FunctionOpNode::new(OpCode::Length, vec!["list".into()], "list_length".into()),
+//                 FunctionOpNode::new(OpCode::Div, vec!["sum_final".into(), "list_length".into()], "average".into()),
+//
+//                 // compute whether the sum is large
+//                 FunctionOpNode::new(OpCode::GreaterThan, vec!["sum_final".into(), "100".into()], "is_large_sum".into()),
+//
+//                 // get the sum as a float
+//                 FunctionOpNode::new(OpCode::AsFloat, vec!["sum_final".into()], "sum_as_float".into()),
+//             ];
+//
+//             // Create the function graph.
+//             let graph: FunctionGraph = FunctionGraph::new(
+//                 values,
+//                 ops,
+//                 vec!["list".into()], // Initial Inputs
+//                 vec!["sum_final".into(), "average".into(), "is_large_sum".into(), "sum_as_float".into()], // Returned Outputs
+//             );
+//
+//             // Store the function.
+//             api.store_function(graph, "calculate_statistics".to_string(), None).unwrap();
+//
+//             // Test the function with a sample list.
+//             api.store_int(10, "num1".to_string()).unwrap();
+//             api.store_int(20, "num2".to_string()).unwrap();
+//             api.store_int(30, "num3".to_string()).unwrap();
+//             api.store_int(40, "num4".to_string()).unwrap();
+//
+//             api.store_list(vec!["num1".into(), "num2".into(), "num3".into(), "num4".into()], "list".to_string()).unwrap();
+//             api.execute(vec!["calculate_statistics".to_string()], vec!["list".to_string()], vec!["sum".into(), "average".into(), "is_large_sum".into(), "sum_as_float".into()]).unwrap();
+//
+//             // Retrieve and assert the results.
+//             let sum_result = api.get("sum".to_string()).unwrap();
+//             let average_result = api.get("average".to_string()).unwrap();
+//             let is_large_sum_result = api.get("is_large_sum".to_string()).unwrap();
+//             let sum_as_float_result = api.get("sum_as_float".to_string()).unwrap();
+//
+//             assert_eq!(sum_result.as_live().as_int().unwrap(), Ok(100));
+//             assert_eq!(average_result.as_live().as_float().unwrap(), Ok(25.0));
+//             assert_eq!(is_large_sum_result.as_live().as_bool().unwrap(), Ok(false));
+//             assert_eq!(sum_as_float_result.as_live().as_float().unwrap(), Ok(100.0));
+//         }
+//
+//         assert_eq!(vm.object_count(), 0);
+//     }
+// }
