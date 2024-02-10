@@ -206,6 +206,7 @@ mod tests {
     use crate::api::collections::collection::Collection;
     use crate::api::GraphiteApi;
     use crate::core::data::live::{LiveData, IntLive};
+    use crate::core::data::stored::StoredData;
     use crate::core::vm::mmu::mmu::MMU;
     use crate::core::vm::v2::manager::{await_call, start_call};
     use crate::core::vm::v2::shared::{log_async, NewValMessage};
@@ -539,64 +540,29 @@ mod tests {
 
             let main_ref = api.get_path(vec!["my_collection".into(), "double_list".into()]).unwrap();
 
-            let outputs: Arc<Mutex<Vec<ValueReference>>> = Arc::new(Mutex::new(vec![]));
-            let o2 = outputs.clone();
-
-            let output_callback = Arc::new(move |message: &NewValMessage| {
-                let mut outputs_guard = outputs.lock().unwrap(); // Acquire lock
-                let symbol = message.func_val.symbol.clone().unwrap();
-                outputs_guard.push(message.value.clone());
-
-                log_async(&message.call_context_id, &format!("Received output: {}", symbol));
-            });
-
-            let pair = Arc::new((Mutex::new(false), Condvar::new()));
-            let pair_clone = pair.clone();
-
-            let result_callback = Arc::new(move |result: crate::core::ExecResult<()>| {
-                assert!(result.is_ok());
-
-                let (lock, cvar) = &*pair_clone;
-                let mut finished = lock.lock().unwrap(); // Acquire lock
-                *finished = true; // Set the state to indicate completion
-                cvar.notify_one(); // Notify the waiting thread
-
-                let outputs_guard = o2.lock().unwrap(); // Acquire lock
-                let values: Vec<IntLive> = outputs_guard.iter()
-                    .map(|val| {
-                        // val.deref().unwrap().as_live().as_int().unwrap().unwrap()
-
-                        match val.deref() {
-                            Ok(d) => d,
-                            Err(e) => panic!("Error dereferencing result: {}", e)
-                        };
-
-                        val.deref().unwrap().as_live().as_int().unwrap().unwrap()
-
-                    })
-                    .collect();
-                assert_eq!(values, vec![20, 40, 60]);
-            });
-
             let ex_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
             let or_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
 
-            start_call(
+            let res = await_call(
                 api.mmu.clone(),
                 ex_pool,
                 or_pool,
                 main_ref,
                 vec![],
-                output_callback,
-                result_callback,
             );
 
-            // Wait for the result_callback to signal completion
-            let (lock, cvar) = &*pair;
-            let mut finished = lock.lock().unwrap();
-            while !*finished {
-                finished = cvar.wait(finished).unwrap();
-            }
+            let outputs = match res {
+                Ok(outputs) => outputs,
+                Err(e) => panic!("Call returned an error: {}", e)
+            };
+
+            assert_eq!(outputs.len(), 1);
+
+            let result = outputs[0].deref().unwrap().as_live().as_list().unwrap().unwrap();
+            let result: Vec<IntLive> = result.iter().map(|ptr|
+                api.mmu.get_ptr_value(ptr).unwrap().as_live().as_int().unwrap().unwrap()).collect();
+
+            assert_eq!(result, vec![20, 40, 60]);
         }
 
     }
