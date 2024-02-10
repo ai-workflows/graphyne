@@ -19,18 +19,6 @@ pub fn handle_new_value_v2(
         func_val.symbol.clone().unwrap_or("(Unknown symbol)".to_string())
     ));
 
-    // if func_val.symbol == Some("two".to_string()) {
-    //     let t = 2 + 2;
-    // }
-    //
-    // if func_val.symbol == Some("num".to_string()) {
-    //     let t = 3 + 3;
-    // }
-
-    if func_val.symbol == Some("doubled".to_string()) {
-        let t = 3 + 3;
-    }
-
     // set the val in the state manager
     shared_state.set_val(call_context_id.clone(), func_val.clone(), value.clone());
 
