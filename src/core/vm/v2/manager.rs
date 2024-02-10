@@ -8,7 +8,7 @@ use crate::core::ExecResult;
 use crate::core::vm::mmu::mmu::{MMU};
 use crate::core::vm::v2::{executor, orchestrator};
 use crate::core::vm::v2::orchestrator::handle_called_fn_constants;
-use crate::core::vm::v2::shared::{CallContextId, get_func_from_ptr, get_func_vals_from_ptrs, NewOpMessage, NewValMessage, SharedCallState};
+use crate::core::vm::v2::shared::{CallContextId, ExecutorMessage, get_func_from_ptr, get_func_vals_from_ptrs, log_async, NewOpMessage, NewValMessage, SharedCallState};
 use crate::core::vm::value_ref::ValueReference;
 
 pub fn start_call<'a>(
@@ -22,6 +22,7 @@ pub fn start_call<'a>(
 ) {
     // generate a random call context id
     let main_call_id = uuid::Uuid::new_v4().to_string();
+    log_async(&main_call_id, &"Starting new call".to_string());
 
     // get the function's outputs
     let func_live = get_func_from_ptr(mmu.clone(), &func.pointer).unwrap();
@@ -133,8 +134,15 @@ fn start_executor(
                 match executor::try_execute_fn_op(ss.clone(), &message.op, &message.call_context_id) {
                     Ok(results) => {
                         // if successful, send the results to the state manager
-                        for (val_ref, func_val) in results {
-                            ss.send_new_val(message.call_context_id.clone(), func_val, val_ref);
+                        for ex_message in results {
+                            match ex_message {
+                                ExecutorMessage::NewVal(message) => {
+                                    ss.send_new_val(message.call_context_id.clone(), message.func_val, message.value);
+                                },
+                                ExecutorMessage::Pending(message) => {
+                                    log_async(&message.call_context_id, &format!("Value calculation pending: {}", message.func_val.symbol.unwrap()));
+                                }
+                            }
                         }
                     },
                     Err(e) => {
@@ -206,7 +214,6 @@ mod tests {
     use crate::api::collections::collection::Collection;
     use crate::api::GraphiteApi;
     use crate::core::data::live::{LiveData, IntLive};
-    use crate::core::data::stored::StoredData;
     use crate::core::vm::mmu::mmu::MMU;
     use crate::core::vm::v2::manager::{await_call, start_call};
     use crate::core::vm::v2::shared::{log_async, NewValMessage};
@@ -540,8 +547,8 @@ mod tests {
 
             let main_ref = api.get_path(vec!["my_collection".into(), "double_list".into()]).unwrap();
 
-            let ex_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
-            let or_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
+            let ex_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
+            let or_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
 
             let res = await_call(
                 api.mmu.clone(),

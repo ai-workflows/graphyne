@@ -18,6 +18,12 @@ pub type CallContextId = String;
 pub type MetaValueId = String;
 
 
+/// Represents a message that is sent from the executor to the orchestrator.
+pub enum ExecutorMessage {
+    NewVal(NewValMessage),
+    Pending(ValPendingMessage),
+}
+
 /// Represents a message sent to the orchestrator to indicate that a new value has been calculated.
 #[derive(Clone)]
 pub struct NewValMessage {
@@ -29,6 +35,14 @@ pub struct NewValMessage {
 
     /// A reference to the newly calculated value.
     pub value: ValueReference
+}
+
+
+/// Represents a message sent to the orchestrator to indicate that a value is pending calculation.
+pub struct ValPendingMessage {
+    pub call_context_id: CallContextId,
+    pub func_val: FuncValLive
+
 }
 
 /// Represents a message sent to the executor to indicate that a new operation should be executed.
