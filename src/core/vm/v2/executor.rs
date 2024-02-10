@@ -2,8 +2,11 @@ use std::sync::{Arc};
 use crate::core::data::live::{FuncOpLive, FuncValLive};
 use crate::core::{ExecResult};
 use crate::core::data::functions::OpCode;
+use crate::core::data::stored::StoredData;
+use crate::core::vm::mmu::mmu::value_ref_from_ptr;
 use crate::core::vm::operator::operator::execute_op;
 use crate::core::vm::operator::ops::Operation;
+use crate::core::vm::v2::manager::{await_call, start_call};
 use crate::core::vm::v2::shared::{CallContextId, get_func_vals_from_ptrs, log_async, SharedCallState};
 use crate::core::vm::value_ref::ValueReference;
 
@@ -11,7 +14,11 @@ use crate::core::vm::value_ref::ValueReference;
 
 /// Executes an operation within the scope of a function call context.
 /// Retrieves the arg values from the state, executes the operation, and returns the result values.
-pub fn try_execute_fn_op(shared_state: Arc<SharedCallState>, op: &FuncOpLive, call_context_id: &CallContextId) -> ExecResult<Vec<(ValueReference, FuncValLive)>> {
+pub fn try_execute_fn_op(
+    shared_state: Arc<SharedCallState>,
+    op: &FuncOpLive,
+    call_context_id: &CallContextId,
+) -> ExecResult<Vec<(ValueReference, FuncValLive)>> {
     log_async(call_context_id, &format!("Executing operation: {}", op.opcode));
 
     // get the func vals for the arguments
@@ -22,8 +29,15 @@ pub fn try_execute_fn_op(shared_state: Arc<SharedCallState>, op: &FuncOpLive, ca
 
     validate_op_inputs(&shared_state, &arg_fn_vals, call_context_id)?;
 
-    let result_val_refs = handle_call_function_op(shared_state.clone(), &op.opcode, &arg_fn_vals, call_context_id)
-        .map_err(|msg| format!("Execution of operation {} failed: {}", op.opcode, msg))?;
+    let res = match op.opcode {
+        OpCode::Reduce => handle_reduce_op(shared_state.clone(), get_func_op_args(shared_state.clone(), &arg_fn_vals, call_context_id)?),
+        _ => handle_call_function_op(shared_state.clone(), &op.opcode, &arg_fn_vals, call_context_id)
+    };
+
+    let result_val_refs: Vec<ValueReference> = match res {
+        Ok(vals) => vals,
+        Err(msg) => return Err(format!("Error executing operation: {}", msg))
+    };
 
     if result_val_refs.len() != op.output_vals.len() {
         return Err(format!("Operation expected {} result values, but got {}", op.output_vals.len(), result_val_refs.len()));
@@ -78,3 +92,43 @@ fn get_func_op_args(shared_state: Arc<SharedCallState>, args: &Vec<FuncValLive>,
         })
         .collect()
 }
+
+
+fn handle_reduce_op(shared_state: Arc<SharedCallState>, args: Vec<ValueReference>) -> ExecResult<Vec<ValueReference>> {
+    if args.len() != 3 {
+        return Err("Reduce operation requires 3 arguments".to_string());
+    }
+
+    let func = args[0].clone();
+    let list = match shared_state.mmu.get_ref_value(&args[1]) {
+        Ok(StoredData::ListStored(list)) => list,
+        _ => return Err("Reduce operation requires a list as the second arg".to_string())
+    };
+    let mut current = args[2].clone();
+
+    for item_ptr in list.iter() {
+        let item_ref = value_ref_from_ptr(shared_state.mmu.clone(), item_ptr.clone())?;
+
+        let args: Vec<ValueReference> = vec![current.clone(), item_ref];
+
+        let result = await_call(
+            shared_state.mmu.clone(),
+            shared_state.executor_thread_pool.clone(),
+            shared_state.orchestrator_thread_pool.clone(),
+            func.clone(),
+            args
+        );
+
+        match result {
+            Ok(result) => {
+                current = result.get(0).ok_or("Empty result")?.clone();
+            },
+            Err(msg) => return Err(format!("Error executing reduce function: {}", msg))
+        }
+    }
+
+    Ok(vec![current])
+}
+
+// Executes a function synchronously
+// fn execute_call_sync()

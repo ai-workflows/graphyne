@@ -4,6 +4,7 @@ use std::sync::atomic::AtomicBool;
 use std::thread;
 use std::io;
 use std::io::Write;
+use rayon::{ThreadPool, ThreadPoolBuilder};
 use crate::core::data::functions::val::FuncValId;
 use crate::core::data::live::{FuncLive, FuncOpLive, FuncValLive, PointerLive};
 use crate::core::data::stored::StoredData;
@@ -75,6 +76,9 @@ pub struct SharedCallState {
 
     halt_flag: Arc<AtomicBool>,
 
+    pub executor_thread_pool: Arc<ThreadPool>,
+    pub orchestrator_thread_pool: Arc<ThreadPool>,
+
     // TODO: dependent operation queue. set of dependent operations for each val that have not been executed yet.
     // once the queue is empty, the value can be removed from the val_lookup.
 }
@@ -86,23 +90,9 @@ impl SharedCallState {
         new_op_sender: mpsc::Sender<NewOpMessage>,
         new_val_sender: mpsc::Sender<NewValMessage>,
         final_outputs: HashSet<(CallContextId, FuncValId)>,
-        // func: ValueReference<'a>,
-        // args: Vec<ValueReference<'a>>,
-        // output_sender: mpsc::Sender<NewValMessage<'a>>,
-        // output_callback: Box<dyn Fn(CallContextId, &FuncValLive, ValueReference<'a>)>,
-        // error_callback: Box<dyn Fn(CallContextId, String)>
+        ex_pool: Arc<ThreadPool>,
+        or_pool: Arc<ThreadPool>,
     ) -> Arc<Self> {
-        // // generate a random call context id
-        // let main_ccid = uuid::Uuid::new_v4().to_string();
-        //
-        // /// Get the function's outputs
-        // let func_live = get_func_from_ptr(vm, &func.pointer).unwrap();
-        // let output_fn_vals = get_func_vals_from_ptrs(vm, &func_live.output_vals).unwrap();
-        //
-        // let final_outputs: HashSet<(CallContextId, FuncValId)> = output_fn_vals.iter()
-        //     .map(|val| (main_ccid.clone(), val.guid.clone()))
-        //     .collect();
-
         let state = Arc::new(SharedCallState {
             val_lookup: Arc::new(RwLock::new(HashMap::new())),
             output_lookup: Arc::new(RwLock::new(HashMap::new())),
@@ -110,20 +100,13 @@ impl SharedCallState {
             new_op_sender,
             new_val_sender,
             halt_flag: Arc::new(AtomicBool::new(false)),
-            // output_sender,
             final_outputs: Arc::new(RwLock::new(final_outputs)),
-            // output_callback,
-            // error_callback,
-            mmu
+            mmu,
+            executor_thread_pool: ex_pool,
+            orchestrator_thread_pool: or_pool,
         });
 
-        // match orchestrator::handle_anonymous_fn_call(&state, &main_ccid, &func_live, args) {
-        //     Ok(_) => {},
-        //     Err(e) => {
-        //         state.handle_error(&main_ccid, format!("Error initializing main call context: {}", e));
-        //     }
-        // }
-        state.clone()
+        state
     }
 
     /// Checks if a value reference is already stored for a given call context and function value.
