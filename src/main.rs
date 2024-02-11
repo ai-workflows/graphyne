@@ -93,8 +93,8 @@ fn main() {
             );
 
             match result {
-                Ok(_) => log_async("Call completed successfully".to_string()),
-                Err(e) => log_error(format!("Error executing call: {}", e))
+                Ok(_) => log_async("result | success".to_string()),
+                Err(e) => log_error(format!("result | error: {}", e))
             }
         },
 

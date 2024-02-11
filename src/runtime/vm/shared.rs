@@ -300,7 +300,15 @@ impl SharedCallState {
 
     pub fn remove_output(&self, call_context_id: &CallContextId, func_val: &FuncValLive) {
         let mut output_lookup = self.output_lookup.write().expect("output_lookup lock is poisoned");
-        let outputs = output_lookup.get_mut(call_context_id).unwrap();
+        let outputs = match output_lookup.get_mut(call_context_id) {
+            Some(outputs) => outputs,
+            None => {
+                self.halt_execution(call_context_id, CallResult::Error(format!(
+                    "Error removing output: call context {} not found", call_context_id)));
+                return;
+            }
+        };
+
         outputs.remove(&func_val.guid);
 
         // if the set is empty, remove it from the map
