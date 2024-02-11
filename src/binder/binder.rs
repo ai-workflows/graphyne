@@ -3,7 +3,6 @@ use std::sync::Arc;
 use crate::runtime::data::live::{PointerLive};
 use crate::runtime::data::stored::StoredData;
 use crate::runtime::{ExecResult, Symbol, SymbolPath};
-use crate::runtime::data::live::live_data::TypeLive;
 use crate::runtime::data::stored::StoredData::DictStored;
 use crate::runtime::mmu::mmu::{execute_store, MMU, value_ref_from_ptr};
 use crate::runtime::mmu::store_op::StoreOp;

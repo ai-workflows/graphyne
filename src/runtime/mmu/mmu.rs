@@ -155,7 +155,7 @@ impl MMU {
 
     /// Converts a value ref to a pointer (doesn't have a reference to the vm).
     /// Counts the new pointer so the ref count stays the same.
-    pub fn counted_ptr_from_value_ref(&self, mut value_ref: ValueReference) -> ExecResult<PointerLive> {
+    pub fn counted_ptr_from_value_ref(&self, value_ref: ValueReference) -> ExecResult<PointerLive> {
         let mut gc = self.state.write()
             .unwrap_or_else(|e| panic!("Could not get write lock on VM state, the lock is poisoned: {}", e));
 

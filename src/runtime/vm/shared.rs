@@ -7,7 +7,7 @@ use rayon::{ThreadPool};
 use crate::runtime::data::functions::val::FuncValId;
 use crate::runtime::data::live::{FuncLive, FuncOpLive, FuncValLive, PointerLive};
 use crate::runtime::data::stored::StoredData;
-use crate::runtime::{ExecResult};
+use crate::runtime::{ExecResult, Symbol};
 use crate::runtime::data::functions::FuncVal;
 use crate::runtime::data::functions::op::FuncOpId;
 use crate::runtime::mmu::mmu::{MMU, value_ref_from_ptr};
@@ -93,6 +93,7 @@ pub struct SharedCallState {
     new_val_sender: mpsc::Sender<NewValMessage>,
 
     halt_flag: Arc<AtomicBool>,
+    results_sender: mpsc::Sender<CallResult>,
 
     pub executor_thread_pool: Arc<ThreadPool>,
     pub orchestrator_thread_pool: Arc<ThreadPool>,
@@ -109,6 +110,7 @@ impl SharedCallState {
         mmu: Arc<MMU>,
         new_op_sender: mpsc::Sender<NewOpMessage>,
         new_val_sender: mpsc::Sender<NewValMessage>,
+        results_sender: mpsc::Sender<CallResult>,
         final_outputs: HashSet<(CallContextId, FuncValId)>,
         ex_pool: Arc<ThreadPool>,
         or_pool: Arc<ThreadPool>,
@@ -121,6 +123,7 @@ impl SharedCallState {
             new_op_sender,
             new_val_sender,
             halt_flag: Arc::new(AtomicBool::new(false)),
+            results_sender,
             final_outputs: Arc::new(RwLock::new(final_outputs)),
             mmu,
             executor_thread_pool: ex_pool,
@@ -178,10 +181,15 @@ impl SharedCallState {
             op
         };
 
-        // println!("Sending new operation: {:?}", message.op.opcode);
-        self.log_async(&call_context_id, &format!("Sending new operation: {:?}", message.op.opcode));
+        let op_code = message.op.opcode.clone();
 
-        self.new_op_sender.send(message).unwrap();
+        // println!("Sending new operation: {:?}", message.op.opcode);
+        self.log_async(&call_context_id, &format!("Sending new operation: {:?}", op_code));
+
+        match self.new_op_sender.send(message) {
+            Ok(_) => {},
+            Err(e) => self.log_error(&call_context_id, &format!("Error sending new operation ({}): {}", op_code, e))
+        }
     }
 
     /// Sends a new value to be handled by the orchestrator.
@@ -192,9 +200,14 @@ impl SharedCallState {
             value
         };
 
+        let symbol: Symbol = match &message.func_val.symbol {
+            Some(s) => s.clone(),
+            None => message.func_val.guid.clone(),
+        };
+
         self.log_async(&call_context_id, &format!(
             "Sending new value: {} in {}",
-            message.func_val.symbol.clone().unwrap_or("(unknown symbol)".into()),
+            symbol,
             message.call_context_id));
 
         // // check if it is a final output
@@ -202,7 +215,11 @@ impl SharedCallState {
         //     self.output_sender.send(message.clone()).unwrap();
         // }
 
-        self.new_val_sender.send(message).unwrap();
+        match self.new_val_sender.send(message) {
+            Ok(_) => {},
+            Err(e) => self.log_error(&call_context_id, &format!(
+                "Error sending new value ({}): {}", symbol, e))
+        }
     }
 
     /// Drops the values associated with a given call context.
@@ -217,10 +234,13 @@ impl SharedCallState {
         self.halt_flag.store(true, std::sync::atomic::Ordering::Relaxed);
 
         // println!("Call context {} halted: {}", call_context_id, reason);
-        match reason {
-            CallResult::Success => self.log_async(&call_context_id, &format!("Call context {} halted: success", call_context_id)),
-            CallResult::Error(msg) => self.log_error(&call_context_id, &format!("Call context halted: {}", msg))
+        match &reason {
+            CallResult::Success => self.log_async(call_context_id, "Call context halted: success"),
+            CallResult::Error(msg) => self.log_error(call_context_id, &format!("Call context halted: {}", msg))
         }
+
+        // send the result back to the main thread
+        self.results_sender.send(reason).unwrap();
     }
 
     pub fn is_halted(&self) -> bool {
