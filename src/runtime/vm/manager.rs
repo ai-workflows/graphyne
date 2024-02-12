@@ -218,7 +218,7 @@ fn start_executor(
     // Executor Dispatcher thread
     thread::spawn(move || {
         for message in new_op_receiver.iter() {
-            let ss = shared_state.clone();
+            let mut ss = shared_state.clone();
             let ex_pool = ss.executor_thread_pool.clone();
 
             if ss.is_halted(){
@@ -231,16 +231,23 @@ fn start_executor(
                         // if successful, send the results to the state manager
                         for ex_message in results {
                             match ex_message {
-                                ExecutorMessage::NewVal(message) => {
-                                    ss.send_new_val(message.call_context_id.clone(), message.func_val, message.value);
+                                ExecutorMessage::NewVal(result) => {
+                                    // remove the op from the pending ops
+                                    ss.complete_pending_op(&message.call_context_id, &message.op.guid);
+
+                                    ss.send_new_val(result.call_context_id.clone(), result.func_val, result.value);
                                 },
-                                ExecutorMessage::Pending(message) => {
-                                    ss.log_async(&message.call_context_id, &format!("Value calculation pending: {}", message.func_val.symbol.unwrap()));
+                                ExecutorMessage::Pending(result) => {
+                                    // expect the thread that sends the new value to remove the op from the pending ops
+                                    ss.log_async(&result.call_context_id, &format!("Value calculation pending: {}", result.func_val.symbol.unwrap()));
                                 }
                             }
                         }
                     },
                     Err(e) => {
+                        // remove the op from the pending ops
+                        ss.complete_pending_op(&message.call_context_id, &message.op.guid);
+
                         // if an error occurred, handle it by halt execution
                         let error_msg = format!("Executor encountered an error: {}", e);
                         ss.halt_execution(

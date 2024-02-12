@@ -124,12 +124,15 @@ fn main() {
             let res = match res {
                 Ok(v) => v,
                 Err(e) => {
-                    panic!("Error executing call: {}", e);
+                    log_error(format!("result | error: {}", e));
+                    return;
                 }
             };
 
+            log_async("result | success".to_string());
+
             for (k, v) in res {
-                println!("out | {}: {}", k, jsonify(mmu.clone(), &v));
+                log_async(format!("out | {}: {}", k, jsonify(mmu.clone(), &v)));
             }
         }
     }

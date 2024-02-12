@@ -3,6 +3,7 @@ use std::sync::mpsc::Receiver;
 use std::thread;
 use crate::runtime::data::live::{BoolLive, FuncOpLive, FuncValLive, ListLive};
 use crate::runtime::{ExecResult};
+use crate::runtime::data::functions::op::FuncOpId;
 use crate::runtime::data::functions::OpCode;
 use crate::runtime::data::stored::StoredData;
 use crate::runtime::mmu::mmu::{execute_store, MMU, value_ref_from_ptr};
@@ -181,7 +182,7 @@ fn handle_map_op(
         _ => return Err("Output func val not found".to_string())
     };
 
-    dispatch_map(shared_state.clone(), call_context_id.clone(), func, list, output_fn_val.clone());
+    dispatch_map(shared_state.clone(), call_context_id.clone(), func, list, output_fn_val.clone(), op.guid.clone());
 
     Ok(vec![ExecutorMessage::Pending(ValPendingMessage {
         call_context_id: call_context_id.clone(),
@@ -194,7 +195,8 @@ fn dispatch_map(
     call_context_id: CallContextId,
     func: ValueReference,
     list: ListLive,
-    output_fn_val: FuncValLive
+    output_fn_val: FuncValLive,
+    op_id: FuncOpId
 ) {
     thread::spawn(move || {
         // dispatch calls for each item in the list
@@ -218,6 +220,9 @@ fn dispatch_map(
                 return;
             }
         };
+
+        // remove the operation from the pending list
+        shared_state.complete_pending_op(&call_context_id, &op_id);
 
         // send the result list as a new value
         shared_state.send_new_val(call_context_id.clone(), output_fn_val.clone(), result_list);
@@ -245,7 +250,7 @@ fn handle_filter_op(
         _ => return Err("Output func val not found".to_string())
     };
 
-    dispatch_filter(shared_state.clone(), call_context_id.clone(), func, list, output_fn_val.clone());
+    dispatch_filter(shared_state.clone(), call_context_id.clone(), func, list, output_fn_val.clone(), op.guid.clone());
 
     Ok(vec![ExecutorMessage::Pending(ValPendingMessage {
         call_context_id: call_context_id.clone(),
@@ -258,7 +263,8 @@ fn dispatch_filter(
     call_context_id: CallContextId,
     func: ValueReference,
     list: ListLive,
-    output_fn_val: FuncValLive
+    output_fn_val: FuncValLive,
+    op_id: FuncOpId
 ) {
     thread::spawn(move || {
         // dispatch calls for each item in the list
@@ -305,6 +311,10 @@ fn dispatch_filter(
             }
         };
 
+        // remove the operation from the pending list
+        shared_state.complete_pending_op(&call_context_id, &op_id);
+
+        // send the result list as a new value
         shared_state.send_new_val(call_context_id.clone(), output_fn_val.clone(), result_list);
     });
 }

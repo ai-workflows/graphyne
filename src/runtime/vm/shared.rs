@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, mpsc, RwLock};
+use std::sync::{Arc, mpsc, Mutex, RwLock};
 use std::sync::atomic::AtomicBool;
 use std::io;
 use std::io::Write;
@@ -53,6 +53,7 @@ pub struct NewOpMessage {
     pub op: FuncOpLive,
 }
 
+#[derive(Debug, Clone)]
 pub enum CallResult {
     Success,
     Error(String)
@@ -75,6 +76,9 @@ pub struct SharedCallState {
 
     /// A set of func values that if calculated, will cause a message to be sent back to the main thread.
     final_outputs: Arc<RwLock<HashSet<(CallContextId, FuncValId)>>>,
+
+    /// A set of op ids that are currently being executed for a given call context.
+    pending_ops: Arc<RwLock<HashMap<CallContextId, HashSet<FuncOpId>>>>,
 
     /// A sender for sending outputs back to the main thread.
     // output_sender: mpsc::Sender<NewValMessage<'a>>,
@@ -125,6 +129,7 @@ impl SharedCallState {
             halt_flag: Arc::new(AtomicBool::new(false)),
             results_sender,
             final_outputs: Arc::new(RwLock::new(final_outputs)),
+            pending_ops: Arc::new(RwLock::new(HashMap::new())),
             mmu,
             executor_thread_pool: ex_pool,
             orchestrator_thread_pool: or_pool,
@@ -176,6 +181,11 @@ impl SharedCallState {
 
     /// Sends a new operation to be executed by the executor.
     pub fn send_new_op(&self, call_context_id: CallContextId, op: FuncOpLive) {
+        // try to register the pending op, do not dispatch if it is already pending
+        if !self.try_register_pending_op(&call_context_id, &op.guid) {
+            return;
+        }
+
         let message = NewOpMessage {
             call_context_id: call_context_id.clone(),
             op
@@ -240,7 +250,10 @@ impl SharedCallState {
         }
 
         // send the result back to the main thread
-        self.results_sender.send(reason).unwrap();
+        match self.results_sender.send(reason) {
+            Ok(_) => {},
+            Err(e) => self.log_error(call_context_id, &format!("Error sending result: {}", e))
+        }
     }
 
     pub fn is_halted(&self) -> bool {
@@ -304,7 +317,9 @@ impl SharedCallState {
             Some(outputs) => outputs,
             None => {
                 self.halt_execution(call_context_id, CallResult::Error(format!(
-                    "Error removing output: call context {} not found", call_context_id)));
+                    "Error removing output ({}): call context {} not found",
+                    func_val.symbol.clone().unwrap_or(func_val.guid.clone()),
+                    call_context_id)));
                 return;
             }
         };
@@ -416,6 +431,66 @@ impl SharedCallState {
     pub fn has_remaining_final_outputs(&self) -> bool {
         let final_outputs = self.final_outputs.read().expect("final_outputs lock is poisoned");
         !final_outputs.is_empty()
+    }
+
+    /// Registers an operation as currently pending for a given call context.
+    pub fn try_register_pending_op(&self, call_context_id: &CallContextId, op_id: &FuncOpId) -> bool {
+        let mut pending_ops = match self.pending_ops.write() {
+            Ok(pending_ops) => pending_ops,
+            Err(_) => {
+                self.halt_execution(call_context_id, CallResult::Error(
+                    "Error registering pending op: lock poisoned".to_string()));
+                return false;
+            }
+        };
+
+        if !pending_ops.contains_key(call_context_id) {
+            pending_ops.insert(call_context_id.clone(), HashSet::new());
+        }
+
+        let call_pending_ops = pending_ops.get_mut(call_context_id).unwrap();
+
+        // return false if the op is already pending
+        if call_pending_ops.contains(op_id) {
+            return false
+        }
+
+        call_pending_ops.insert(op_id.clone());
+
+        true
+    }
+
+    /// Checks if an operation is currently pending for a given call context.
+    pub fn is_op_pending(&self, call_context_id: &CallContextId, op_id: &FuncOpId) -> bool {
+        let pending_ops = self.pending_ops.read().expect("pending_ops lock is poisoned");
+        let call_pending_ops = match pending_ops.get(call_context_id) {
+            Some(ops) => ops,
+            None => return false
+        };
+        call_pending_ops.contains(op_id)
+    }
+
+    /// Marks a pending operation as complete for a given call context.
+    pub fn complete_pending_op(&self, call_context_id: &CallContextId, op_id: &FuncOpId) {
+        let mut pending_ops = self.pending_ops.write().expect("pending_ops lock is poisoned");
+        let call_pending_ops = match pending_ops.get_mut(call_context_id) {
+            Some(ops) => ops,
+            None => {
+                self.halt_execution(call_context_id, CallResult::Error(format!(
+                    "Error completing pending op: call context {} not found",
+                    call_context_id)));
+                return;
+            }
+        };
+
+        // halt with error if the op is not pending
+        if !call_pending_ops.contains(op_id) {
+            self.halt_execution(call_context_id, CallResult::Error(format!(
+                "Error completing pending op: op {} is not pending",
+                op_id)));
+        }
+
+        call_pending_ops.remove(op_id);
     }
 
     pub fn log_async(&self, call_context_id: &CallContextId, msg: &str) {
