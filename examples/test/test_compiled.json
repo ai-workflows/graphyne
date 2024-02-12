@@ -1,0 +1,334 @@
+{
+  "collections": {
+    "my_collection": {
+      "constants": {
+        "two": 2.0,
+        "my_list": [
+          10.0,
+          20.0,
+          30.0
+        ],
+        "my_dict": {
+          "Hello": "World",
+          "Foo": "Bar"
+        }
+      },
+      "functions": {
+        "double": {
+          "graph": {
+            "input_vals": [
+              "num"
+            ],
+            "output_vals": [
+              "doubled"
+            ],
+            "values": [
+              "700c48d4-4787-4ec9-af51-6a3717e098cf",
+              [
+                "2ec1757e-f125-4dcd-af0b-03c797b52cf8",
+                "two"
+              ],
+              "doubled",
+              "num"
+            ],
+            "ops": [
+              [
+                "get",
+                [
+                  "outer",
+                  "2ec1757e-f125-4dcd-af0b-03c797b52cf8"
+                ],
+                "700c48d4-4787-4ec9-af51-6a3717e098cf"
+              ],
+              [
+                "mul",
+                [
+                  "num",
+                  "700c48d4-4787-4ec9-af51-6a3717e098cf"
+                ],
+                "doubled"
+              ]
+            ]
+          }
+        },
+        "double_list": {
+          "graph": {
+            "input_vals": [
+              "l"
+            ],
+            "output_vals": [
+              "doubled_list"
+            ],
+            "values": [
+              "e7a582e1-f504-432c-be30-2e3090491582",
+              [
+                "45395152-f084-4f7d-8421-7da57c266bd5",
+                null
+              ],
+              "5d823c82-ac47-41a1-8a1c-682f0c2f2e01",
+              [
+                "b9f0c353-e79b-4a18-b89d-d538f16f6ecc",
+                "my_list"
+              ],
+              "list",
+              "744b16e6-ef92-4dd2-ba96-1a8fc1ba6e2b",
+              [
+                "64e87a03-751f-4b54-b26f-68e1e092fe1e",
+                "double"
+              ],
+              "doubled_list",
+              "l"
+            ],
+            "ops": [
+              [
+                "equal",
+                [
+                  "l",
+                  "45395152-f084-4f7d-8421-7da57c266bd5"
+                ],
+                "e7a582e1-f504-432c-be30-2e3090491582"
+              ],
+              [
+                "get",
+                [
+                  "outer",
+                  "b9f0c353-e79b-4a18-b89d-d538f16f6ecc"
+                ],
+                "5d823c82-ac47-41a1-8a1c-682f0c2f2e01"
+              ],
+              [
+                "if",
+                [
+                  "e7a582e1-f504-432c-be30-2e3090491582",
+                  "5d823c82-ac47-41a1-8a1c-682f0c2f2e01",
+                  "l"
+                ],
+                "list"
+              ],
+              [
+                "get",
+                [
+                  "outer",
+                  "64e87a03-751f-4b54-b26f-68e1e092fe1e"
+                ],
+                "744b16e6-ef92-4dd2-ba96-1a8fc1ba6e2b"
+              ],
+              [
+                "map",
+                [
+                  "744b16e6-ef92-4dd2-ba96-1a8fc1ba6e2b",
+                  "list"
+                ],
+                "doubled_list"
+              ]
+            ]
+          }
+        },
+        "get_d_value": {
+          "graph": {
+            "input_vals": [
+              "key"
+            ],
+            "output_vals": [
+              "value"
+            ],
+            "values": [
+              "103fd55a-b04f-4597-a738-d62a196f3ce4",
+              [
+                "7bc71506-17ac-488b-901c-dc3f00d966a1",
+                "my_dict"
+              ],
+              "value",
+              "key"
+            ],
+            "ops": [
+              [
+                "get",
+                [
+                  "outer",
+                  "7bc71506-17ac-488b-901c-dc3f00d966a1"
+                ],
+                "103fd55a-b04f-4597-a738-d62a196f3ce4"
+              ],
+              [
+                "get",
+                [
+                  "103fd55a-b04f-4597-a738-d62a196f3ce4",
+                  "key"
+                ],
+                "value"
+              ]
+            ]
+          }
+        }
+      },
+      "collections": {},
+      "imports": {}
+    }
+  },
+  "constants": {},
+  "functions": {
+    "main": {
+      "graph": {
+        "input_vals": [],
+        "output_vals": [
+          "res",
+          "val",
+          "age"
+        ],
+        "values": [
+          "ad166696-fc02-49f7-af2e-0cef30caf556",
+          [
+            "3049f23b-69f1-4ba7-aad6-a8fa9f3374cd",
+            "my_collection"
+          ],
+          "6595bbbf-b7f6-4158-ac56-e6a6461537b0",
+          [
+            "b62d9022-300e-46ef-ac11-3fba49374d9f",
+            "double_list"
+          ],
+          [
+            "f4870552-c357-4fb9-83eb-f687d41c3359",
+            null
+          ],
+          "res",
+          "bcfe115e-33b1-4d9d-93d3-9987a9146bd0",
+          [
+            "0fe704b5-98da-46b6-bd14-a260c41423f5",
+            "my_collection"
+          ],
+          "663da60a-ba8e-4690-982f-f8b64035c67f",
+          [
+            "e6b9d29c-3019-4d90-bb6e-d98493829f67",
+            "get_d_value"
+          ],
+          [
+            "02c0c5d2-a853-4175-9263-b7176fe85d0f",
+            "Hello"
+          ],
+          "val",
+          "c3da0c0c-f4c6-44cb-95af-d7e5a15f8863",
+          [
+            "98ab4a25-3967-4e3f-b86f-5e063ef8f772",
+            "Person"
+          ],
+          [
+            "33ef9e9e-6685-46bb-b39a-44cca8d7ae03",
+            "John"
+          ],
+          [
+            "2442032a-3ee2-4f23-ba2a-2a0428ad013b",
+            30.0
+          ],
+          "p",
+          "fb9c9603-3275-4216-b0fe-cb013d09ca01",
+          [
+            "2b9a7de1-3cd2-42b5-9311-840ba883ce90",
+            "age"
+          ],
+          [
+            "994cbeb4-dae7-4f18-81ee-311e5913e696",
+            2.0
+          ],
+          "age"
+        ],
+        "ops": [
+          [
+            "get",
+            [
+              "outer",
+              "3049f23b-69f1-4ba7-aad6-a8fa9f3374cd"
+            ],
+            "6595bbbf-b7f6-4158-ac56-e6a6461537b0"
+          ],
+          [
+            "get",
+            [
+              "6595bbbf-b7f6-4158-ac56-e6a6461537b0",
+              "b62d9022-300e-46ef-ac11-3fba49374d9f"
+            ],
+            "ad166696-fc02-49f7-af2e-0cef30caf556"
+          ],
+          [
+            "call",
+            [
+              "ad166696-fc02-49f7-af2e-0cef30caf556",
+              "f4870552-c357-4fb9-83eb-f687d41c3359"
+            ],
+            "res"
+          ],
+          [
+            "get",
+            [
+              "outer",
+              "0fe704b5-98da-46b6-bd14-a260c41423f5"
+            ],
+            "663da60a-ba8e-4690-982f-f8b64035c67f"
+          ],
+          [
+            "get",
+            [
+              "663da60a-ba8e-4690-982f-f8b64035c67f",
+              "e6b9d29c-3019-4d90-bb6e-d98493829f67"
+            ],
+            "bcfe115e-33b1-4d9d-93d3-9987a9146bd0"
+          ],
+          [
+            "call",
+            [
+              "bcfe115e-33b1-4d9d-93d3-9987a9146bd0",
+              "02c0c5d2-a853-4175-9263-b7176fe85d0f"
+            ],
+            "val"
+          ],
+          [
+            "get",
+            [
+              "outer",
+              "98ab4a25-3967-4e3f-b86f-5e063ef8f772"
+            ],
+            "c3da0c0c-f4c6-44cb-95af-d7e5a15f8863"
+          ],
+          [
+            "init",
+            [
+              "c3da0c0c-f4c6-44cb-95af-d7e5a15f8863",
+              "33ef9e9e-6685-46bb-b39a-44cca8d7ae03",
+              "2442032a-3ee2-4f23-ba2a-2a0428ad013b"
+            ],
+            "p"
+          ],
+          [
+            "get",
+            [
+              "p",
+              "2b9a7de1-3cd2-42b5-9311-840ba883ce90"
+            ],
+            "fb9c9603-3275-4216-b0fe-cb013d09ca01"
+          ],
+          [
+            "mul",
+            [
+              "fb9c9603-3275-4216-b0fe-cb013d09ca01",
+              "994cbeb4-dae7-4f18-81ee-311e5913e696"
+            ],
+            "age"
+          ]
+        ]
+      }
+    }
+  },
+  "imports": {},
+  "types": {
+    "Person": [
+      [
+        "name",
+        "str"
+      ],
+      [
+        "age",
+        "int"
+      ]
+    ]
+  }
+}

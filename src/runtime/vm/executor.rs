@@ -1,4 +1,4 @@
-use std::sync::{Arc, mpsc, Mutex, RwLock};
+use std::sync::{Arc, mpsc, Mutex};
 use std::sync::mpsc::Receiver;
 use std::thread;
 use crate::runtime::data::live::{BoolLive, FuncOpLive, FuncValLive, ListLive};
@@ -11,7 +11,7 @@ use crate::runtime::mmu::store_op::StoreOp;
 use crate::runtime::mmu::value_ref::ValueReference;
 use crate::runtime::vm::operator::operator::execute_op;
 use crate::runtime::vm::operator::ops::Operation;
-use crate::runtime::vm::manager::{manage_await_call, manage_start_call};
+use crate::runtime::vm::manager::{manage_await_call, manage_start_call, StreamResult};
 use crate::runtime::vm::shared::{CallContextId, get_func_vals_from_ptrs, NewValMessage, SharedCallState, ValPendingMessage, ExecutorMessage, CallResult};
 
 /// A worker responsible for executing
@@ -325,59 +325,60 @@ fn dispatch_calls(
     func: ValueReference,
 ) -> ExecResult<Vec<ValueReference>> {
     // set up the list of results receivers
-    let mut results_receivers: Vec<Receiver<CallResult>> = Vec::with_capacity(list.len());
+    let mut output_receivers: Vec<Receiver<StreamResult>> = Vec::with_capacity(list.len());
 
-    // set up the output list
-    let outputs: Arc<RwLock<Vec<(usize, ValueReference)>>> = Arc::new(RwLock::new(
-        Vec::with_capacity(list.len())
-    ));
-
-    for (i, item_ptr) in list.iter().enumerate() {
+    // dispatch calls for each item in the list
+    for item_ptr in list.iter(){
         let ss = shared_state.clone();
-        let outputs = outputs.clone();
-
-        // set up the output callback to add the output to the list
-        let output_callback = Arc::new(move |message: &NewValMessage| {
-            let mut outputs = outputs.write().unwrap();
-            outputs.push((i, message.value.clone()));
-        });
 
         // send the item from the list as an arg
         let args: Vec<ValueReference> = vec![value_ref_from_ptr(ss.mmu.clone(), item_ptr.clone()).unwrap()];
 
+        // set up output channel
+        let (output_sender, output_receiver) = mpsc::channel::<StreamResult>();
+
         // start the call and add the receiver to the list
-        let rec = manage_start_call(
+        let num_expected_outputs = manage_start_call(
             shared_state.mmu.clone(),
             shared_state.executor_thread_pool.clone(),
             shared_state.orchestrator_thread_pool.clone(),
             func.clone(),
             args,
-            output_callback,
-            shared_state.verbose,
-            None
+            Arc::new(Mutex::new(output_sender)),
+            shared_state.verbose
         );
 
-        results_receivers.push(rec);
+        match num_expected_outputs {
+            Ok(c) => if c != 1 {
+                return Err("Expected 1 output from each call".to_string());
+            },
+            Err(msg) => return Err(msg)
+        }
+
+        output_receivers.push(output_receiver);
     }
 
+    // set up the output list
+    let mut outputs: Vec<(usize, ValueReference)> = Vec::with_capacity(list.len());
+
     // wait until all calls are finished
-    for rec in results_receivers.iter() {
+    for (i, rec) in output_receivers.iter().enumerate() {
         match rec.recv() {
-            Ok(CallResult::Success) => (),
-            Ok(CallResult::Error(msg)) => return Err(msg),
+            Ok(StreamResult::Output(_, val_ref)) => outputs.push((i, val_ref)),
+            Ok(StreamResult::Error(msg)) => return Err(msg),
             Err(_) => return Err("Error receiving result".to_string())
         }
     }
 
+
     // sort the results and return them
-    let outputs = outputs.read().unwrap();
-    let sorted = sort_results(outputs.clone());
+    let sorted = sort_results(outputs);
     Ok(sorted)
 }
 
 fn collect_results(
     list: ListLive,
-    rx: mpsc::Receiver<ExecResult<(usize, ValueReference)>>
+    rx: Receiver<ExecResult<(usize, ValueReference)>>
 ) -> ExecResult<Vec<(usize, ValueReference)>> {
     let unsorted_results: Mutex<Vec<(usize, ValueReference)>> = Mutex::new(Vec::with_capacity(list.len()));
 

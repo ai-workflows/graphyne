@@ -1,18 +1,17 @@
 use std::collections::HashMap;
 use std::{fs, io};
 use std::io::Write;
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
 use crate::binder::Binder;
 use crate::binder::intermediate::collection::Collection;
 use crate::binder::json::jsonify;
 use crate::runtime::data::live::{FuncLive, FuncValLive};
-use crate::runtime::data::stored::StoredData;
 use crate::runtime::mmu::mmu::MMU;
 use crate::runtime::mmu::value_ref::ValueReference;
 use crate::runtime::{ExecResult, Symbol};
-use crate::runtime::vm::manager::manage_start_call;
-use crate::runtime::vm::shared::{CallResult, get_func_from_ptr, get_func_vals_from_ptrs};
+use crate::runtime::vm::manager::{manage_start_call, StreamResult};
+use crate::runtime::vm::shared::{get_func_from_ptr, get_func_vals_from_ptrs};
 
 pub fn await_call(
     func: ValueReference,
@@ -21,7 +20,7 @@ pub fn await_call(
     verbose: bool,
     execution_workers: Option<usize>,
     orchestration_workers: Option<usize>,
-) -> ExecResult<HashMap<Symbol, StoredData>> {
+) -> ExecResult<HashMap<Symbol, ValueReference>> {
     let (ex_count, or_count) = get_worker_counts(execution_workers, orchestration_workers);
     let ex_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(ex_count).build().unwrap());
     let or_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(or_count).build().unwrap());
@@ -58,17 +57,12 @@ pub fn await_call(
             None => return Err(format!("Error getting output value: index {} out of range", i))
         };
 
-        let output_stored = match mmu.get_ref_value(output_val) {
-            Ok(v) => v,
-            Err(e) => return Err(format!("Error getting output value: {}", e))
-        };
-
         let symbol = match &output_fn_val.symbol {
             Some(s) => s,
             None => &output_fn_val.guid,
         };
 
-        result.insert(symbol.clone(), output_stored);
+        result.insert(symbol.clone(), output_val.clone());
     }
 
     Ok(result)
@@ -78,58 +72,30 @@ pub fn stream_call(
     func: ValueReference,
     args: Vec<ValueReference>,
     mmu: Arc<MMU>,
-    outputs_sender: Sender<(Symbol, StoredData)>,
+    outputs_sender: Sender<StreamResult>,
     verbose: bool,
     execution_workers: Option<usize>,
     orchestration_workers: Option<usize>,
-) -> ExecResult<()> {
+) -> ExecResult<usize> {
     let (ex_count, or_count) = get_worker_counts(execution_workers, orchestration_workers);
     let ex_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(ex_count).build().unwrap());
     let or_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(or_count).build().unwrap());
 
-    let (result_sender, result_receiver) = mpsc::channel();
-    let rs = result_sender.clone();
-    let mmu2 = mmu.clone();
+    let outputs_sender = Arc::new(Mutex::new(outputs_sender));
 
-    let output_callback = Arc::new(move |message: &crate::runtime::vm::shared::NewValMessage| {
-
-        let stored = match mmu2.get_ref_value(&message.value) {
-            Ok(v) => v,
-            Err(e) => {
-                match result_sender.send(CallResult::Error(format!("Error getting output value: {}", e))) {
-                    Ok(_) => {},
-                    Err(e2) => log_error(format!("Error sending error ({}) to result receiver: {}", e, e2)),
-                }
-                return;
-            },
-        };
-        let symbol = match &message.func_val.symbol {
-            Some(s) => s,
-            None => &message.func_val.guid,
-        };
-
-        match outputs_sender.send((symbol.clone(), stored)) {
-            Ok(_) => {},
-            Err(e) => log_error(format!("Error sending output value: {}", e)),
-        }
-    });
-
-    let results_channel = (rs, result_receiver);
-
-    let results_receiver = manage_start_call(
+    let num_expected_outputs = manage_start_call(
         mmu.clone(),
         ex_pool,
         or_pool,
         func,
         args,
-        output_callback,
+        outputs_sender,
         verbose,
-        Some(results_channel)
     );
 
-    match results_receiver.recv().unwrap() {
-        CallResult::Success => Ok(()),
-        CallResult::Error(e) => Err(e),
+    match num_expected_outputs {
+        Ok(v) => Ok(v),
+        Err(e) => Err(format!("Error executing program: {}", e))
     }
 }
 
@@ -175,6 +141,11 @@ pub fn get_main_func_ref(main_collection_symbol: Symbol,
     binder.get_path(vec![main_collection_symbol, "main".to_string()])
 }
 
+pub fn get_func_output_count(fn_ref: &ValueReference, mmu: Arc<MMU>) -> Result<usize, String> {
+    let main_func: FuncLive = get_func_from_ptr(mmu.clone(), &fn_ref.pointer)?;
+    Ok(main_func.output_vals.len())
+}
+
 pub fn log_async(message: String) {
     let stdout = io::stdout();
     let _ = writeln!(&mut stdout.lock(),
@@ -206,4 +177,62 @@ pub fn log_output(mmu: Arc<MMU>, func_val: &FuncValLive, value: &ValueReference)
     };
     let val = jsonify(mmu.clone(), &stored);
     log_async(format!("out | {}: {}", symbol, val));
+}
+
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use crate::api::{load_intermediate, stream_call};
+    use crate::binder::Binder;
+    use crate::binder::intermediate::collection::Collection;
+    use crate::binder::json::jsonify;
+    use crate::runtime::mmu::mmu::MMU;
+    use crate::runtime::vm::manager::StreamResult;
+
+    #[test]
+    fn test_stream_with_types() {
+        let collection: Collection = load_intermediate("examples/test/test_compiled.json").unwrap();
+
+        let mmu: Arc<MMU> = Arc::new(MMU::new());
+        let mut binder = Binder { mmu: mmu.clone(), symbol_table: HashMap::new() };
+
+        binder.store_collection(collection, "my_collection".to_string()).unwrap();
+
+        let main_ref = binder.get_path(vec!["my_collection".into(), "main".into()]).unwrap();
+
+        let (output_sender, output_receiver) = std::sync::mpsc::channel();
+
+        let num_expected_outputs = stream_call(
+            main_ref,
+            vec![],
+            mmu.clone(),
+            output_sender,
+            true,
+            Some(4),
+            Some(4),
+        ).unwrap();
+
+        let mut outputs: HashMap<String, String> = HashMap::new();
+
+        for _ in 0..num_expected_outputs {
+            let result = output_receiver.recv().unwrap();
+            match result {
+                StreamResult::Output(fn_val, val_ref) => {
+                    let symbol = match &fn_val.symbol {
+                        Some(s) => s,
+                        None => &fn_val.guid,
+                    };
+                    let val = jsonify(mmu.clone(), &mmu.get_ref_value(&val_ref).unwrap());
+                    outputs.insert(symbol.clone(), val);
+                }
+                StreamResult::Error(e) => panic!("Error: {}", e),
+            }
+        }
+
+        assert_eq!(outputs.get("age").unwrap(), "60");
+        assert_eq!(outputs.get("val").unwrap(), "World");
+        assert_eq!(outputs.get("res").unwrap(), "[20, 40, 60]");
+    }
 }

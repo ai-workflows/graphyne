@@ -12,6 +12,7 @@ use crate::runtime::data::functions::FuncVal;
 use crate::runtime::data::functions::op::FuncOpId;
 use crate::runtime::mmu::mmu::{MMU, value_ref_from_ptr};
 use crate::runtime::mmu::value_ref::ValueReference;
+use crate::runtime::vm::manager::StreamResult;
 
 pub type CallContextId = String;
 pub type MetaValueId = String;
@@ -97,7 +98,7 @@ pub struct SharedCallState {
     new_val_sender: mpsc::Sender<NewValMessage>,
 
     halt_flag: Arc<AtomicBool>,
-    results_sender: mpsc::Sender<CallResult>,
+    outputs_sender: Arc<Mutex<mpsc::Sender<StreamResult>>>,
 
     pub executor_thread_pool: Arc<ThreadPool>,
     pub orchestrator_thread_pool: Arc<ThreadPool>,
@@ -114,7 +115,7 @@ impl SharedCallState {
         mmu: Arc<MMU>,
         new_op_sender: mpsc::Sender<NewOpMessage>,
         new_val_sender: mpsc::Sender<NewValMessage>,
-        results_sender: mpsc::Sender<CallResult>,
+        outputs_sender: Arc<Mutex<mpsc::Sender<StreamResult>>>,
         final_outputs: HashSet<(CallContextId, FuncValId)>,
         ex_pool: Arc<ThreadPool>,
         or_pool: Arc<ThreadPool>,
@@ -127,7 +128,7 @@ impl SharedCallState {
             new_op_sender,
             new_val_sender,
             halt_flag: Arc::new(AtomicBool::new(false)),
-            results_sender,
+            outputs_sender,
             final_outputs: Arc::new(RwLock::new(final_outputs)),
             pending_ops: Arc::new(RwLock::new(HashMap::new())),
             mmu,
@@ -245,14 +246,15 @@ impl SharedCallState {
 
         // println!("Call context {} halted: {}", call_context_id, reason);
         match &reason {
-            CallResult::Success => self.log_async(call_context_id, "Call context halted: success"),
-            CallResult::Error(msg) => self.log_error(call_context_id, &format!("Call context halted: {}", msg))
-        }
+            CallResult::Success => {
+                self.log_async(call_context_id, "Call context halted: success")
+            },
+            CallResult::Error(msg) => {
+                self.log_error(call_context_id, &format!("Call context halted: {}", msg));
 
-        // send the result back to the main thread
-        match self.results_sender.send(reason) {
-            Ok(_) => {},
-            Err(e) => self.log_error(call_context_id, &format!("Error sending result: {}", e))
+                // send the error back to the main thread
+                self.outputs_sender.lock().unwrap().send(StreamResult::Error(msg.clone())).unwrap();
+            }
         }
     }
 

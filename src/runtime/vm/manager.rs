@@ -1,11 +1,11 @@
 use std::collections::HashSet;
-use std::sync::{Arc, mpsc, RwLock};
+use std::sync::{Arc, mpsc, Mutex, RwLock};
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use rayon::ThreadPool;
 use crate::runtime::data::functions::val::FuncValId;
 use crate::runtime::data::live::FuncValLive;
-use crate::runtime::ExecResult;
+use crate::runtime::{ExecResult};
 use crate::runtime::mmu::mmu::MMU;
 use crate::runtime::mmu::value_ref::ValueReference;
 use crate::runtime::vm::{executor, orchestrator};
@@ -24,34 +24,36 @@ pub fn manage_await_call(
 ) -> ExecResult<Vec<ValueReference>> {
     let func_live = get_func_from_ptr(mmu.clone(), &func.pointer).unwrap();
 
-    let outputs: Arc<RwLock<Vec<(ValueReference, FuncValLive)>>>  = Arc::new(RwLock::new(
-        Vec::with_capacity(func_live.output_vals.len())
-    ));
-    let o2 = outputs.clone();
+    let (output_sender, output_receiver) = mpsc::channel::<StreamResult>();
 
-    let output_callback = Arc::new(move |message: &NewValMessage| {
-        let mut outputs_guard = o2.write().unwrap(); // Acquire lock
-        outputs_guard.push((message.value.clone(), message.func_val.clone()));
-    });
-
-    let result_receiver = manage_start_call(
+    let num_outputs = manage_start_call(
         mmu.clone(),
         ex_pool,
         or_pool,
         func,
         args,
-        output_callback,
+        Arc::new(Mutex::new(output_sender)),
         verbose,
-        None
     );
 
-    match result_receiver.recv() {
-        Ok(v) => match v {
-            CallResult::Success => (),
-            CallResult::Error(e) => return Err(e)
-        }
-        Err(e) => return Err(format!("Error receiving call result: {}", e))
+    let num_outputs = match num_outputs {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Error starting call: {}", e))
     };
+
+    let outputs: Arc<RwLock<Vec<(ValueReference, FuncValLive)>>>  = Arc::new(RwLock::new(
+        Vec::with_capacity(num_outputs)
+    ));
+
+    for _ in 0..num_outputs {
+        match output_receiver.recv().unwrap() {
+            StreamResult::Output(func_val, value) => {
+                let mut outputs_guard = outputs.write().unwrap(); // Acquire lock
+                outputs_guard.push((value, func_val.clone()));
+            },
+            StreamResult::Error(e) => return Err(format!("Function call returned an error: {}", e))
+        }
+    }
 
     // get the outputs in the same order as the function's output values
     let fn_output_vals = get_func_vals_from_ptrs(mmu.clone(), &func_live.output_vals).unwrap();
@@ -69,22 +71,21 @@ pub fn manage_await_call(
     Ok(outputs)
 }
 
+pub enum StreamResult {
+    Output(FuncValLive, ValueReference),
+    Error(String)
+}
+
 pub fn manage_start_call<'a>(
     mmu: Arc<MMU>,
     ex_pool: Arc<ThreadPool>,
     or_pool: Arc<ThreadPool>,
     func: ValueReference,
     args: Vec<ValueReference>,
-    output_callback: Arc<impl Fn(&NewValMessage) + Send + Sync + 'static>,
+    output_sender: Arc<Mutex<Sender<StreamResult>>>,
     verbose: bool,
-    results_channel: Option<(Sender<CallResult>, Receiver<CallResult>)> // allows the caller to provide a custom results channel
 
-) -> Receiver<CallResult> {
-    let (results_sender, results_receiver) = match results_channel {
-        Some((sender, receiver)) => (sender, receiver),
-        None => mpsc::channel::<CallResult>()
-    };
-
+) -> ExecResult<usize> {
     // generate a random call context id
     let main_call_id = uuid::Uuid::new_v4().to_string();
 
@@ -97,8 +98,8 @@ pub fn manage_start_call<'a>(
         Ok(v) => v,
         Err(e) => {
             let error_msg = format!("Error getting function outputs: {}", e);
-            results_sender.send(CallResult::Error(error_msg)).unwrap();
-            return results_receiver;
+            output_sender.lock().unwrap().send(StreamResult::Error(error_msg.clone())).unwrap();
+            return Err(error_msg);
         }
     };
 
@@ -110,13 +111,11 @@ pub fn manage_start_call<'a>(
     let (new_op_sender, new_op_receiver) = mpsc::channel::<NewOpMessage>();
     let (new_val_sender, new_val_receiver) = mpsc::channel::<NewValMessage>();
 
-
-
     let shared_state: Arc<SharedCallState> = SharedCallState::new(
         mmu.clone(),
         new_op_sender,
         new_val_sender,
-        results_sender,
+        output_sender.clone(),
         final_outputs,
         ex_pool.clone(),
         or_pool.clone(),
@@ -126,7 +125,7 @@ pub fn manage_start_call<'a>(
     shared_state.log_async(&main_call_id, &"Starting new call".to_string());
 
     // start the orchestrator and executor threads
-    start_orchestrator(shared_state.clone(), new_val_receiver, output_callback);
+    start_orchestrator(shared_state.clone(), new_val_receiver, output_sender.clone());
     start_executor(shared_state.clone(), new_op_receiver);
 
     // get the function's inputs
@@ -136,8 +135,8 @@ pub fn manage_start_call<'a>(
     ) {
         Ok(v) => v,
         Err(e) => {
-            shared_state.halt_execution(&main_call_id, CallResult::Error(e));
-            return results_receiver;
+            shared_state.halt_execution(&main_call_id, CallResult::Error(e.clone()));
+            return Err(e);
         }
     };
 
@@ -156,18 +155,18 @@ pub fn manage_start_call<'a>(
     match handle_called_fn_constants(shared_state.clone(), &main_call_id, &func_live) {
         Ok(_) => {},
         Err(e) => {
-            shared_state.halt_execution(&main_call_id, CallResult::Error(e));
-            return results_receiver;
+            shared_state.halt_execution(&main_call_id, CallResult::Error(e.clone()));
+            return Err(e);
         }
     }
 
-    results_receiver
+    Ok(output_fn_vals.len())
 }
 
 fn start_orchestrator(
     shared_state: Arc<SharedCallState>,
     new_val_receiver: Receiver<NewValMessage>,
-    output_callback: Arc<impl Fn(&NewValMessage) + Send + Sync + 'static>
+    output_sender: Arc<Mutex<Sender<StreamResult>>>,
 ) {
     // Orchestrator Dispatcher thread
     thread::spawn(move || {
@@ -178,14 +177,18 @@ fn start_orchestrator(
                 return;
             }
 
-            // call the output callback if the message is a final output
+            // send the output if the value is a final output
             if ss.check_for_final_output(&message.call_context_id, &message.func_val) {
-                output_callback(&message);
-            }
+                output_sender.lock().unwrap().send(StreamResult::Output(
+                    message.func_val.clone(),
+                    message.value.clone()
+                )).unwrap();
 
-            // if there are no remaining final outputs, halt execution
-            if !ss.has_remaining_final_outputs() {
-                ss.halt_execution(&message.call_context_id, CallResult::Success);
+                // if there are no remaining final outputs, halt execution
+                if !ss.has_remaining_final_outputs() {
+                    ss.halt_execution(&message.call_context_id, CallResult::Success);
+                    return;
+                }
             }
 
             let or_pool = ss.orchestrator_thread_pool.clone();
@@ -218,7 +221,7 @@ fn start_executor(
     // Executor Dispatcher thread
     thread::spawn(move || {
         for message in new_op_receiver.iter() {
-            let mut ss = shared_state.clone();
+            let ss = shared_state.clone();
             let ex_pool = ss.executor_thread_pool.clone();
 
             if ss.is_halted(){
@@ -265,16 +268,13 @@ fn start_executor(
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use std::io;
-    use std::io::Write;
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, mpsc, Mutex};
     use crate::binder::intermediate::collection::Collection;
     use crate::binder::Binder;
-    use crate::runtime::data::live::{LiveData, IntLive};
+    use crate::runtime::data::live::{LiveData, IntLive, FuncValLive};
     use crate::runtime::mmu::mmu::MMU;
     use crate::runtime::mmu::value_ref::ValueReference;
-    use crate::runtime::vm::manager::{manage_await_call, manage_start_call};
-    use crate::runtime::vm::shared::{NewValMessage};
+    use crate::runtime::vm::manager::{manage_await_call, manage_start_call, StreamResult};
 
     #[test]
     fn test_start_call_simple() {
@@ -400,44 +400,38 @@ mod tests {
 
             let main_ref = api.get_path(vec!["my_collection".into(), "main".into()]).unwrap();
 
-            let outputs: Arc<Mutex<Vec<ValueReference>>> = Arc::new(Mutex::new(vec![]));
-            let o2 = outputs.clone();
-
-            let output_callback = Arc::new(move |message: &NewValMessage| {
-                let mut outputs_guard = outputs.lock().unwrap(); // Acquire lock
-                let symbol = message.func_val.symbol.clone().unwrap();
-                outputs_guard.push(message.value.clone());
-
-                let stdout = io::stdout();
-                let _ = writeln!(&mut stdout.lock(),
-                                 "[{}] {}",
-                                 message.call_context_id,
-                                 format!("Received output: {}", symbol)
-                );
-            });
+            let (outputs_sender, outputs_receiver) = mpsc::channel::<StreamResult>();
 
             let ex_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
             let or_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
 
-            manage_start_call(
+            let expected_num_outputs = manage_start_call(
                 api.mmu.clone(),
                 ex_pool,
                 or_pool,
                 main_ref,
                 vec![],
-                output_callback,
+                Arc::new(Mutex::new(outputs_sender)),
                 true,
-                None
-            ).recv().unwrap();
+            ).unwrap();
 
-            let outputs_guard = o2.lock().unwrap(); // Acquire lock
-            let values: Vec<IntLive> = outputs_guard.iter()
-                .map(|val| {
-                    val.deref().unwrap().as_live().as_int().unwrap().unwrap()
-                })
-                .collect();
+            let mut outputs: Vec<(FuncValLive, ValueReference)> = vec![];
 
-            assert_eq!(values, vec![20]);
+            for i in 0..expected_num_outputs {
+                let res = outputs_receiver.recv().unwrap();
+                match res {
+                    StreamResult::Output(fn_val, val_ref) => {
+                        outputs.push((fn_val, val_ref));
+                    },
+                    StreamResult::Error(e) => {
+                        panic!("Call returned an error: {}", e);
+                    }
+                }
+            }
+
+            let value: IntLive = api.mmu.get_ref_value(&outputs.get(0).unwrap().1).unwrap().as_live().as_int().unwrap().unwrap();
+
+            assert_eq!(value, 20);
         }
     }
 
@@ -708,5 +702,4 @@ mod tests {
 
         assert_eq!(result, vec![2, 4, 6, 8, 10]);
     }
-
 }

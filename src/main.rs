@@ -1,11 +1,11 @@
 use clap::{Parser};
 use std::sync::Arc;
-use std::thread;
 use crate::api::{await_call, bind, load_intermediate, log_async, log_error, stream_call};
 use crate::binder::intermediate::collection::Collection;
 use crate::binder::json::jsonify;
 use crate::runtime::mmu::mmu::MMU;
 use crate::runtime::mmu::value_ref::ValueReference;
+use crate::runtime::vm::manager::StreamResult;
 
 
 mod runtime;
@@ -73,16 +73,9 @@ fn main() {
 
             let main_func: ValueReference = binder.get_path(vec![main_collection_symbol, "main".to_string()]).unwrap();
 
-            let (outputs_sender, outputs_receiver) = std::sync::mpsc::channel();
+            let (outputs_sender, outputs_receiver) = std::sync::mpsc::channel::<StreamResult>();
 
-            let mmu2 = mmu.clone();
-            thread::spawn(move || {
-                for (k, v) in outputs_receiver {
-                    log_async(format!("out | {}: {}", k, jsonify(mmu2.clone(), &v)));
-                }
-            });
-
-            let result = stream_call(
+            let start_res = stream_call(
                 main_func,
                 vec![],
                 mmu.clone(),
@@ -92,9 +85,24 @@ fn main() {
                 orchestration_workers,
             );
 
-            match result {
-                Ok(_) => log_async("result | success".to_string()),
-                Err(e) => log_error(format!("result | error: {}", e))
+            let num_expected_outputs = match start_res {
+                Ok(v) => v,
+                Err(e) => {
+                    log_error(format!("Error starting program: {}", e));
+                    return;
+                }
+            };
+
+            for _ in 0..num_expected_outputs {
+                let res = outputs_receiver.recv().unwrap();
+                match res {
+                    StreamResult::Output(fn_val, val_ref) => {
+                        log_async(format!("out | {}: {}", fn_val.symbol.unwrap_or(fn_val.guid), jsonify(mmu.clone(), &mmu.get_ref_value(&val_ref).unwrap())));
+                    },
+                    StreamResult::Error(e) => {
+                        log_error(format!("result | error: {}", e));
+                    }
+                }
             }
         },
 
@@ -132,11 +140,9 @@ fn main() {
             log_async("result | success".to_string());
 
             for (k, v) in res {
-                log_async(format!("out | {}: {}", k, jsonify(mmu.clone(), &v)));
+                let stored = mmu.get_ref_value(&v).unwrap();
+                log_async(format!("out | {}: {}", k, jsonify(mmu.clone(), &stored)));
             }
         }
     }
-
-
-
 }
