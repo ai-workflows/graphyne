@@ -299,8 +299,8 @@ mod tests {
                                 "result"
                             ],
                             "ops": [
-                                ["Get", ["outer", "_two"], "two"],
-                                ["Add", ["num", "two"], "result"]
+                                ["Get", ["outer", "_two"], ["two"]],
+                                ["Add", ["num", "two"], ["result"]]
                             ],
                             "input_vals": [],
                             "output_vals": ["result"]
@@ -363,8 +363,8 @@ mod tests {
                                 "doubled"
                             ],
                             "ops": [
-                                ["Get", ["outer", "_two"], "two"],
-                                ["Mul", ["num", "two"], "doubled"]
+                                ["Get", ["outer", "_two"], ["two"]],
+                                ["Mul", ["num", "two"], ["doubled"]]
                             ],
                             "input_vals": ["num"],
                             "output_vals": ["doubled"]
@@ -381,8 +381,8 @@ mod tests {
                                 "result"
                             ],
                             "ops": [
-                                ["Get", ["outer", "_double"], "double"],
-                                ["Call", ["double", "arg"], "result"]
+                                ["Get", ["outer", "_double"], ["double"]],
+                                ["Call", ["double", "arg"], ["result"]]
                             ],
                             "input_vals": [],
                             "output_vals": ["result"]
@@ -457,7 +457,7 @@ mod tests {
                                 "sum"
                             ],
                             "ops": [
-                                ["Add", ["num1", "num2"], "sum"]
+                                ["Add", ["num1", "num2"], ["sum"]]
                             ],
                             "input_vals": ["num1", "num2"],
                             "output_vals": ["sum"]
@@ -476,9 +476,9 @@ mod tests {
                                 "result"
                             ],
                             "ops": [
-                                ["Get", ["outer", "_add"], "add"],
-                                ["Get", ["outer", "_my_list"], "my_list"],
-                                ["Reduce", ["add", "my_list", "initial"], "result"]
+                                ["Get", ["outer", "_add"], ["add"]],
+                                ["Get", ["outer", "_my_list"], ["my_list"]],
+                                ["Reduce", ["add", "my_list", "initial"], ["result"]]
                             ],
                             "input_vals": [],
                             "output_vals": ["result"]
@@ -549,8 +549,8 @@ mod tests {
                                 "doubled"
                             ],
                             "ops": [
-                                ["Get", ["outer", "_two"], "two"],
-                                ["Mul", ["num", "two"], "doubled"]
+                                ["Get", ["outer", "_two"], ["two"]],
+                                ["Mul", ["num", "two"], ["doubled"]]
                             ],
                             "input_vals": ["num"],
                             "output_vals": ["doubled"]
@@ -568,9 +568,9 @@ mod tests {
                                 "double_list"
                             ],
                             "ops": [
-                                ["Get", ["outer", "_double"], "double_func"],
-                                ["Get", ["outer", "_my_list"], "my_list"],
-                                ["Map", ["double_func", "my_list"], "double_list"]
+                                ["Get", ["outer", "_double"], ["double_func"]],
+                                ["Get", ["outer", "_my_list"], ["my_list"]],
+                                ["Map", ["double_func", "my_list"], ["double_list"]]
                             ],
                             "input_vals": [],
                             "output_vals": ["double_list"]
@@ -638,8 +638,8 @@ mod tests {
                             "mod_result"
                         ],
                         "ops": [
-                            ["Mod", ["num", "two"], "mod_result"],
-                            ["Equal", ["mod_result", "zero"], "is_even"]
+                            ["Mod", ["num", "two"], ["mod_result"]],
+                            ["Equal", ["mod_result", "zero"], ["is_even"]]
                         ],
                         "input_vals": ["num"],
                         "output_vals": ["is_even"]
@@ -657,9 +657,9 @@ mod tests {
                             "even_list"
                         ],
                         "ops": [
-                            ["Get", ["outer", "_is_even"], "is_even"],
-                            ["Get", ["outer", "_my_list"], "my_list"],
-                            ["Filter", ["is_even", "my_list"], "even_list"]
+                            ["Get", ["outer", "_is_even"], ["is_even"]],
+                            ["Get", ["outer", "_my_list"], ["my_list"]],
+                            ["Filter", ["is_even", "my_list"], ["even_list"]]
                         ],
                         "input_vals": [],
                         "output_vals": ["even_list"]
