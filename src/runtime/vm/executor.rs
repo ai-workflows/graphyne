@@ -89,13 +89,19 @@ pub fn try_execute_fn_op(
 
 /// Validates the inputs to function's operation by checking that all args are present in the context.
 fn validate_op_inputs(shared_state: &Arc<SharedCallState>, args: &Vec<FuncValLive>, call_context_id: &CallContextId) -> ExecResult<()> {
-    args.iter().enumerate().try_for_each(|(arg_index, arg_fn_val)| {
-        if !shared_state.contains_val(call_context_id, arg_fn_val) {
-            Err(format!("Arg at index {} is not known.", arg_index))
-        } else {
-            Ok(())
-        }
-    })
+    if !shared_state.contains_all_vals(call_context_id, args) {
+        return Err("Not all input values are known.".to_string());
+    }
+
+    // args.iter().enumerate().try_for_each(|(arg_index, arg_fn_val)| {
+    //     if !shared_state.contains_val(call_context_id, arg_fn_val) {
+    //         Err(format!("Arg at index {} is not known.", arg_index))
+    //     } else {
+    //         Ok(())
+    //     }
+    // })
+
+    Ok(())
 }
 
 /// Handles the call of an operation that is part of a function.
@@ -145,8 +151,7 @@ fn handle_reduce_op(shared_state: Arc<SharedCallState>, args: Vec<ValueReference
 
         let result = manage_await_call(
             shared_state.mmu.clone(),
-            shared_state.executor_thread_pool.clone(),
-            shared_state.orchestrator_thread_pool.clone(),
+            shared_state.worker_pool.clone(),
             func.clone(),
             args,
             shared_state.verbose,
@@ -354,8 +359,7 @@ fn dispatch_calls(
         // start the call and add the receiver to the list
         let num_expected_outputs = manage_start_call(
             shared_state.mmu.clone(),
-            shared_state.executor_thread_pool.clone(),
-            shared_state.orchestrator_thread_pool.clone(),
+            shared_state.worker_pool.clone(),
             func.clone(),
             args,
             Arc::new(Mutex::new(output_sender)),

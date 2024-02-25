@@ -31,11 +31,8 @@ enum Commands {
         #[arg(short = 'v', long = "verbose", default_value = "false")]
         verbose: bool,
 
-        #[arg(short = 'e', long = "ex-workers")]
-        execution_workers: Option<usize>,
-
-        #[arg(short = 'o', long = "or-workers")]
-        orchestration_workers: Option<usize>,
+        #[arg(short = 'w', long = "workers")]
+        workers: Option<usize>,
     },
 
     #[command(about = "Runs a program and waits for all results to be available before outputting them")]
@@ -47,11 +44,8 @@ enum Commands {
         #[arg(short = 'v', long = "verbose", default_value = "false")]
         verbose: bool,
 
-        #[arg(short = 'e', long = "ex-workers")]
-        execution_workers: Option<usize>,
-
-        #[arg(short = 'o', long = "or-workers")]
-        orchestration_workers: Option<usize>,
+        #[arg(short = 'w', long = "workers")]
+        workers: Option<usize>,
     },
 }
 
@@ -59,7 +53,7 @@ fn main() {
     let args = Cli::parse();
 
     match args.command {
-        Commands::Stream { intermediate, verbose, execution_workers, orchestration_workers } => {
+        Commands::Stream { intermediate, verbose, workers } => {
             let program: Collection = match load_intermediate(&intermediate) {
                 Ok(v) => v,
                 Err(e) => {
@@ -87,8 +81,7 @@ fn main() {
                 mmu.clone(),
                 outputs_sender.clone(),
                 verbose,
-                execution_workers,
-                orchestration_workers,
+                workers,
             );
 
             let num_expected_outputs = match start_res {
@@ -112,7 +105,7 @@ fn main() {
             }
         },
 
-        Commands::Await { intermediate, verbose, execution_workers, orchestration_workers } => {
+        Commands::Await { intermediate, verbose, workers } => {
             let program: Collection = match load_intermediate(&intermediate) {
                 Ok(v) => v,
                 Err(e) => {
@@ -138,8 +131,7 @@ fn main() {
                 vec![],
                 mmu.clone(),
                 verbose,
-                execution_workers,
-                orchestration_workers
+                workers
             );
 
             let res = match res {

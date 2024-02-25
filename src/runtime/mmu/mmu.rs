@@ -124,6 +124,22 @@ impl MMU {
         get_result.map(|value| value)
     }
 
+    pub fn get_ptrs_values(&self, ptrs: &Vec<GCPointer<StoredData>>) -> ExecResult<Vec<Arc<StoredData>>> {
+        let gc = self.state.read()
+            .unwrap_or_else(|e| panic!("Could not get read lock on VM state, the lock is poisoned: {}", e));
+
+        let mut result = Vec::new();
+        for ptr in ptrs {
+            let get_result = gc.get(ptr);
+            match get_result {
+                Ok(value) => result.push(value),
+                Err(msg) => return Err(msg),
+            }
+        }
+
+        Ok(result)
+    }
+
     /// Drops a reference to a value from the VM's state, decrementing the reference count.
     pub fn drop_reference(&self, reference: &mut ValueReference) {
         let mut gc = self.state.write()

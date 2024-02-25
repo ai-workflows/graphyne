@@ -275,7 +275,6 @@ mod tests {
             mmu.clone(),
             true,
             Some(1),
-            Some(1),
         ).unwrap();
 
         let double: IntLive = mmu.get_ref_value(res.get("double").unwrap()).unwrap().as_live().as_int().unwrap().unwrap();

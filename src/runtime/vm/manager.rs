@@ -10,14 +10,13 @@ use crate::runtime::mmu::mmu::MMU;
 use crate::runtime::mmu::value_ref::ValueReference;
 use crate::runtime::vm::{executor, orchestrator};
 use crate::runtime::vm::orchestrator::handle_called_fn_constants;
-use crate::runtime::vm::shared::{CallContextId, CallResult, ExecutorMessage, get_func_from_ptr, get_func_vals_from_ptrs, NewOpMessage, NewValMessage, SharedCallState};
+use crate::runtime::vm::shared::{CallContextId, CallResult, ControlMessage, ExecutorMessage, get_func_from_ptr, get_func_vals_from_ptrs, NewOpMessage, NewValMessage, OrchestratorMessage, SharedCallState};
 
 
 /// starts a call, waits for it to complete, and returns the results
 pub fn manage_await_call(
     mmu: Arc<MMU>,
-    ex_pool: Arc<ThreadPool>,
-    or_pool: Arc<ThreadPool>,
+    worker_pool: Arc<ThreadPool>,
     func: ValueReference,
     args: Vec<ValueReference>,
     verbose: bool,
@@ -28,8 +27,7 @@ pub fn manage_await_call(
 
     let num_outputs = manage_start_call(
         mmu.clone(),
-        ex_pool,
-        or_pool,
+        worker_pool,
         func.clone(),
         args,
         Arc::new(Mutex::new(output_sender)),
@@ -78,8 +76,7 @@ pub enum StreamResult {
 
 pub fn manage_start_call<'a>(
     mmu: Arc<MMU>,
-    ex_pool: Arc<ThreadPool>,
-    or_pool: Arc<ThreadPool>,
+    worker_pool: Arc<ThreadPool>,
     func: ValueReference,
     args: Vec<ValueReference>,
     output_sender: Arc<Mutex<Sender<StreamResult>>>,
@@ -108,25 +105,23 @@ pub fn manage_start_call<'a>(
         .collect();
 
     // initialize the message channels
-    let (new_op_sender, new_op_receiver) = mpsc::channel::<NewOpMessage>();
-    let (new_val_sender, new_val_receiver) = mpsc::channel::<NewValMessage>();
+    let (control_sender, control_receiver) = mpsc::channel::<ControlMessage>();
 
     let shared_state: Arc<SharedCallState> = SharedCallState::new(
         mmu.clone(),
-        new_op_sender,
-        new_val_sender,
+        control_sender,
         output_sender.clone(),
         final_outputs,
-        ex_pool.clone(),
-        or_pool.clone(),
+        worker_pool.clone(),
         verbose,
     );
 
     shared_state.log_async(&main_call_id, &"Starting new call".to_string());
 
     // start the orchestrator and executor threads
-    start_orchestrator(shared_state.clone(), new_val_receiver, output_sender.clone());
-    start_executor(shared_state.clone(), new_op_receiver);
+    // start_orchestrator(shared_state.clone(), new_val_receiver, output_sender.clone());
+    // start_executor(shared_state.clone(), control_receiver);
+    start_manager(shared_state.clone(), control_receiver, output_sender.clone());
 
     // get the function's inputs
     let input_fn_vals = match get_func_vals_from_ptrs(
@@ -163,103 +158,105 @@ pub fn manage_start_call<'a>(
     Ok(output_fn_vals.len())
 }
 
-fn start_orchestrator(
+fn start_manager(
     shared_state: Arc<SharedCallState>,
-    new_val_receiver: Receiver<NewValMessage>,
+    control_receiver: Receiver<ControlMessage>,
     output_sender: Arc<Mutex<Sender<StreamResult>>>,
 ) {
-    // Orchestrator Dispatcher thread
+    // Manager Dispatcher thread
     thread::spawn(move || {
-        for message in new_val_receiver.iter() {
+        for message in control_receiver.iter() {
             let ss = shared_state.clone();
 
             if ss.is_halted(){
                 return;
             }
 
-            // send the output if the value is a final output
-            if ss.check_for_final_output(&message.call_context_id, &message.func_val) {
-                output_sender.lock().unwrap().send(StreamResult::Output(
-                    message.func_val.clone(),
-                    message.value.clone()
-                )).unwrap();
+            match message {
+                ControlMessage::FromExecutor(msg) => {
+                    match msg {
+                        ExecutorMessage::NewVal(res) => {
+                            // if the value is a final output, send it to the output sender
+                            if ss.check_for_final_output(&res.call_context_id, &res.func_val) {
+                                output_sender.lock().unwrap().send(StreamResult::Output(
+                                    res.func_val.clone(),
+                                    res.value.clone()
+                                )).unwrap();
 
-                // if there are no remaining final outputs, halt execution
-                if !ss.has_remaining_final_outputs() {
-                    ss.halt_execution(&message.call_context_id, CallResult::Success);
-                    return;
-                }
-            }
-
-            let or_pool = ss.orchestrator_thread_pool.clone();
-            or_pool.spawn(move || {
-                match orchestrator::handle_new_value_v2(
-                    ss.clone(),
-                    &message.call_context_id,
-                    &message.func_val,
-                    message.value,
-                ) {
-                    Ok(_) => {},
-                    Err(e) => {
-                        // if an error occurred, handle it
-                        let error_msg = format!("Orchestrator encountered an error: {}", e);
-                        ss.halt_execution(
-                            &message.call_context_id,
-                            CallResult::Error(error_msg.clone())
-                        );
-                    }
-                }
-            });
-        }
-    });
-}
-
-fn start_executor(
-    shared_state: Arc<SharedCallState>,
-    new_op_receiver: Receiver<NewOpMessage>
-) {
-    // Executor Dispatcher thread
-    thread::spawn(move || {
-        for message in new_op_receiver.iter() {
-            let ss = shared_state.clone();
-            let ex_pool = ss.executor_thread_pool.clone();
-
-            if ss.is_halted(){
-                return;
-            }
-
-            ex_pool.spawn(move || {
-                match executor::try_execute_fn_op(ss.clone(), &message.op, &message.call_context_id) {
-                    Ok(results) => {
-                        // if successful, send the results to the state manager
-                        for ex_message in results {
-                            match ex_message {
-                                ExecutorMessage::NewVal(result) => {
-                                    // remove the op from the pending ops
-                                    ss.complete_pending_op(&message.call_context_id, &message.op.guid);
-
-                                    ss.send_new_val(result.call_context_id.clone(), &result.func_val, result.value);
-                                },
-                                ExecutorMessage::Pending(result) => {
-                                    // expect the thread that sends the new value to remove the op from the pending ops
-                                    ss.log_async(&result.call_context_id, &format!("Value calculation pending: {}", result.func_val.symbol.unwrap()));
+                                // if there are no remaining final outputs, halt execution
+                                if !ss.has_remaining_final_outputs() {
+                                    ss.halt_execution(&res.call_context_id, CallResult::Success);
+                                    return;
                                 }
                             }
-                        }
-                    },
-                    Err(e) => {
-                        // remove the op from the pending ops
-                        ss.complete_pending_op(&message.call_context_id, &message.op.guid);
 
-                        // if an error occurred, handle it by halt execution
-                        let error_msg = format!("Executor encountered an error: {}", e);
-                        ss.halt_execution(
-                            &message.call_context_id,
-                            CallResult::Error(error_msg.clone())
-                        );
+                            let worker_pool = ss.worker_pool.clone();
+                            worker_pool.spawn(move || {
+                                match orchestrator::handle_new_value_v2(
+                                    ss.clone(),
+                                    &res.call_context_id,
+                                    &res.func_val,
+                                    res.value,
+                                ) {
+                                    Ok(_) => {},
+                                    Err(e) => {
+                                        // if an error occurred, handle it
+                                        let error_msg = format!("Orchestrator encountered an error: {}", e);
+                                        ss.halt_execution(
+                                            &res.call_context_id,
+                                            CallResult::Error(error_msg.clone())
+                                        );
+                                    }
+                                }
+                            });
+                        },
+                        ExecutorMessage::Pending(res) => {
+                            // expect the thread that sends the new value to remove the op from the pending ops
+                            ss.log_async(&res.call_context_id, &format!("Value calculation pending: {}", res.func_val.symbol.unwrap()));
+                        }
                     }
+                },
+                ControlMessage::FromOrchestrator(msg) => {
+                    let message: NewOpMessage = match msg {
+                        OrchestratorMessage::NewOp(msg) => msg
+                    };
+
+                    let worker_pool = ss.worker_pool.clone();
+
+                    worker_pool.spawn(move || {
+                        match executor::try_execute_fn_op(ss.clone(), &message.op, &message.call_context_id) {
+                            Ok(results) => {
+                                // if successful, send the results to the state manager
+                                for ex_message in results {
+                                    match ex_message {
+                                        ExecutorMessage::NewVal(result) => {
+                                            // remove the op from the pending ops
+                                            ss.complete_pending_op(&message.call_context_id, &message.op.guid);
+
+                                            ss.send_new_val(result.call_context_id.clone(), &result.func_val, result.value);
+                                        },
+                                        ExecutorMessage::Pending(result) => {
+                                            // expect the thread that sends the new value to remove the op from the pending ops
+                                            ss.log_async(&result.call_context_id, &format!("Value calculation pending: {}", result.func_val.symbol.unwrap()));
+                                        }
+                                    }
+                                }
+                            },
+                            Err(e) => {
+                                // remove the op from the pending ops
+                                ss.complete_pending_op(&message.call_context_id, &message.op.guid);
+
+                                // if an error occurred, handle it by halt execution
+                                let error_msg = format!("Executor encountered an error: {}", e);
+                                ss.halt_execution(
+                                    &message.call_context_id,
+                                    CallResult::Error(error_msg.clone())
+                                );
+                            }
+                        }
+                    });
                 }
-            });
+            }
         }
     });
 }
@@ -315,13 +312,24 @@ mod tests {
 
             let main_ref = api.get_path(vec!["my_collection".into(), "main".into()]).unwrap();
 
-            let ex_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
-            let or_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
+            let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
+
+            let start_time = std::time::Instant::now();
+            for _ in 0..1000 {
+                let res = manage_await_call(
+                    api.mmu.clone(),
+                    worker_pool.clone(),
+                    main_ref.clone(),
+                    vec![],
+                    false,
+                );
+            }
+            let elapsed = start_time.elapsed();
+            println!("Average time: {:?}", elapsed / 1000);
 
             let res = manage_await_call(
                 api.mmu.clone(),
-                ex_pool,
-                or_pool,
+                worker_pool,
                 main_ref,
                 vec![],
                 true,
@@ -402,13 +410,11 @@ mod tests {
 
             let (outputs_sender, outputs_receiver) = mpsc::channel::<StreamResult>();
 
-            let ex_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
-            let or_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
+            let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap());
 
             let expected_num_outputs = manage_start_call(
                 api.mmu.clone(),
-                ex_pool,
-                or_pool,
+                worker_pool,
                 main_ref,
                 vec![],
                 Arc::new(Mutex::new(outputs_sender)),
@@ -444,7 +450,7 @@ mod tests {
 
             let json_collection = r#"{
                 "constants": {
-                    "my_list": [10, 20, 30]
+                    "my_list": [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150]
                 },
                 "functions": {
                     "add": {
@@ -496,13 +502,26 @@ mod tests {
 
             let main_ref = api.get_path(vec!["my_collection".into(), "main".into()]).unwrap();
 
-            let ex_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
-            let or_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
+            let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(3).build().unwrap());
+
+            let start_time = std::time::Instant::now();
+
+            for i in 0..1000 {
+                let res = manage_await_call(
+                    api.mmu.clone(),
+                    worker_pool.clone(),
+                    main_ref.clone(),
+                    vec![],
+                    false,
+                );
+            }
+
+            let elapsed = start_time.elapsed();
+            println!("Average time: {:?}", elapsed / 1000);
 
             let res = manage_await_call(
                 api.mmu.clone(),
-                ex_pool,
-                or_pool,
+                worker_pool,
                 main_ref,
                 vec![],
                 true,
@@ -517,7 +536,7 @@ mod tests {
 
             let result = outputs[0].deref().unwrap().as_live().as_int().unwrap().unwrap();
 
-            assert_eq!(result, 60);
+            assert_eq!(result, 1200);
         }
     }
 
@@ -588,13 +607,11 @@ mod tests {
 
             let main_ref = api.get_path(vec!["my_collection".into(), "double_list".into()]).unwrap();
 
-            let ex_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
-            let or_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
+            let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap());
 
             let res = manage_await_call(
                 api.mmu.clone(),
-                ex_pool,
-                or_pool,
+                worker_pool,
                 main_ref,
                 vec![],
                 true,
@@ -677,13 +694,24 @@ mod tests {
 
         let main_ref = binder.get_path(vec!["my_collection".into(), "filter_even".into()]).unwrap();
 
-        let ex_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
-        let or_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
+        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap());
+
+        let start_time = std::time::Instant::now();
+        for _ in 0..1000 {
+            let res = manage_await_call(
+                binder.mmu.clone(),
+                worker_pool.clone(),
+                main_ref.clone(),
+                vec![],
+                false,
+            );
+        }
+        let elapsed = start_time.elapsed();
+        println!("1000 calls took: {:?}", elapsed);
 
         let res = manage_await_call(
             binder.mmu.clone(),
-            ex_pool,
-            or_pool,
+            worker_pool,
             main_ref,
             vec![],
             true,

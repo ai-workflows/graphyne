@@ -17,6 +17,11 @@ use crate::runtime::vm::manager::StreamResult;
 pub type CallContextId = String;
 // pub type MetaValueId = String;
 
+pub enum ControlMessage{
+    FromExecutor(ExecutorMessage),
+    FromOrchestrator(OrchestratorMessage)
+}
+
 
 /// Represents a message that is sent from the executor to the orchestrator.
 pub enum ExecutorMessage {
@@ -43,6 +48,11 @@ pub struct ValPendingMessage {
     pub call_context_id: CallContextId,
     pub func_val: FuncValLive
 
+}
+
+/// Represents a message that is sent from the orchestrator to the executor.
+pub enum OrchestratorMessage {
+    NewOp(NewOpMessage),
 }
 
 /// Represents a message sent to the executor to indicate that a new operation should be executed.
@@ -94,16 +104,14 @@ pub struct SharedCallState {
     // pub vm: Arc<VM>,
     pub mmu: Arc<MMU>,
 
-    new_op_sender: mpsc::Sender<NewOpMessage>,
-    new_val_sender: mpsc::Sender<NewValMessage>,
+    control_sender: mpsc::Sender<ControlMessage>,
 
     halt_flag: Arc<AtomicBool>,
     outputs_sender: Arc<Mutex<mpsc::Sender<StreamResult>>>,
 
-    pub executor_thread_pool: Arc<ThreadPool>,
-    pub orchestrator_thread_pool: Arc<ThreadPool>,
+    pub worker_pool: Arc<ThreadPool>,
 
-    pub(crate) verbose: bool
+    pub verbose: bool
 
     // TODO: dependent operation queue. set of dependent operations for each val that have not been executed yet.
     // once the queue is empty, the value can be removed from the val_lookup.
@@ -113,27 +121,23 @@ impl SharedCallState {
     /// Creates a new shared call state.
     pub fn new(
         mmu: Arc<MMU>,
-        new_op_sender: mpsc::Sender<NewOpMessage>,
-        new_val_sender: mpsc::Sender<NewValMessage>,
+        control_sender: mpsc::Sender<ControlMessage>,
         outputs_sender: Arc<Mutex<mpsc::Sender<StreamResult>>>,
         final_outputs: HashSet<(CallContextId, FuncValId)>,
-        ex_pool: Arc<ThreadPool>,
-        or_pool: Arc<ThreadPool>,
+        worker_pool: Arc<ThreadPool>,
         verbose: bool
     ) -> Arc<Self> {
         let state = Arc::new(SharedCallState {
             val_lookup: Arc::new(RwLock::new(HashMap::new())),
             output_lookup: Arc::new(RwLock::new(HashMap::new())),
             call_lookup: Arc::new(Default::default()),
-            new_op_sender,
-            new_val_sender,
+            control_sender,
             halt_flag: Arc::new(AtomicBool::new(false)),
             outputs_sender,
             final_outputs: Arc::new(RwLock::new(final_outputs)),
             pending_ops: Arc::new(RwLock::new(HashMap::new())),
             mmu,
-            executor_thread_pool: ex_pool,
-            orchestrator_thread_pool: or_pool,
+            worker_pool,
             verbose
         });
 
@@ -148,6 +152,24 @@ impl SharedCallState {
             None => return false
         };
         call_context_map.contains_key(&func_val.guid)
+    }
+
+    pub fn contains_any_val(&self, call_context_id: &CallContextId, func_vals: &Vec<FuncValLive>) -> bool {
+        let val_lookup = self.val_lookup.read().expect("val_lookup lock is poisoned");
+        let call_context_map = match val_lookup.get(call_context_id) {
+            Some(map) => map,
+            None => return false
+        };
+        func_vals.iter().any(|func_val| call_context_map.contains_key(&func_val.guid))
+    }
+
+    pub fn contains_all_vals(&self, call_context_id: &CallContextId, func_vals: &Vec<FuncValLive>) -> bool {
+        let val_lookup = self.val_lookup.read().expect("val_lookup lock is poisoned");
+        let call_context_map = match val_lookup.get(call_context_id) {
+            Some(map) => map,
+            None => return false
+        };
+        func_vals.iter().all(|func_val| call_context_map.contains_key(&func_val.guid))
     }
 
     /// Gets the value reference associated with a given call context and function value.
@@ -197,7 +219,7 @@ impl SharedCallState {
         // println!("Sending new operation: {:?}", message.op.opcode);
         self.log_async(&call_context_id, &format!("Sending new operation: {:?}", op_code));
 
-        match self.new_op_sender.send(message) {
+        match self.control_sender.send(ControlMessage::FromOrchestrator(OrchestratorMessage::NewOp(message))) {
             Ok(_) => {},
             Err(e) => self.log_error(&call_context_id, &format!("Error sending new operation ({}): {}", op_code, e))
         }
@@ -226,7 +248,7 @@ impl SharedCallState {
         //     self.output_sender.send(message.clone()).unwrap();
         // }
 
-        match self.new_val_sender.send(message) {
+        match self.control_sender.send(ControlMessage::FromExecutor(ExecutorMessage::NewVal(message))) {
             Ok(_) => {},
             Err(e) => self.log_error(&call_context_id, &format!(
                 "Error sending new value ({}): {}", symbol, e))
@@ -545,9 +567,14 @@ pub fn get_func_val_from_ptr(
 }
 
 pub fn get_func_vals_from_ptrs(mmu: Arc<MMU>, ptrs: &Vec<PointerLive>) -> ExecResult<Vec<FuncValLive>> {
-    ptrs.iter()
-        .map(|ptr| get_func_val_from_ptr(mmu.clone(), ptr))
-        .collect()
+    mmu.get_ptrs_values(ptrs).map(|arcs| {
+        arcs.iter().map(|arc| {
+            match arc.as_ref() {
+                StoredData::FuncValStored(func_val) => func_val.clone(),
+                _ => panic!("Expected FuncVal, got: {:?}", arc)
+            }
+        }).collect()
+    })
 }
 
 pub fn get_func_op_from_ptr(

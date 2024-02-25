@@ -18,17 +18,14 @@ pub fn await_call(
     args: Vec<ValueReference>,
     mmu: Arc<MMU>,
     verbose: bool,
-    execution_workers: Option<usize>,
-    orchestration_workers: Option<usize>,
+    workers: Option<usize>,
 ) -> ExecResult<HashMap<Symbol, ValueReference>> {
-    let (ex_count, or_count) = get_worker_counts(execution_workers, orchestration_workers);
-    let ex_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(ex_count).build().unwrap());
-    let or_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(or_count).build().unwrap());
+    let worker_count = get_worker_counts(workers);
+    let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(worker_count).build().unwrap());
 
     let res = crate::runtime::vm::manager::manage_await_call(
         mmu.clone(),
-        ex_pool,
-        or_pool,
+        worker_pool,
         func.clone(),
         args,
         verbose
@@ -74,19 +71,16 @@ pub fn stream_call(
     mmu: Arc<MMU>,
     outputs_sender: Sender<StreamResult>,
     verbose: bool,
-    execution_workers: Option<usize>,
-    orchestration_workers: Option<usize>,
+    workers: Option<usize>,
 ) -> ExecResult<usize> {
-    let (ex_count, or_count) = get_worker_counts(execution_workers, orchestration_workers);
-    let ex_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(ex_count).build().unwrap());
-    let or_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(or_count).build().unwrap());
+    let worker_count = get_worker_counts(workers);
+    let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(worker_count).build().unwrap());
 
     let outputs_sender = Arc::new(Mutex::new(outputs_sender));
 
     let num_expected_outputs = manage_start_call(
         mmu.clone(),
-        ex_pool,
-        or_pool,
+        worker_pool,
         func,
         args,
         outputs_sender,
@@ -116,23 +110,17 @@ pub fn bind(program: Collection, mmu: Arc<MMU>, program_symbol: Option<Symbol>) 
 }
 
 pub fn get_worker_counts(
-    execution_workers: Option<usize>,
-    orchestration_workers: Option<usize>,
-) -> (usize, usize) {
+    workers: Option<usize>,
+) -> usize {
     // if we know one but not the other, use the known value for both
     // if we know neither, use the number of CPUs
 
-    let ex_count = match execution_workers {
+    let count = match workers {
         Some(v) => v,
-        None => orchestration_workers.unwrap_or_else(|| num_cpus::get()),
+        None => workers.unwrap_or_else(|| num_cpus::get()),
     };
 
-    let or_count = match orchestration_workers {
-        Some(v) => v,
-        None => execution_workers.unwrap_or_else(|| num_cpus::get()),
-    };
-
-    (ex_count, or_count)
+    count
 }
 
 pub fn get_main_func_ref(main_collection_symbol: Symbol,
@@ -210,7 +198,6 @@ mod tests {
             mmu.clone(),
             output_sender,
             true,
-            Some(4),
             Some(4),
         ).unwrap();
 
