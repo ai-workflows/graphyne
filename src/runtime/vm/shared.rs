@@ -15,7 +15,7 @@ use crate::runtime::mmu::value_ref::ValueReference;
 use crate::runtime::vm::manager::StreamResult;
 
 pub type CallContextId = String;
-pub type MetaValueId = String;
+// pub type MetaValueId = String;
 
 
 /// Represents a message that is sent from the executor to the orchestrator.

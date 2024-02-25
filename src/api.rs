@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn test_stream_with_types() {
-        let collection: Collection = load_intermediate("examples/test/test_compiled.json").unwrap();
+        let collection: Collection = load_intermediate("examples/intermediate/test_compiled.json").unwrap();
 
         let mmu: Arc<MMU> = Arc::new(MMU::new());
         let mut binder = Binder { mmu: mmu.clone(), symbol_table: HashMap::new() };
