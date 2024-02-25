@@ -1,75 +1,20 @@
 use std::collections::HashSet;
-use std::sync::{Arc, mpsc, Mutex, RwLock};
+use std::sync::{Arc, mpsc, Mutex};
 use std::sync::mpsc::{Receiver, Sender};
-use std::thread;
 use rayon::ThreadPool;
 use crate::runtime::data::functions::val::FuncValId;
-use crate::runtime::data::live::FuncValLive;
+use crate::runtime::data::live::{FuncLive, FuncValLive};
 use crate::runtime::{ExecResult};
 use crate::runtime::mmu::mmu::MMU;
 use crate::runtime::mmu::value_ref::ValueReference;
 use crate::runtime::vm::{executor, orchestrator};
 use crate::runtime::vm::orchestrator::handle_called_fn_constants;
-use crate::runtime::vm::shared::{CallContextId, CallResult, ControlMessage, ExecutorMessage, get_func_from_ptr, get_func_vals_from_ptrs, NewOpMessage, NewValMessage, OrchestratorMessage, SharedCallState};
+use crate::runtime::vm::shared::{CallContextId, ControlMessage, ExecutorMessage, get_func_from_ptr, get_func_vals_from_ptrs, NewOpMessage, OrchestratorMessage, SharedCallState};
 
 
-/// starts a call, waits for it to complete, and returns the results
-pub fn manage_await_call(
-    mmu: Arc<MMU>,
-    worker_pool: Arc<ThreadPool>,
-    func: ValueReference,
-    args: Vec<ValueReference>,
-    verbose: bool,
-) -> ExecResult<Vec<ValueReference>> {
-    let func_live = get_func_from_ptr(mmu.clone(), &func.pointer).unwrap();
-
-    let (output_sender, output_receiver) = mpsc::channel::<StreamResult>();
-
-    let num_outputs = manage_start_call(
-        mmu.clone(),
-        worker_pool,
-        func.clone(),
-        args,
-        Arc::new(Mutex::new(output_sender)),
-        verbose,
-    );
-
-    let num_outputs = match num_outputs {
-        Ok(v) => v,
-        Err(e) => return Err(format!("Error starting call: {}", e))
-    };
-
-    let outputs: Arc<RwLock<Vec<(ValueReference, FuncValLive)>>>  = Arc::new(RwLock::new(
-        Vec::with_capacity(num_outputs)
-    ));
-
-    for _ in 0..num_outputs {
-        match output_receiver.recv().unwrap() {
-            StreamResult::Output(func_val, value) => {
-                let mut outputs_guard = outputs.write().unwrap(); // Acquire lock
-                outputs_guard.push((value, func_val.clone()));
-            },
-            StreamResult::Error(e) => return Err(format!("Function call returned an error: {}", e))
-        }
-    }
-
-    // get the outputs in the same order as the function's output values
-    let fn_output_vals = get_func_vals_from_ptrs(mmu.clone(), &func_live.output_vals).unwrap();
-
-    let outputs_guard = outputs.read().unwrap(); // Acquire lock
-    let outputs: Vec<ValueReference> = fn_output_vals.iter()
-        .map(|val| {
-            let output = outputs_guard.iter()
-                .find(|(_, output_fn_val)| output_fn_val.guid == val.guid)
-                .unwrap();
-            output.0.clone()
-        })
-        .collect();
-
-    Ok(outputs)
-}
 
 pub enum StreamResult {
+    NumOutputs(usize),
     Output(FuncValLive, ValueReference),
     Error(String)
 }
@@ -79,10 +24,10 @@ pub fn manage_start_call<'a>(
     worker_pool: Arc<ThreadPool>,
     func: ValueReference,
     args: Vec<ValueReference>,
-    output_sender: Arc<Mutex<Sender<StreamResult>>>,
+    output_sender: Option<Arc<Mutex<Sender<StreamResult>>>>,
     verbose: bool,
 
-) -> ExecResult<usize> {
+) -> ExecResult<Vec<ValueReference>> {
     // generate a random call context id
     let main_call_id = uuid::Uuid::new_v4().to_string();
 
@@ -95,7 +40,11 @@ pub fn manage_start_call<'a>(
         Ok(v) => v,
         Err(e) => {
             let error_msg = format!("Error getting function outputs: {}", e);
-            output_sender.lock().unwrap().send(StreamResult::Error(error_msg.clone())).unwrap();
+
+            if let Some(output_sender) = output_sender {
+                output_sender.lock().unwrap().send(StreamResult::Error(error_msg.clone())).unwrap();
+            }
+
             return Err(error_msg);
         }
     };
@@ -110,18 +59,12 @@ pub fn manage_start_call<'a>(
     let shared_state: Arc<SharedCallState> = SharedCallState::new(
         mmu.clone(),
         control_sender,
-        output_sender.clone(),
         final_outputs,
         worker_pool.clone(),
         verbose,
     );
 
     shared_state.log_async(&main_call_id, &"Starting new call".to_string());
-
-    // start the orchestrator and executor threads
-    // start_orchestrator(shared_state.clone(), new_val_receiver, output_sender.clone());
-    // start_executor(shared_state.clone(), control_receiver);
-    start_manager(shared_state.clone(), control_receiver, output_sender.clone());
 
     // get the function's inputs
     let input_fn_vals = match get_func_vals_from_ptrs(
@@ -130,7 +73,7 @@ pub fn manage_start_call<'a>(
     ) {
         Ok(v) => v,
         Err(e) => {
-            shared_state.halt_execution(&main_call_id, CallResult::Error(e.clone()));
+            // shared_state.halt_execution(&main_call_id, CallResult::Error(e.clone()));
             return Err(e);
         }
     };
@@ -150,115 +93,170 @@ pub fn manage_start_call<'a>(
     match handle_called_fn_constants(shared_state.clone(), &main_call_id, &func_live) {
         Ok(_) => {},
         Err(e) => {
-            shared_state.halt_execution(&main_call_id, CallResult::Error(e.clone()));
+            // shared_state.halt_execution(&main_call_id, CallResult::Error(e.clone()));
             return Err(e);
         }
     }
 
-    Ok(output_fn_vals.len())
+    // send an output message with the number of expected outputs
+    if let Some(output_sender) = output_sender.clone() {
+        output_sender.lock().unwrap().send(StreamResult::NumOutputs(output_fn_vals.len())).unwrap();
+    }
+
+    manage_call(shared_state, control_receiver, output_sender, &func_live)
 }
 
-fn start_manager(
+fn manage_call(
     shared_state: Arc<SharedCallState>,
     control_receiver: Receiver<ControlMessage>,
-    output_sender: Arc<Mutex<Sender<StreamResult>>>,
-) {
-    // Manager Dispatcher thread
-    thread::spawn(move || {
-        for message in control_receiver.iter() {
-            let ss = shared_state.clone();
+    output_sender: Option<Arc<Mutex<Sender<StreamResult>>>>,
+    main_func: &FuncLive
+) -> ExecResult<Vec<ValueReference>> {
+    let outputs: Arc<Mutex<Vec<(FuncValLive, ValueReference)>>> = Arc::new(Mutex::new(vec![]));
 
-            if ss.is_halted(){
-                return;
+    for message in control_receiver.iter() {
+        let ss = shared_state.clone();
+
+        let status: CallStatus = match message {
+            ControlMessage::FromExecutor(msg) => manage_executor_result(msg, ss, outputs.clone(), output_sender.clone()),
+            ControlMessage::FromOrchestrator(msg) => manage_orchestrator_result(msg, ss),
+            ControlMessage::Error(_, e) => {
+                if let Some(output_sender) = output_sender {
+                    output_sender.lock().unwrap().send(StreamResult::Error(e.clone())).unwrap();
+                }
+                return Err(e);
+            }
+        };
+
+        match status {
+            CallStatus::Success => break,
+            CallStatus::Error(e) => {
+                if let Some(output_sender) = output_sender {
+                    output_sender.lock().unwrap().send(StreamResult::Error(e.clone())).unwrap();
+                }
+                return Err(e);
+            },
+            CallStatus::Pending => {}
+        }
+    }
+
+    // get the outputs in the same order as the function's output values
+    let outputs = outputs.lock().unwrap();
+    let fn_output_vals = get_func_vals_from_ptrs(shared_state.mmu.clone(), &main_func.output_vals).unwrap();
+    let outputs: Vec<ValueReference> = fn_output_vals.iter()
+        .map(|val| {
+            let output = outputs.iter()
+                .find(|(output_fn_val, _)| output_fn_val.guid == val.guid)
+                .unwrap();
+            output.1.clone()
+        })
+        .collect();
+
+    Ok(outputs)
+}
+
+pub enum CallStatus {
+    Success,
+    Pending,
+    Error(String)
+}
+
+fn manage_executor_result(
+    message: ExecutorMessage,
+    ss: Arc<SharedCallState>,
+    outputs: Arc<Mutex<Vec<(FuncValLive, ValueReference)>>>,
+    output_sender: Option<Arc<Mutex<Sender<StreamResult>>>>,
+) -> CallStatus {
+    return match message {
+        ExecutorMessage::NewVal(res) => {
+            // if the value is a final output, send it to the output sender
+            if ss.check_for_final_output(&res.call_context_id, &res.func_val) {
+                outputs.lock().unwrap().push((res.func_val.clone(), res.value.clone()));
+
+                if let Some(output_sender) = output_sender {
+                    output_sender.lock().unwrap().send(StreamResult::Output(
+                        res.func_val.clone(),
+                        res.value.clone()
+                    )).unwrap();
+                }
+
+                // if there are no remaining final outputs, halt execution
+                if !ss.has_remaining_final_outputs() {
+                    return CallStatus::Success;
+                }
             }
 
-            match message {
-                ControlMessage::FromExecutor(msg) => {
-                    match msg {
-                        ExecutorMessage::NewVal(res) => {
-                            // if the value is a final output, send it to the output sender
-                            if ss.check_for_final_output(&res.call_context_id, &res.func_val) {
-                                output_sender.lock().unwrap().send(StreamResult::Output(
-                                    res.func_val.clone(),
-                                    res.value.clone()
-                                )).unwrap();
+            let ss2 = ss.clone();
+            ss.worker_pool.spawn(move || {
+                match orchestrator::handle_new_value_v2(
+                    ss2.clone(),
+                    &res.call_context_id,
+                    &res.func_val,
+                    res.value,
+                ) {
+                    Ok(_) => {},
+                    Err(e) => {
+                        // if an error occurred, throw an error control message
+                        ss2.throw_error(
+                            &res.call_context_id,
+                            &format!("Orchestrator encountered an error: {}", e)
+                        );
+                    }
+                }
+            });
 
-                                // if there are no remaining final outputs, halt execution
-                                if !ss.has_remaining_final_outputs() {
-                                    ss.halt_execution(&res.call_context_id, CallResult::Success);
-                                    return;
-                                }
-                            }
+            CallStatus::Pending
+        },
+        ExecutorMessage::Pending(res) => {
+            // expect the thread that sends the new value to remove the op from the pending ops
+            ss.log_async(&res.call_context_id, &format!("Value calculation pending: {}", res.func_val.symbol.unwrap()));
+            CallStatus::Pending
+        }
+    }
+}
 
-                            let worker_pool = ss.worker_pool.clone();
-                            worker_pool.spawn(move || {
-                                match orchestrator::handle_new_value_v2(
-                                    ss.clone(),
-                                    &res.call_context_id,
-                                    &res.func_val,
-                                    res.value,
-                                ) {
-                                    Ok(_) => {},
-                                    Err(e) => {
-                                        // if an error occurred, handle it
-                                        let error_msg = format!("Orchestrator encountered an error: {}", e);
-                                        ss.halt_execution(
-                                            &res.call_context_id,
-                                            CallResult::Error(error_msg.clone())
-                                        );
-                                    }
-                                }
-                            });
+fn manage_orchestrator_result(
+    message: OrchestratorMessage,
+    ss: Arc<SharedCallState>,
+) -> CallStatus {
+    let message: NewOpMessage = match message {
+        OrchestratorMessage::NewOp(msg) => msg
+    };
+
+    let ss2 = ss.clone();
+    ss.worker_pool.spawn(move || {
+        match executor::try_execute_fn_op(ss2.clone(), &message.op, &message.call_context_id) {
+            Ok(results) => {
+                // if successful, send the results to the state manager
+                for ex_message in results {
+                    match ex_message {
+                        ExecutorMessage::NewVal(result) => {
+                            // remove the op from the pending ops
+                            ss2.complete_pending_op(&message.call_context_id, &message.op.guid);
+
+                            ss2.send_new_val(result.call_context_id.clone(), &result.func_val, result.value);
                         },
-                        ExecutorMessage::Pending(res) => {
+                        ExecutorMessage::Pending(result) => {
                             // expect the thread that sends the new value to remove the op from the pending ops
-                            ss.log_async(&res.call_context_id, &format!("Value calculation pending: {}", res.func_val.symbol.unwrap()));
+                            ss2.log_async(&result.call_context_id, &format!("Value calculation pending: {}", result.func_val.symbol.unwrap()));
                         }
                     }
-                },
-                ControlMessage::FromOrchestrator(msg) => {
-                    let message: NewOpMessage = match msg {
-                        OrchestratorMessage::NewOp(msg) => msg
-                    };
-
-                    let worker_pool = ss.worker_pool.clone();
-
-                    worker_pool.spawn(move || {
-                        match executor::try_execute_fn_op(ss.clone(), &message.op, &message.call_context_id) {
-                            Ok(results) => {
-                                // if successful, send the results to the state manager
-                                for ex_message in results {
-                                    match ex_message {
-                                        ExecutorMessage::NewVal(result) => {
-                                            // remove the op from the pending ops
-                                            ss.complete_pending_op(&message.call_context_id, &message.op.guid);
-
-                                            ss.send_new_val(result.call_context_id.clone(), &result.func_val, result.value);
-                                        },
-                                        ExecutorMessage::Pending(result) => {
-                                            // expect the thread that sends the new value to remove the op from the pending ops
-                                            ss.log_async(&result.call_context_id, &format!("Value calculation pending: {}", result.func_val.symbol.unwrap()));
-                                        }
-                                    }
-                                }
-                            },
-                            Err(e) => {
-                                // remove the op from the pending ops
-                                ss.complete_pending_op(&message.call_context_id, &message.op.guid);
-
-                                // if an error occurred, handle it by halt execution
-                                let error_msg = format!("Executor encountered an error: {}", e);
-                                ss.halt_execution(
-                                    &message.call_context_id,
-                                    CallResult::Error(error_msg.clone())
-                                );
-                            }
-                        }
-                    });
                 }
+            },
+            Err(e) => {
+                // remove the op from the pending ops
+                ss2.complete_pending_op(&message.call_context_id, &message.op.guid);
+
+                // if an error occurred, handle it by halt execution
+                ss2.throw_error(
+                    &message.call_context_id,
+                    &format!("Executor encountered an error: {}", e)
+                );
             }
         }
     });
+
+    CallStatus::Pending
 }
 
 
@@ -268,10 +266,9 @@ mod tests {
     use std::sync::{Arc, mpsc, Mutex};
     use crate::binder::intermediate::collection::Collection;
     use crate::binder::Binder;
-    use crate::runtime::data::live::{LiveData, IntLive, FuncValLive};
+    use crate::runtime::data::live::{LiveData, IntLive};
     use crate::runtime::mmu::mmu::MMU;
-    use crate::runtime::mmu::value_ref::ValueReference;
-    use crate::runtime::vm::manager::{manage_await_call, manage_start_call, StreamResult};
+    use crate::runtime::vm::manager::{manage_start_call, StreamResult};
 
     #[test]
     fn test_start_call_simple() {
@@ -316,22 +313,24 @@ mod tests {
 
             let start_time = std::time::Instant::now();
             for _ in 0..1000 {
-                let res = manage_await_call(
+                let _ = manage_start_call(
                     api.mmu.clone(),
                     worker_pool.clone(),
                     main_ref.clone(),
                     vec![],
+                    None,
                     false,
                 );
             }
             let elapsed = start_time.elapsed();
             println!("Average time: {:?}", elapsed / 1000);
 
-            let res = manage_await_call(
+            let res = manage_start_call(
                 api.mmu.clone(),
                 worker_pool,
                 main_ref,
                 vec![],
+                None,
                 true,
             );
 
@@ -408,34 +407,34 @@ mod tests {
 
             let main_ref = api.get_path(vec!["my_collection".into(), "main".into()]).unwrap();
 
-            let (outputs_sender, outputs_receiver) = mpsc::channel::<StreamResult>();
+            let (outputs_sender, _) = mpsc::channel::<StreamResult>();
 
             let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap());
 
-            let expected_num_outputs = manage_start_call(
+            let res = manage_start_call(
                 api.mmu.clone(),
                 worker_pool,
                 main_ref,
                 vec![],
-                Arc::new(Mutex::new(outputs_sender)),
+                Some(Arc::new(Mutex::new(outputs_sender))),
                 true,
             ).unwrap();
 
-            let mut outputs: Vec<(FuncValLive, ValueReference)> = vec![];
+            // let mut outputs: Vec<(FuncValLive, ValueReference)> = vec![];
+            //
+            // for i in 0..expected_num_outputs {
+            //     let res = outputs_receiver.recv().unwrap();
+            //     match res {
+            //         StreamResult::Output(fn_val, val_ref) => {
+            //             outputs.push((fn_val, val_ref));
+            //         },
+            //         StreamResult::Error(e) => {
+            //             panic!("Call returned an error: {}", e);
+            //         }
+            //     }
+            // }
 
-            for i in 0..expected_num_outputs {
-                let res = outputs_receiver.recv().unwrap();
-                match res {
-                    StreamResult::Output(fn_val, val_ref) => {
-                        outputs.push((fn_val, val_ref));
-                    },
-                    StreamResult::Error(e) => {
-                        panic!("Call returned an error: {}", e);
-                    }
-                }
-            }
-
-            let value: IntLive = api.mmu.get_ref_value(&outputs.get(0).unwrap().1).unwrap().as_live().as_int().unwrap().unwrap();
+            let value: IntLive = api.mmu.get_ref_value(&res.get(0).unwrap()).unwrap().as_live().as_int().unwrap().unwrap();
 
             assert_eq!(value, 20);
         }
@@ -506,12 +505,13 @@ mod tests {
 
             let start_time = std::time::Instant::now();
 
-            for i in 0..1000 {
-                let res = manage_await_call(
+            for _ in 0..1000 {
+                let _ = manage_start_call(
                     api.mmu.clone(),
                     worker_pool.clone(),
                     main_ref.clone(),
                     vec![],
+                    None,
                     false,
                 );
             }
@@ -519,11 +519,12 @@ mod tests {
             let elapsed = start_time.elapsed();
             println!("Average time: {:?}", elapsed / 1000);
 
-            let res = manage_await_call(
+            let res = manage_start_call(
                 api.mmu.clone(),
                 worker_pool,
                 main_ref,
                 vec![],
+                None,
                 true,
             );
 
@@ -609,11 +610,12 @@ mod tests {
 
             let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap());
 
-            let res = manage_await_call(
+            let res = manage_start_call(
                 api.mmu.clone(),
                 worker_pool,
                 main_ref,
                 vec![],
+                None,
                 true,
             );
 
@@ -698,22 +700,24 @@ mod tests {
 
         let start_time = std::time::Instant::now();
         for _ in 0..1000 {
-            let res = manage_await_call(
+            let _ = manage_start_call(
                 binder.mmu.clone(),
                 worker_pool.clone(),
                 main_ref.clone(),
                 vec![],
+                None,
                 false,
             );
         }
         let elapsed = start_time.elapsed();
         println!("1000 calls took: {:?}", elapsed);
 
-        let res = manage_await_call(
+        let res = manage_start_call(
             binder.mmu.clone(),
             worker_pool,
             main_ref,
             vec![],
+            None,
             true,
         );
 

@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, mpsc, Mutex, RwLock};
-use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, mpsc, RwLock};
 use std::io;
 use std::io::Write;
 use rayon::{ThreadPool};
@@ -12,14 +11,14 @@ use crate::runtime::data::functions::FuncVal;
 use crate::runtime::data::functions::op::FuncOpId;
 use crate::runtime::mmu::mmu::{MMU, value_ref_from_ptr};
 use crate::runtime::mmu::value_ref::ValueReference;
-use crate::runtime::vm::manager::StreamResult;
 
 pub type CallContextId = String;
 // pub type MetaValueId = String;
 
 pub enum ControlMessage{
     FromExecutor(ExecutorMessage),
-    FromOrchestrator(OrchestratorMessage)
+    FromOrchestrator(OrchestratorMessage),
+    Error(CallContextId, String),
 }
 
 
@@ -106,9 +105,6 @@ pub struct SharedCallState {
 
     control_sender: mpsc::Sender<ControlMessage>,
 
-    halt_flag: Arc<AtomicBool>,
-    outputs_sender: Arc<Mutex<mpsc::Sender<StreamResult>>>,
-
     pub worker_pool: Arc<ThreadPool>,
 
     pub verbose: bool
@@ -122,7 +118,6 @@ impl SharedCallState {
     pub fn new(
         mmu: Arc<MMU>,
         control_sender: mpsc::Sender<ControlMessage>,
-        outputs_sender: Arc<Mutex<mpsc::Sender<StreamResult>>>,
         final_outputs: HashSet<(CallContextId, FuncValId)>,
         worker_pool: Arc<ThreadPool>,
         verbose: bool
@@ -132,8 +127,6 @@ impl SharedCallState {
             output_lookup: Arc::new(RwLock::new(HashMap::new())),
             call_lookup: Arc::new(Default::default()),
             control_sender,
-            halt_flag: Arc::new(AtomicBool::new(false)),
-            outputs_sender,
             final_outputs: Arc::new(RwLock::new(final_outputs)),
             pending_ops: Arc::new(RwLock::new(HashMap::new())),
             mmu,
@@ -262,26 +255,9 @@ impl SharedCallState {
         val_lookup.remove(call_context_id);
     }
 
-    pub fn halt_execution(&self, call_context_id: &CallContextId, reason: CallResult) {
-        // raise the halt flag
-        self.halt_flag.store(true, std::sync::atomic::Ordering::Relaxed);
-
-        // println!("Call context {} halted: {}", call_context_id, reason);
-        match &reason {
-            CallResult::Success => {
-                self.log_async(call_context_id, "Call context halted: success")
-            },
-            CallResult::Error(msg) => {
-                self.log_error(call_context_id, &format!("Call context halted: {}", msg));
-
-                // send the error back to the main thread
-                self.outputs_sender.lock().unwrap().send(StreamResult::Error(msg.clone())).unwrap();
-            }
-        }
-    }
-
-    pub fn is_halted(&self) -> bool {
-        self.halt_flag.load(std::sync::atomic::Ordering::Relaxed)
+    pub fn throw_error(&self, call_context_id: &CallContextId, msg: &str) {
+        // send an error control message
+        self.control_sender.send(ControlMessage::Error(call_context_id.clone(), msg.to_string())).expect("Error sending error message");
     }
 
     pub fn is_output(&self, call_context_id: &CallContextId, func_val: &FuncValLive) -> bool {
@@ -340,10 +316,10 @@ impl SharedCallState {
         let outputs = match output_lookup.get_mut(call_context_id) {
             Some(outputs) => outputs,
             None => {
-                self.halt_execution(call_context_id, CallResult::Error(format!(
+                self.throw_error(call_context_id, &format!(
                     "Error removing output ({}): call context {} not found",
                     func_val.symbol.clone().unwrap_or(func_val.guid.clone()),
-                    call_context_id)));
+                    call_context_id));
                 return;
             }
         };
@@ -462,8 +438,7 @@ impl SharedCallState {
         let mut pending_ops = match self.pending_ops.write() {
             Ok(pending_ops) => pending_ops,
             Err(_) => {
-                self.halt_execution(call_context_id, CallResult::Error(
-                    "Error registering pending op: lock poisoned".to_string()));
+                self.throw_error(call_context_id, "Error registering pending op: lock poisoned");
                 return false;
             }
         };
@@ -500,18 +475,18 @@ impl SharedCallState {
         let call_pending_ops = match pending_ops.get_mut(call_context_id) {
             Some(ops) => ops,
             None => {
-                self.halt_execution(call_context_id, CallResult::Error(format!(
+                self.throw_error(call_context_id, &format!(
                     "Error completing pending op: call context {} not found",
-                    call_context_id)));
+                    call_context_id));
                 return;
             }
         };
 
         // halt with error if the op is not pending
         if !call_pending_ops.contains(op_id) {
-            self.halt_execution(call_context_id, CallResult::Error(format!(
+            self.throw_error(call_context_id, &format!(
                 "Error completing pending op: op {} is not pending",
-                op_id)));
+                op_id));
         }
 
         call_pending_ops.remove(op_id);

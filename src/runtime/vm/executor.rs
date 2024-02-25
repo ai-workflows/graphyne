@@ -1,9 +1,8 @@
-use std::sync::{Arc, mpsc, Mutex};
+use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Receiver;
 use std::thread;
 use crate::runtime::data::live::{BoolLive, FuncOpLive, FuncValLive, ListLive};
 use crate::runtime::{ExecResult};
-use crate::runtime::data::functions::op::FuncOpId;
 use crate::runtime::data::functions::OpCode;
 use crate::runtime::data::stored::StoredData;
 use crate::runtime::mmu::mmu::{execute_store, MMU, value_ref_from_ptr};
@@ -11,8 +10,8 @@ use crate::runtime::mmu::store_op::StoreOp;
 use crate::runtime::mmu::value_ref::ValueReference;
 use crate::runtime::vm::operator::operator::execute_op;
 use crate::runtime::vm::operator::ops::Operation;
-use crate::runtime::vm::manager::{manage_await_call, manage_start_call, StreamResult};
-use crate::runtime::vm::shared::{CallContextId, get_func_vals_from_ptrs, NewValMessage, SharedCallState, ValPendingMessage, ExecutorMessage, CallResult};
+use crate::runtime::vm::manager::{manage_start_call};
+use crate::runtime::vm::shared::{CallContextId, get_func_vals_from_ptrs, NewValMessage, SharedCallState, ValPendingMessage, ExecutorMessage};
 
 /// A worker responsible for executing
 
@@ -34,7 +33,12 @@ pub fn try_execute_fn_op(
     validate_op_inputs(&shared_state, &arg_fn_vals, call_context_id)?;
 
     let res = match op.opcode {
-        OpCode::Reduce => handle_reduce_op(shared_state.clone(), get_func_op_args(shared_state.clone(), &arg_fn_vals, call_context_id)?),
+        OpCode::Reduce => return handle_reduce_op(
+            shared_state.clone(),
+            get_func_op_args(shared_state.clone(), &arg_fn_vals, call_context_id)?,
+            call_context_id,
+            op
+        ),
         OpCode::Map => return handle_map_op(
             shared_state.clone(),
             get_func_op_args(shared_state.clone(), &arg_fn_vals, call_context_id)?,
@@ -130,42 +134,94 @@ fn get_func_op_args(shared_state: Arc<SharedCallState>, args: &Vec<FuncValLive>,
 /// TODO: allow passing of other values into the reduce function other than the list items
 /// Pass in an arg "reduce_func_args" which can either be a ref to a func val or a special enum
 /// value that indicates this is the arg for the list items
-fn handle_reduce_op(shared_state: Arc<SharedCallState>, args: Vec<ValueReference>) -> ExecResult<Vec<ValueReference>> {
+fn handle_reduce_op(
+    shared_state: Arc<SharedCallState>,
+    args: Vec<ValueReference>,
+    call_context_id: &CallContextId,
+    op: &FuncOpLive,
+) -> ExecResult<Vec<ExecutorMessage>> {
     if args.len() != 3 {
         return Err("Reduce operation requires 3 arguments".to_string());
     }
 
     let func = args[0].clone();
     let list_ref = shared_state.mmu.get_ref_value(&args[1])?;
-    let list: &ListLive = match list_ref.as_ref() {
-        StoredData::ListStored(list) => list,
+    let list: ListLive = match list_ref.as_ref() {
+        StoredData::ListStored(list) => list.clone(),
         _ => return Err("Reduce operation requires a list as the second arg".to_string())
     };
 
-    let mut current = args[2].clone();
+    let output_fn_val_ref = shared_state.mmu.get_ptr_value(&op.output_vals[0])?;
+    let output_fn_val: FuncValLive = match output_fn_val_ref.as_ref() {
+        StoredData::FuncValStored(func_val) => func_val.clone(),
+        _ => return Err("Output func val not found".to_string())
+    };
+
+    // spawn a new thread so that orchestrating the reduce operation doesn't block a worker
+    let cc_id = call_context_id.clone();
+    let op = op.clone();
+    let output_fn_val2 = output_fn_val.clone();
+    thread::spawn(move || {
+        let result = match dispatch_reduce(shared_state.clone(), func, &list, args[2].clone()) {
+            Ok(val) => val,
+            Err(msg) => {
+                shared_state.throw_error(&cc_id.clone(), &msg);
+                return;
+            }
+        };
+
+        // remove the operation from the pending list
+        shared_state.complete_pending_op(&cc_id, &op.guid);
+
+        // send the result list as a new value
+        shared_state.send_new_val(cc_id.clone(), &output_fn_val2, result);
+    });
+
+    // return pending message
+    Ok(vec![ExecutorMessage::Pending(ValPendingMessage {
+        call_context_id: call_context_id.clone(),
+        func_val: output_fn_val
+    })])
+}
+
+fn dispatch_reduce(
+    shared_state: Arc<SharedCallState>,
+    func: ValueReference,
+    list: &ListLive,
+    initial: ValueReference,
+) -> ExecResult<ValueReference> {
+    let mut current = initial;
 
     for item_ptr in list.iter() {
         let item_ref = value_ref_from_ptr(shared_state.mmu.clone(), item_ptr.clone())?;
 
         let args: Vec<ValueReference> = vec![current.clone(), item_ref];
 
-        let result = manage_await_call(
+        let result = manage_start_call(
             shared_state.mmu.clone(),
             shared_state.worker_pool.clone(),
             func.clone(),
             args,
+            None,
             shared_state.verbose,
         );
 
         match result {
             Ok(result) => {
-                current = result.get(0).ok_or("Empty result")?.clone();
+                current = match result.get(0) {
+                    Some(val) => val.clone(),
+                    None => {
+                        return Err("Error executing reduce function: No result value".to_string());
+                    }
+                }
             },
-            Err(msg) => return Err(format!("Error executing reduce function: {}", msg))
+            Err(msg) => {
+                return Err(format!("Error executing reduce function: {}", msg));
+            }
         }
     }
 
-    Ok(vec![current])
+    Ok(current)
 }
 
 fn handle_map_op(
@@ -181,65 +237,58 @@ fn handle_map_op(
     let func = args[0].clone();
 
     let list_ref = shared_state.mmu.get_ref_value(&args[1])?;
-    let list: &ListLive = match list_ref.as_ref() {
-        StoredData::ListStored(list) => list,
+    let list: ListLive = match list_ref.as_ref() {
+        StoredData::ListStored(list) => list.clone(),
         _ => return Err("Map operation requires a list as the second arg".to_string())
     };
 
     let output_fn_val_ref = shared_state.mmu.get_ptr_value(&op.output_vals[0])?;
-    let output_fn_val: &FuncValLive = match output_fn_val_ref.as_ref() {
-        StoredData::FuncValStored(func_val) => func_val,
+    let output_fn_val: FuncValLive = match output_fn_val_ref.as_ref() {
+        StoredData::FuncValStored(func_val) => func_val.clone(),
         _ => return Err("Output func val not found".to_string())
     };
 
-    dispatch_map(shared_state.clone(), call_context_id.clone(), func, list, output_fn_val, op.guid.clone());
-
-    Ok(vec![ExecutorMessage::Pending(ValPendingMessage {
-        call_context_id: call_context_id.clone(),
-        func_val: output_fn_val.clone()
-    })])
-}
-
-fn dispatch_map(
-    shared_state: Arc<SharedCallState>,
-    call_context_id: CallContextId,
-    func: ValueReference,
-    list: &ListLive,
-    output_fn_val: &FuncValLive,
-    op_id: FuncOpId
-) {
-    let list = list.clone();
-    let output_fn_val = output_fn_val.clone();
-
+    let cc_id = call_context_id.clone();
+    let op = op.clone();
+    let lis = list.clone();
+    let output_fn_val2 = output_fn_val.clone();
     thread::spawn(move || {
-        // dispatch calls for each item in the list
-        let results = match dispatch_calls(
-            shared_state.clone(),
-            &list,
-            func.clone())
-        {
-            Ok(res) => res,
+        let result = match dispatch_map(shared_state.clone(), func, &lis) {
+            Ok(val) => val,
             Err(msg) => {
-                shared_state.halt_execution(&call_context_id, CallResult::Error(msg));
-                return;
-            }
-        };
-
-        // store the results in a list
-        let result_list = match store_list(shared_state.mmu.clone(), results) {
-            Ok(res) => res,
-            Err(msg) => {
-                shared_state.halt_execution(&call_context_id, CallResult::Error(msg));
+                shared_state.throw_error(&cc_id.clone(), &msg);
                 return;
             }
         };
 
         // remove the operation from the pending list
-        shared_state.complete_pending_op(&call_context_id, &op_id);
+        shared_state.complete_pending_op(&cc_id, &op.guid);
 
         // send the result list as a new value
-        shared_state.send_new_val(call_context_id.clone(), &output_fn_val, result_list);
+        shared_state.send_new_val(cc_id.clone(), &output_fn_val2, result);
     });
+
+    Ok(vec![ExecutorMessage::Pending(ValPendingMessage {
+        call_context_id: call_context_id.clone(),
+        func_val: output_fn_val
+    })])
+}
+
+fn dispatch_map(
+    shared_state: Arc<SharedCallState>,
+    func: ValueReference,
+    list: &ListLive,
+) -> ExecResult<ValueReference> {
+    // dispatch calls for each item in the list
+    let results = dispatch_calls(
+        shared_state.clone(),
+        &list,
+        func.clone())?;
+
+    // store the results in a list
+    let result_list = store_list(shared_state.mmu.clone(), results)?;
+
+    Ok(result_list)
 }
 
 fn handle_filter_op(
@@ -255,87 +304,80 @@ fn handle_filter_op(
     let func = args[0].clone();
 
     let list_ref = shared_state.mmu.get_ref_value(&args[1])?;
-    let list: &ListLive = match list_ref.as_ref() {
-        StoredData::ListStored(list) => list,
+    let list: ListLive = match list_ref.as_ref() {
+        StoredData::ListStored(list) => list.clone(),
         _ => return Err("Filter operation requires a list as the second arg".to_string())
     };
 
     let output_fn_val_ref = shared_state.mmu.get_ptr_value(&op.output_vals[0])?;
-    let output_fn_val: &FuncValLive = match output_fn_val_ref.as_ref() {
-        StoredData::FuncValStored(func_val) => func_val,
+    let output_fn_val: FuncValLive = match output_fn_val_ref.as_ref() {
+        StoredData::FuncValStored(func_val) => func_val.clone(),
         _ => return Err("Output func val not found".to_string())
     };
 
-    dispatch_filter(shared_state.clone(), call_context_id.clone(), func, list, output_fn_val, op.guid.clone());
-
-    Ok(vec![ExecutorMessage::Pending(ValPendingMessage {
-        call_context_id: call_context_id.clone(),
-        func_val: output_fn_val.clone()
-    })])
-}
-
-fn dispatch_filter(
-    shared_state: Arc<SharedCallState>,
-    call_context_id: CallContextId,
-    func: ValueReference,
-    list: &ListLive,
-    output_fn_val: &FuncValLive,
-    op_id: FuncOpId
-) {
-    let list = list.clone();
-    let output_fn_val = output_fn_val.clone();
-
+    // spawn a new thread so that orchestrating the filter operation doesn't block a worker
+    let cc_id = call_context_id.clone();
+    let op = op.clone();
+    let output_fn_val2 = output_fn_val.clone();
     thread::spawn(move || {
-        // dispatch calls for each item in the list
-        let results = dispatch_calls(shared_state.clone(), &list, func.clone())
-            .and_then(|results| {
-                // Convert and validate values together
-                results
-                    .iter()
-                    .map(|val| {
-                        shared_state
-                            .mmu
-                            .get_ref_value(val)
-                            .and_then(|stored_data| match stored_data.as_ref() {
-                                StoredData::BoolStored(b) => Ok(b.clone()),
-                                _ => Err("Expected filter function to return a boolean value".to_string()),
-                            })
-                    })
-                    .collect::<Result<Vec<BoolLive>, String>>()
-            });
-
-        // halt and stop if there was an error
-        if let Err(err_msg) = results {
-            shared_state.halt_execution(&call_context_id, CallResult::Error(err_msg));
-            return;
-        }
-        // only keep results if the results is true
-        let filtered_list: Vec<ValueReference> = list.iter()
-            .zip(results.as_ref().unwrap()) // Zip iterators for simultaneous access
-            .filter_map(|(list_item, is_true)| {
-                if *is_true {
-                    Some(value_ref_from_ptr(shared_state.mmu.clone(), list_item.clone()).unwrap())
-                } else {
-                    None // Filter out the item
-                }
-            })
-            .collect();
-
-        // store the results in a list
-        let result_list = match store_list(shared_state.mmu.clone(), filtered_list) {
-            Ok(res) => res,
+        let result = match dispatch_filter(shared_state.clone(), func, &list) {
+            Ok(val) => val,
             Err(msg) => {
-                shared_state.halt_execution(&call_context_id, CallResult::Error(msg));
+                shared_state.throw_error(&cc_id.clone(), &msg);
                 return;
             }
         };
 
         // remove the operation from the pending list
-        shared_state.complete_pending_op(&call_context_id, &op_id);
+        shared_state.complete_pending_op(&cc_id, &op.guid);
 
         // send the result list as a new value
-        shared_state.send_new_val(call_context_id.clone(), &output_fn_val, result_list);
+        shared_state.send_new_val(cc_id.clone(), &output_fn_val, result);
     });
+
+    Ok(vec![ExecutorMessage::Pending(ValPendingMessage {
+        call_context_id: call_context_id.clone(),
+        func_val: output_fn_val2
+    })])
+}
+
+fn dispatch_filter(
+    shared_state: Arc<SharedCallState>,
+    func: ValueReference,
+    list: &ListLive,
+) -> ExecResult<ValueReference> {
+    // dispatch calls for each item in the list
+    let results: Vec<BoolLive> = dispatch_calls(shared_state.clone(), &list, func.clone())
+        .and_then(|results| {
+            // Convert and validate values together
+            results
+                .iter()
+                .map(|val| {
+                    shared_state
+                        .mmu
+                        .get_ref_value(val)
+                        .and_then(|stored_data| match stored_data.as_ref() {
+                            StoredData::BoolStored(b) => Ok(b.clone()),
+                            _ => Err("Expected filter function to return a boolean value".to_string()),
+                        })
+                })
+                .collect::<Result<Vec<BoolLive>, String>>()
+        })?;
+
+    // only keep results if the results is true
+    let filtered_list: Vec<ValueReference> = list.iter()
+        .zip(results) // Zip iterators for simultaneous access
+        .filter_map(|(list_item, is_true)| {
+            if is_true {
+                Some(value_ref_from_ptr(shared_state.mmu.clone(), list_item.clone()).unwrap())
+            } else {
+                None // Filter out the item
+            }
+        })
+        .collect();
+
+    // store the results in a list
+    store_list(shared_state.mmu.clone(), filtered_list)
 }
 
 fn dispatch_calls(
@@ -343,66 +385,72 @@ fn dispatch_calls(
     list: &ListLive,
     func: ValueReference,
 ) -> ExecResult<Vec<ValueReference>> {
-    // set up the list of results receivers
-    let mut output_receivers: Vec<Receiver<StreamResult>> = Vec::with_capacity(list.len());
+    let (tx, rx) = std::sync::mpsc::channel();
 
     // dispatch calls for each item in the list
-    for item_ptr in list.iter(){
+    for (i, item_ptr) in list.iter().enumerate() {
         let ss = shared_state.clone();
+        let f = func.clone();
+        let item_ptr = item_ptr.clone();
+        let tx = tx.clone();
 
-        // send the item from the list as an arg
-        let args: Vec<ValueReference> = vec![value_ref_from_ptr(ss.mmu.clone(), item_ptr.clone()).unwrap()];
+        thread::spawn(move || {
+            // send the item from the list as an arg
+            let args: Vec<ValueReference> = vec![value_ref_from_ptr(ss.mmu.clone(), item_ptr).unwrap()];
 
-        // set up output channel
-        let (output_sender, output_receiver) = mpsc::channel::<StreamResult>();
+            // start the call and add the receiver to the list
+            let result: ExecResult<Vec<ValueReference>> = manage_start_call(
+                ss.mmu.clone(),
+                ss.worker_pool.clone(),
+                f,
+                args,
+                None,
+                ss.verbose
+            );
 
-        // start the call and add the receiver to the list
-        let num_expected_outputs = manage_start_call(
-            shared_state.mmu.clone(),
-            shared_state.worker_pool.clone(),
-            func.clone(),
-            args,
-            Arc::new(Mutex::new(output_sender)),
-            shared_state.verbose
-        );
+            let result = match result {
+                Ok(res) => res,
+                Err(msg) => {
+                    tx.send((i, Err(msg))).unwrap();
+                    return;
+                }
+            };
 
-        match num_expected_outputs {
-            Ok(c) => if c != 1 {
-                return Err("Expected 1 output from each call".to_string());
-            },
-            Err(msg) => return Err(msg)
-        }
+            let msg = match result.len() {
+                0 => (i, Err("No result value returned".to_string())),
+                1 => (i, Ok(result[0].clone())),
+                _ => (i, Err("Too many result values returned".to_string()))
+            };
 
-        output_receivers.push(output_receiver);
+            match tx.send(msg) {
+                Ok(_) => (),
+                Err(e) => {
+                    ss.throw_error(&CallContextId::new(), &format!("Error sending result: {}", e));
+                }
+            }
+        });
     }
 
-    // set up the output list
-    let mut outputs: Vec<(usize, ValueReference)> = Vec::with_capacity(list.len());
+    // collect the results
+    let results = collect_results(list.clone(), rx)?;
 
-    // wait until all calls are finished
-    for (i, rec) in output_receivers.iter().enumerate() {
-        match rec.recv() {
-            Ok(StreamResult::Output(_, val_ref)) => outputs.push((i, val_ref)),
-            Ok(StreamResult::Error(msg)) => return Err(msg),
-            Err(_) => return Err("Error receiving result".to_string())
-        }
-    }
+    // sort the results by the original index
+    let results: Vec<ValueReference> = sort_results(results);
 
-
-    // sort the results and return them
-    let sorted = sort_results(outputs);
-    Ok(sorted)
+    Ok(results)
 }
 
 fn collect_results(
     list: ListLive,
-    rx: Receiver<ExecResult<(usize, ValueReference)>>
+    rx: Receiver<(usize, ExecResult<ValueReference>)>
 ) -> ExecResult<Vec<(usize, ValueReference)>> {
     let unsorted_results: Mutex<Vec<(usize, ValueReference)>> = Mutex::new(Vec::with_capacity(list.len()));
 
     for result in rx.iter().take(list.len()) {
+        let i = result.0;
+        let result = result.1;
         match result {
-            Ok((i, val)) => {
+            Ok(val) => {
                 let mut results = unsorted_results.lock().unwrap();
                 results.push((i, val));
             },

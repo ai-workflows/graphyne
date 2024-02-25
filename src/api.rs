@@ -11,86 +11,32 @@ use crate::runtime::mmu::mmu::MMU;
 use crate::runtime::mmu::value_ref::ValueReference;
 use crate::runtime::{ExecResult, Symbol};
 use crate::runtime::vm::manager::{manage_start_call, StreamResult};
-use crate::runtime::vm::shared::{get_func_from_ptr, get_func_vals_from_ptrs};
+use crate::runtime::vm::shared::{get_func_from_ptr};
 
-pub fn await_call(
+pub fn call(
     func: ValueReference,
     args: Vec<ValueReference>,
     mmu: Arc<MMU>,
     verbose: bool,
     workers: Option<usize>,
-) -> ExecResult<HashMap<Symbol, ValueReference>> {
+    outputs_sender: Option<Sender<StreamResult>>,
+) -> ExecResult<Vec<ValueReference>> {
     let worker_count = get_worker_counts(workers);
     let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(worker_count).build().unwrap());
 
-    let res = crate::runtime::vm::manager::manage_await_call(
-        mmu.clone(),
-        worker_pool,
-        func.clone(),
-        args,
-        verbose
-    );
-
-    let res: Vec<ValueReference> = match res {
-        Ok(v) => v,
-        Err(e) => return Err(format!("Error executing program: {}", e))
+    let outputs_sender = match outputs_sender {
+        Some(v) => Some(Arc::new(Mutex::new(v))),
+        None => None,
     };
 
-    let main_func: FuncLive = match get_func_from_ptr(mmu.clone(), &func.pointer) {
-        Ok(v) => v,
-        Err(e) => return Err(format!("Error getting main function: {}", e))
-    };
-
-    let output_fn_vals = match get_func_vals_from_ptrs(mmu.clone(), &main_func.output_vals) {
-        Ok(v) => v,
-        Err(e) => return Err(format!("Error getting output function values: {}", e))
-    };
-
-    let mut result = HashMap::new();
-
-    for (i, output_fn_val) in output_fn_vals.iter().enumerate() {
-        let output_val = match res.get(i) {
-            Some(v) => v,
-            None => return Err(format!("Error getting output value: index {} out of range", i))
-        };
-
-        let symbol = match &output_fn_val.symbol {
-            Some(s) => s,
-            None => &output_fn_val.guid,
-        };
-
-        result.insert(symbol.clone(), output_val.clone());
-    }
-
-    Ok(result)
-}
-
-pub fn stream_call(
-    func: ValueReference,
-    args: Vec<ValueReference>,
-    mmu: Arc<MMU>,
-    outputs_sender: Sender<StreamResult>,
-    verbose: bool,
-    workers: Option<usize>,
-) -> ExecResult<usize> {
-    let worker_count = get_worker_counts(workers);
-    let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(worker_count).build().unwrap());
-
-    let outputs_sender = Arc::new(Mutex::new(outputs_sender));
-
-    let num_expected_outputs = manage_start_call(
+    manage_start_call(
         mmu.clone(),
         worker_pool,
         func,
         args,
         outputs_sender,
         verbose,
-    );
-
-    match num_expected_outputs {
-        Ok(v) => Ok(v),
-        Err(e) => Err(format!("Error executing program: {}", e))
-    }
+    )
 }
 
 /// Loads a Graphite JSON Intermediate Language (GJIL) file from the given path and binds to memory.
@@ -172,7 +118,8 @@ pub fn log_output(mmu: Arc<MMU>, func_val: &FuncValLive, value: &ValueReference)
 mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
-    use crate::api::{load_intermediate, stream_call};
+    use std::thread;
+    use crate::api::{call, load_intermediate};
     use crate::binder::Binder;
     use crate::binder::intermediate::collection::Collection;
     use crate::binder::json::jsonify;
@@ -192,29 +139,40 @@ mod tests {
 
         let (output_sender, output_receiver) = std::sync::mpsc::channel();
 
-        let num_expected_outputs = stream_call(
-            main_ref,
-            vec![],
-            mmu.clone(),
-            output_sender,
-            true,
-            Some(4),
-        ).unwrap();
+        let mmu2 = mmu.clone();
+        thread::spawn(move || {
+            let _ = call(
+                main_ref,
+                vec![],
+                mmu2,
+                true,
+                Some(4),
+                Some(output_sender),
+            );
+        });
 
+        let mut output_count = 0;
+        let mut expected_output_count: Option<usize> = None;
         let mut outputs: HashMap<String, String> = HashMap::new();
 
-        for _ in 0..num_expected_outputs {
-            let result = output_receiver.recv().unwrap();
-            match result {
+        loop {
+            let res = output_receiver.recv().unwrap();
+            match res {
+                StreamResult::NumOutputs(num) => {
+                    expected_output_count = Some(num);
+                },
                 StreamResult::Output(fn_val, val_ref) => {
-                    let symbol = match &fn_val.symbol {
-                        Some(s) => s,
-                        None => &fn_val.guid,
-                    };
-                    let val = jsonify(mmu.clone(), &mmu.get_ref_value(&val_ref).unwrap());
-                    outputs.insert(symbol.clone(), val);
+                    outputs.insert(fn_val.symbol.unwrap_or(fn_val.guid), jsonify(mmu.clone(), &mmu.get_ref_value(&val_ref).unwrap()));
+                    output_count += 1;
+                    if let Some(expected) = expected_output_count {
+                        if output_count >= expected {
+                            break;
+                        }
+                    }
+                },
+                StreamResult::Error(e) => {
+                    panic!("Error: {}", e);
                 }
-                StreamResult::Error(e) => panic!("Error: {}", e),
             }
         }
 

@@ -250,7 +250,7 @@ mod tests {
     use std::collections::HashMap;
     use std::fs;
     use std::sync::Arc;
-    use crate::api::await_call;
+    use crate::api::call;
     use crate::binder::Binder;
     use crate::binder::intermediate::collection::Collection;
     use crate::runtime::data::live::{IntLive, LiveData};
@@ -269,16 +269,17 @@ mod tests {
 
         let main_ref = binder.get_path(vec!["my_collection".into(), "main".into()]).unwrap();
 
-        let res = await_call(
+        let res = call(
             main_ref,
             vec![],
             mmu.clone(),
             true,
             Some(1),
+            None,
         ).unwrap();
 
-        let double: IntLive = mmu.get_ref_value(res.get("double").unwrap()).unwrap().as_live().as_int().unwrap().unwrap();
-        let triple: IntLive = mmu.get_ref_value(res.get("triple").unwrap()).unwrap().as_live().as_int().unwrap().unwrap();
+        let double: IntLive = mmu.get_ref_value(res.get(0).unwrap()).unwrap().as_live().as_int().unwrap().unwrap();
+        let triple: IntLive = mmu.get_ref_value(res.get(1).unwrap()).unwrap().as_live().as_int().unwrap().unwrap();
 
         assert_eq!(double, 10);
         assert_eq!(triple, 15);
