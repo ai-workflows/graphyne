@@ -11,11 +11,7 @@ impl LiveData for NullLive {
     }
 
     fn as_null(&self) -> Option<ExecResult<NullLive>> {
-        Some(Ok(self.clone()))
-    }
-
-    fn is_null(&self) -> Option<ExecResult<BoolLive>> {
-        Some(Ok(BoolLive::from(true)))
+        Some(Ok(()))
     }
 
     fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
@@ -30,6 +26,10 @@ impl LiveData for NullLive {
                 }
             }
         }
+    }
+
+    fn is_null(&self) -> Option<ExecResult<BoolLive>> {
+        Some(Ok(BoolLive::from(true)))
     }
 
 

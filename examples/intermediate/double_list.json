@@ -23,8 +23,8 @@
               "doubled"
             ],
             "ops": [
-              ["Get", ["outer", "_two"], "two"],
-              ["Mul", ["num", "two"], "doubled"]
+              ["Get", ["outer", "_two"], ["two"]],
+              ["Mul", ["num", "two"], ["doubled"]]
             ],
             "input_vals": ["num"],
             "output_vals": ["doubled"]
@@ -42,9 +42,9 @@
               "double_list"
             ],
             "ops": [
-              ["Get", ["outer", "_double"], "double_func"],
-              ["Get", ["outer", "_my_list"], "my_list"],
-              ["Map", ["double_func", "my_list"], "double_list"]
+              ["Get", ["outer", "_double"], ["double_func"]],
+              ["Get", ["outer", "_my_list"], ["my_list"]],
+              ["Map", ["double_func", "my_list"], ["double_list"]]
             ],
             "input_vals": [],
             "output_vals": ["double_list"]
@@ -68,9 +68,9 @@
           "doubled_list"
         ],
         "ops": [
-          ["Get", ["outer", "_my_collection"], "my_collection"],
-          ["Get", ["my_collection", "_double_list"], "double_list_func"],
-          ["Call", ["double_list_func"], "doubled_list"]
+          ["Get", ["outer", "_my_collection"], ["my_collection"]],
+          ["Get", ["my_collection", "_double_list"], ["double_list_func"]],
+          ["Call", ["double_list_func"], ["doubled_list"]]
         ],
         "input_vals": [],
         "output_vals": ["doubled_list"]

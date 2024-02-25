@@ -1,149 +1,158 @@
 use std::marker::PhantomData;
+use std::sync::Arc;
 use crate::runtime::data::stored::StoredData;
 use crate::runtime::ExecResult;
-use crate::runtime::gc::{GarbageCollectable, GCObject, GCObjectData, GCObjectType};
+use crate::runtime::gc::{GarbageCollectable, GCObject, GCPointer};
 
 impl GarbageCollectable<StoredData> for StoredData {
     /// Gets the gc object data as its live type and then clones into a new stored data object.
-    fn from_gc_object(object: &GCObject<StoredData>) -> ExecResult<Self> {
-        match object.data_type {
-            GCObjectType::Buffer => Ok(StoredData::NullStored.into()),
-            GCObjectType::Integer => object.as_int().map(|int_data| StoredData::IntStored(int_data.clone())),
-            GCObjectType::Float => object.as_float().map(|float_data| StoredData::FloatStored(float_data.clone())),
-            GCObjectType::String => object.as_string().map(|string_data| StoredData::StringStored(string_data.clone())),
-            GCObjectType::Bool => object.as_bool().map(|bool_data| StoredData::BoolStored(bool_data.clone())),
-            GCObjectType::Pointer => object.as_pointer().map(|pointer_data| StoredData::PointerStored(pointer_data.clone())),
-            GCObjectType::List => object.as_list().map(|list_data| StoredData::ListStored(list_data.clone())),
-            GCObjectType::Dict => object.as_dict().map(|dict_data| StoredData::DictStored(dict_data.clone())),
-            GCObjectType::Func => object.as_func().map(|func_data| StoredData::FuncStored(func_data.clone())),
-            GCObjectType::FuncVal => object.as_func_val().map(|func_val_data| StoredData::FuncValStored(func_val_data.clone())),
-            GCObjectType::FuncOp => object.as_func_op().map(|func_op_data| StoredData::FuncOpStored(func_op_data.clone())),
-            GCObjectType::Type => object.as_type().map(|type_data| StoredData::TypeStored(type_data.clone())),
-            GCObjectType::Object => object.as_object().map(|object_data| StoredData::ObjectStored(object_data.clone())),
-        }
+    fn clone_from_gc_object(object: &GCObject<StoredData>) -> ExecResult<Self> {
+        Ok(object.data.clone())
     }
 
     /// Moves the stored data into a new gc object.
-    fn to_gc_object(self) -> GCObject<StoredData> {
-        match self {
-            StoredData::NullStored => {
-                let data = GCObjectData::Null;
-                GCObject {
-                    data_type: GCObjectType::Buffer,
-                    data,
-                    ref_count: 0,
-                    phantom: PhantomData
-                }
-            }
-            StoredData::IntStored(int_live) => {
-                let data = GCObjectData::Int(int_live);
-                GCObject {
-                    data_type: GCObjectType::Integer,
-                    data,
-                    ref_count: 0,
-                    phantom: PhantomData
-                }
-            }
-            StoredData::FloatStored(float_live) => {
-                let data = GCObjectData::Float(float_live);
-                GCObject {
-                    data_type: GCObjectType::Float,
-                    data,
-                    ref_count: 0,
-                    phantom: PhantomData
-                }
-            }
-            StoredData::StringStored(string_live) => {
-                let data = GCObjectData::String(string_live);
-                GCObject {
-                    data_type: GCObjectType::String,
-                    data,
-                    ref_count: 0,
-                    phantom: PhantomData
-                }
-            }
-            StoredData::BoolStored(bool_live) => {
-                let data = GCObjectData::Bool(bool_live);
-                GCObject {
-                    data_type: GCObjectType::Bool,
-                    data,
-                    ref_count: 0,
-                    phantom: PhantomData
-                }
-            }
-            StoredData::PointerStored(gc_pointer) => {
-                let data = GCObjectData::Pointer(gc_pointer);
-                GCObject {
-                    data_type: GCObjectType::Pointer,
-                    data,
-                    ref_count: 0,
-                    phantom: PhantomData
-                }
-            }
-            StoredData::ListStored(list_live) => {
-                let data = GCObjectData::List(list_live);
-                GCObject {
-                    data_type: GCObjectType::List,
-                    data,
-                    ref_count: 0,
-                    phantom: PhantomData
-                }
-            }
-            StoredData::DictStored(dict_live) => {
-                let data = GCObjectData::Dict(dict_live);
-                GCObject {
-                    data_type: GCObjectType::Dict,
-                    data,
-                    ref_count: 0,
-                    phantom: PhantomData
-                }
-            }
-            StoredData::FuncStored(func_live) => {
-                let data = GCObjectData::Func(func_live);
-                GCObject {
-                    data_type: GCObjectType::Func,
-                    data,
-                    ref_count: 0,
-                    phantom: PhantomData
-                }
-            }
-            StoredData::FuncValStored(func_val_live) => {
-                let data = GCObjectData::FuncVal(func_val_live);
-                GCObject {
-                    data_type: GCObjectType::FuncVal,
-                    data,
-                    ref_count: 0,
-                    phantom: PhantomData
-                }
-            }
-            StoredData::FuncOpStored(func_op_live) => {
-                let data = GCObjectData::FuncOp(func_op_live);
-                GCObject {
-                    data_type: GCObjectType::FuncOp,
-                    data,
-                    ref_count: 0,
-                    phantom: PhantomData
-                }
-            }
-            StoredData::TypeStored(type_live) => {
-                let data = GCObjectData::Type(type_live);
-                GCObject {
-                    data_type: GCObjectType::Type,
-                    data,
-                    ref_count: 0,
-                    phantom: PhantomData
-                }
-            }
-            StoredData::ObjectStored(object_live) => {
-                let data = GCObjectData::Object(object_live);
-                GCObject {
-                    data_type: GCObjectType::Object,
-                    data,
-                    ref_count: 0,
-                    phantom: PhantomData
-                }
-            }
+    fn to_gc_object(self) -> GCObject<Arc<StoredData>> {
+        GCObject {
+            data: Arc::new(self),
+            ref_count: 0,
+            phantom: PhantomData
         }
+    }
+
+    fn from_gc_object(object: &GCObject<StoredData>) -> ExecResult<&Self> {
+        Ok(&object.data)
+    }
+
+    fn get_pointers(&self) -> Vec<&GCPointer<StoredData>> where StoredData: GarbageCollectable<StoredData> {
+        let mut result = Vec::new();
+
+        match self {
+            StoredData::PointerStored(ptr) => {
+                result.push(ptr);
+            },
+            StoredData::ListStored(list) => {
+                for pointer in list.iter() {
+                    result.push(pointer);
+                }
+            },
+            StoredData::DictStored(dict) => {
+                for pointer in dict.values() {
+                    result.push(pointer);
+                }
+            },
+            StoredData::FuncStored(func) => {
+                for pointer in func.input_vals.iter() {
+                    result.push(pointer);
+                }
+
+                for pointer in func.output_vals.iter() {
+                    result.push(pointer);
+                }
+
+                for pointer in func.constant_vals.iter() {
+                    result.push(pointer);
+                }
+            },
+            StoredData::FuncValStored(func_val) => {
+                for pointer in func_val.dependents.iter() {
+                    result.push(pointer);
+                }
+
+                if !func_val.is_self {
+                    if let Some(pointer) = &func_val.constant {
+                        result.push(pointer);
+                    }
+                }
+            },
+            StoredData::FuncOpStored(func_op) => {
+                for pointer in func_op.output_vals.iter() {
+                    result.push(pointer);
+                }
+
+                // Do not include the inputs, as they will be stored as uncounted pointers.
+                // This is to avoid a circular reference between the FuncOp and the FuncVal that would prevent them from being collected.
+                // let inputs: &Vec<GCPointer<StoredData>> = &func_op.input_vals;
+                // for pointer in inputs.iter() {
+                //     result.push(pointer);
+                // }
+            },
+            StoredData::ObjectStored(object) => {
+                result.push(&object.type_ptr);
+
+                for pointer in object.fields.values() {
+                    result.push(pointer);
+                }
+            },
+            _ => {}
+        }
+
+        result
+    }
+
+    fn get_pointers_mut(&mut self) -> Vec<&mut GCPointer<StoredData>> {
+        let mut result = Vec::new();
+
+        match self {
+            StoredData::PointerStored(ptr) => {
+                result.push(ptr);
+            },
+            StoredData::ListStored(list) => {
+                for pointer in list.iter_mut() {
+                    result.push(pointer);
+                }
+            },
+            StoredData::DictStored(dict) => {
+                for pointer in dict.values_mut() {
+                    result.push(pointer);
+                }
+            },
+            StoredData::FuncStored(func) => {
+                for pointer in func.input_vals.iter_mut() {
+                    result.push(pointer);
+                }
+
+                for pointer in func.output_vals.iter_mut() {
+                    result.push(pointer);
+                }
+
+                for pointer in func.constant_vals.iter_mut() {
+                    result.push(pointer);
+                }
+            },
+            StoredData::FuncValStored(func_val) => {
+                for pointer in func_val.dependents.iter_mut() {
+                    result.push(pointer);
+                }
+
+                if !func_val.is_self {
+                    if let Some(pointer) = &mut func_val.constant {
+                        result.push(pointer);
+                    }
+                }
+            },
+            StoredData::FuncOpStored(func_op) => {
+                for pointer in func_op.output_vals.iter_mut() {
+                    result.push(pointer);
+                }
+
+                // Do not include the inputs, as they will be stored as uncounted pointers.
+                // This is to avoid a circular reference between the FuncOp and the FuncVal that would prevent them from being collected.
+                // let inputs: &mut Vec<GCPointer<StoredData>> = &mut func_op.input_vals;
+                // for pointer in inputs.iter_mut() {
+                //     result.push(pointer);
+                // }
+            },
+            StoredData::ObjectStored(object) => {
+                result.push(&mut object.type_ptr);
+
+                for pointer in object.fields.values_mut() {
+                    result.push(pointer);
+                }
+            },
+            _ => {}
+        }
+
+        result
     }
 
     // fn get_pointers(&mut self) -> Vec<&mut PointerLive> {

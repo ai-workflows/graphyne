@@ -33,16 +33,16 @@ impl LiveData for ListLive {
     fn op_get_item(&self, index: &StoredData) -> Option<ExecResult<StoredData>> {
         let index = match index.as_live().as_int() {
             Some(Ok(index)) => index as usize,
-            _ => return Some(Err("Index must be an integer".to_string())),
+            _ => return Some(Err(format!("Index ({}) for list must be an integer", index.as_live().as_string().unwrap().unwrap()))),
         };
 
         if index >= self.len() {
-            return Some(Err("Index out of bounds".to_string()));
+            return Some(Err(format!("Index ({}) for list out of bounds", index)));
         }
 
         Some(match self.get(index) {
             Some(ptr) => Ok(StoredData::PointerStored(ptr.clone())),
-            None => Err("Index out of bounds".to_string()),
+            None => Err(format!("Index ({}) for list out of bounds", index)),
         })
     }
 
@@ -52,13 +52,13 @@ impl LiveData for ListLive {
 
         let index = match index.as_live().as_int() {
             Some(Ok(index)) => index as usize,
-            _ => return Some(Err("Index must be an integer".to_string())),
+            _ => return Some(Err(format!("Index ({}) for list must be an integer", index.as_live().as_string().unwrap().unwrap())))
         };
 
         // get the pointer at the index
         match list.get(index) {
             Some(ptr) => ptr,
-            None => return Some(Err("Index out of bounds".to_string())),
+            None => return Some(Err(format!("Index ({}) for list out of bounds", index)))
         };
 
         // replace the pointer at the index with the new pointer
@@ -79,13 +79,13 @@ impl LiveData for ListLive {
 
         let index = match index.as_live().as_int() {
             Some(Ok(index)) => index as usize,
-            _ => return Some(Err("Index must be an integer".to_string())),
+            _ => return Some(Err(format!("Index ({}) for list must be an integer", index.as_live().as_string().unwrap().unwrap())))
         };
 
         // get the pointer at the index
         match list.get(index) {
             Some(ptr) => ptr,
-            None => return Some(Err("Index out of bounds".to_string())),
+            None => return Some(Err(format!("Index ({}) for list out of bounds", index)))
         };
 
         // remove the pointer at the index

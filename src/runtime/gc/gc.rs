@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use crate::runtime::gc::{GarbageCollectable, GCObject, GCObjectType, GCPointer};
+use std::sync::Arc;
+use crate::runtime::gc::{GarbageCollectable, GCObject, GCPointer};
 use crate::runtime::data::stored::StoredData;
 use crate::runtime::ExecResult;
 
 /// A garbage collector that manages the lifetimes of objects.
 #[derive(Debug)]
 pub struct GarbageCollector<T> {
-    pub objects: HashMap<usize, GCObject<T>>,
+    pub objects: HashMap<usize, GCObject<Arc<T>>>,
     next_id: usize,
 }
 
@@ -20,18 +21,9 @@ impl<T> GarbageCollector<T> where T: GarbageCollectable<T> {
     }
 
     /// Allocates a new value in the garbage collector and returns a pointer to it.
-    pub fn allocate(&mut self, data: T) -> ExecResult<GCPointer<T>> where T: GarbageCollectable<T> {
-        let mut obj = T::to_gc_object(data);
-        let object_id = self.next_id;
-
-        let mut ptr = GCPointer {
-            id: object_id,
-            counted: false,
-            phantom: PhantomData,
-        };
-
+    pub fn allocate(&mut self, mut data: T) -> ExecResult<GCPointer<T>> where T: GarbageCollectable<T> {
         // check if the obj has any child pointers
-        let child_ptrs = obj.get_pointers();
+        let child_ptrs = data.get_pointers_mut();
 
         for child_ptr in child_ptrs {
             // if the pointer is uncounted, count it
@@ -40,6 +32,15 @@ impl<T> GarbageCollector<T> where T: GarbageCollectable<T> {
                 child_ptr.counted = true;
             }
         }
+
+        let obj = T::to_gc_object(data);
+        let object_id = self.next_id;
+
+        let mut ptr = GCPointer {
+            id: object_id,
+            counted: false,
+            phantom: PhantomData,
+        };
 
         // count the pointer itself
         self.objects.insert(object_id, obj);
@@ -112,12 +113,12 @@ impl<T> GarbageCollector<T> where T: GarbageCollectable<T> {
 
                 // if the obj is being removed, check if it has any child pointers.
                 // We will need to decrement each child's ref count since their parent obj is being removed.
-                let child_ptrs = obj.get_pointers();
+                let child_ptrs = obj.data.get_pointers();
 
                 for child_ptr in child_ptrs {
                     if child_ptr.counted {
                         to_process.push(child_ptr.id);
-                        child_ptr.counted = false;
+                        // child_ptr.counted = false; Commented this out so we don't have to get pointers mutably. Make sure to test this.
                     }
                 }
             }
@@ -132,29 +133,14 @@ impl<T> GarbageCollector<T> where T: GarbageCollectable<T> {
     }
 
     /// Fills the value of a buffer.
-    pub fn fill_buffer(&mut self, ptr: &GCPointer<T>, data: T) -> ExecResult<StoredData> where T: GarbageCollectable<T> {
+    pub fn fill_buffer(&mut self, ptr: &GCPointer<T>, mut data: T) -> ExecResult<StoredData> where T: GarbageCollectable<T> {
         // If the pointer is not counted, it cannot be filled.
         if !ptr.counted {
             return Err("Cannot fill a pointer that is not counted.".to_string());
         }
 
-        let obj = self.get_obj(ptr.id);
-
-        if obj.is_none() {
-            return Err("Buffer not found.".to_string());
-        }
-
-        if obj.unwrap().data_type != GCObjectType::Buffer {
-            return Err("Buffer id is not a buffer.".to_string());
-        }
-
-        let ref_count = obj.unwrap().ref_count;
-
-        let mut data_obj = T::to_gc_object(data);
-        data_obj.ref_count = ref_count;
-
         // if the new object has any child pointers, count them
-        let child_ptrs = data_obj.get_pointers();
+        let child_ptrs = data.get_pointers_mut();
 
         for child_ptr in child_ptrs {
             // if the pointer is uncounted, count it
@@ -164,13 +150,29 @@ impl<T> GarbageCollector<T> where T: GarbageCollectable<T> {
             }
         }
 
+        let obj = self.get_obj(ptr.id);
+
+        if obj.is_none() {
+            return Err("Buffer not found.".to_string());
+        }
+
+        // if obj.unwrap().data_type != GCObjectType::Buffer {
+        //     return Err("Buffer id is not a buffer.".to_string());
+        // }
+
+        let ref_count = obj.unwrap().ref_count;
+
+        let mut data_obj = T::to_gc_object(data);
+        data_obj.ref_count = ref_count;
+
+
         self.objects.insert(ptr.id, data_obj);
 
         Ok(StoredData::NullStored)
     }
 
     /// Gets the value that a pointer points to.
-    pub fn get(&self, ptr: &GCPointer<T>) -> ExecResult<T> where T: GarbageCollectable<T> {
+    pub fn get(&self, ptr: &GCPointer<T>) -> ExecResult<Arc<T>> where T: GarbageCollectable<T> {
         // If the pointer is not counted, it cannot be dereferenced.
         // This implies that it has not been fully initialized.
         // TODO: add back this check. Removed for now because func op inputs are intentionally uncounted to avoid circular references.
@@ -180,23 +182,21 @@ impl<T> GarbageCollector<T> where T: GarbageCollectable<T> {
         // }
 
         // Get the object that the pointer points to.
-        let obj_result = self.get_obj(ptr.id);
-        let obj: &GCObject<T> = match obj_result {
+        let obj_result: Option<&GCObject<Arc<T>>> = self.get_obj(ptr.id);
+        let obj: &GCObject<Arc<T>> = match obj_result {
             Some(obj) => obj,
             None => return Err(format!("Pointer (id: {}) does not point to a valid object.", ptr.id)),
         };
 
-        // Get the value of the object (automatically clones the value).
-        let value = T::from_gc_object(obj);
-
-        return value.map(|value| value);
+        // Get the value of the object.
+        Ok(obj.data.clone())
     }
 
-    fn get_obj(&self, id: usize) -> Option<&GCObject<T>> where T: GarbageCollectable<T> {
+    fn get_obj(&self, id: usize) -> Option<&GCObject<Arc<T>>> where T: GarbageCollectable<T> {
         self.objects.get(&id).map(|object| object)
     }
 
-    fn get_obj_mut(&mut self, id: usize) -> Option<&mut GCObject<T>> where T: GarbageCollectable<T> {
+    fn get_obj_mut(&mut self, id: usize) -> Option<&mut GCObject<Arc<T>>> where T: GarbageCollectable<T> {
         self.objects.get_mut(&id).map(|object| object)
     }
 

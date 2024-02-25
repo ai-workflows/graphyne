@@ -56,7 +56,7 @@ pub fn handle_new_value_v2(
         shared_state.remove_output(call_context_id, func_val);
 
         // send the new value message to the parent context
-        shared_state.send_new_val(parent_call_context, parent_output_fn_val, value);
+        shared_state.send_new_val(parent_call_context.clone(), &parent_output_fn_val, value);
 
         // if this was the last output, the call context has been fully executed and can be cleaned up
         if shared_state.num_remaining_outputs(call_context_id) == 0 {
@@ -156,7 +156,7 @@ fn handle_func_call<'a>(
         let call_input_fn_val = get_func_val_from_ptr(shared_state.mmu.clone(), called_fn_input_ptr)?;
 
         // send a new value message for the matching input val
-        shared_state.send_new_val(call_context_id.clone(), call_input_fn_val, arg_val);
+        shared_state.send_new_val(call_context_id.clone(), &call_input_fn_val, arg_val);
     }
 
     // handle the constants
@@ -209,7 +209,7 @@ pub fn handle_called_fn_constants(
         };
         let constant_val = shared_state.value_ref_from_ptr(constant_ptr.clone())?;
 
-        shared_state.send_new_val(call_context_id.clone(), constant_fn_val.clone(), constant_val);
+        shared_state.send_new_val(call_context_id.clone(), &constant_fn_val, constant_val);
     }
 
     Ok(())
@@ -257,10 +257,10 @@ fn handle_call_arg(
     // match to the input func val in the called function's context
     let matching_input_ptr = called_fn.input_vals.get(arg_index)
         .ok_or(format!("Could not find matching input for arg index: {}", arg_index))?;
-    let matching_input_val = get_func_val_from_ptr(shared_state.mmu.clone(), matching_input_ptr)?;
+    let matching_input_val: FuncValLive = get_func_val_from_ptr(shared_state.mmu.clone(), matching_input_ptr)?;
 
     // send a new value message for the matching input val
-    shared_state.send_new_val(called_fn_context_id.clone(), matching_input_val, first_arg_val.clone());
+    shared_state.send_new_val(called_fn_context_id.clone(), &matching_input_val, first_arg_val.clone());
 
     Ok(())
 }

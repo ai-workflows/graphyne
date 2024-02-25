@@ -9,7 +9,7 @@ use crate::runtime::vm::operator::ops::results::{get_stored_type_ptr, handle_op_
     // pub fn get_primitive_type_ptr(mmu: Arc<MMU>, primitive_type: TypeLive)
 
 pub fn execute_is_null(mmu: Arc<MMU>, arg: &ValueReference) -> ExecResult<Vec<ValueReference>> {
-    let arg_value: StoredData = mmu.get_ref_value(arg).map_err(|msg| msg)?;
+    let arg_value: Arc<StoredData> = mmu.get_ref_value(arg).map_err(|msg| msg)?;
 
     arg_value.clone().as_live().is_null().map_or_else(
         || handle_op_null_result(mmu.clone(), arg_value, stringify!($op)),
@@ -18,7 +18,7 @@ pub fn execute_is_null(mmu: Arc<MMU>, arg: &ValueReference) -> ExecResult<Vec<Va
 
 /// Gets the type of the arg and returns a reference to it.
 pub fn execute_type_of(mmu: Arc<MMU>, arg: &ValueReference) -> ExecResult<Vec<ValueReference>> {
-    let arg_value: StoredData = mmu.get_ref_value(arg).map_err(|msg| msg)?;
+    let arg_value: Arc<StoredData> = mmu.get_ref_value(arg).map_err(|msg| msg)?;
 
     let res: ExecResult<PointerLive> = get_stored_type_ptr(mmu.clone(), &arg_value);
 

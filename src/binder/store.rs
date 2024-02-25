@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 use uuid::Uuid;
 use crate::binder::intermediate::r#const::{CCData, store_cc_data};
 use crate::binder::intermediate::r#type::CollectionType;
@@ -106,11 +107,11 @@ impl Binder {
     }
 
     fn fill_collection_skeleton(&mut self, collection_ref: ValueReference, value: Collection) -> ExecResult<()> {
-        let collection_val = match self.mmu.get_ref_value(&collection_ref) {
+        let collection_val: Arc<StoredData> = match self.mmu.get_ref_value(&collection_ref) {
             Ok(collection_val) => collection_val,
             Err(err) => return Err(format!("Error getting collection: {}", err))
         };
-        let collection = match collection_val {
+        let collection = match collection_val.as_ref() {
             DictStored(dict) => dict,
             _ => return Err("Collection is not a dict.".to_string()),
         };
@@ -161,7 +162,7 @@ impl Binder {
                 };
 
                 // fill the buffer with the stored data
-                let fill_result = execute_op(self.mmu.clone(), Operation::SetBuffer(&buffer_ref, stored_value));
+                let fill_result = execute_op(self.mmu.clone(), Operation::SetBuffer(&buffer_ref, (*stored_value).clone()));
                 if let Err(err) = fill_result {
                     return Err(format!("Error filling buffer for constant {} for collection {}: {}", symbol, symbol, err));
                 }
@@ -195,15 +196,15 @@ impl Binder {
                     let graph;
                     if let Some(constant) = c_func_value_node.constant {
                         let stored_ref = store_cc_data(self.mmu.clone(), constant.clone())?[0].clone();
-                        let stored_value = match self.mmu.get_ref_value(&stored_ref) {
+                        let stored_value: Arc<StoredData> = match self.mmu.get_ref_value(&stored_ref) {
                             Ok(stored_value) => stored_value,
                             Err(err) => return Err(format!("Error getting stored value for constant {} for function {} for collection {}: {}", c_func_value_node.symbol, symbol, symbol, err))
                         };
                         graph = FunctionValueNode {
                             symbol: c_func_value_node.symbol,
-                            constant: Some(stored_value),
+                            constant: Some((*stored_value).clone()),
                         };
-                        // temporarily hold on to the the ref to prevent child pointers from being dropped
+                        // temporarily hold on to the ref to prevent child pointers from being dropped
                         func_constants.push(stored_ref);
                     } else {
                         graph = FunctionValueNode {
@@ -230,7 +231,7 @@ impl Binder {
                 };
 
                 // fill the buffer with the stored data
-                let fill_result = execute_op(self.mmu.clone(), Operation::SetBuffer(&buffer_ref, func_stored));
+                let fill_result = execute_op(self.mmu.clone(), Operation::SetBuffer(&buffer_ref, (*func_stored).clone()));
                 if let Err(err) = fill_result {
                     return Err(format!("Error filling buffer for function {} for collection {}: {}", symbol, symbol, err));
                 }

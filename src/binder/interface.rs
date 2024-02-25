@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 use crate::binder::Binder;
 use crate::binder::functions::FunctionGraph;
 use crate::runtime::data::live::{BoolLive, FloatLive, IntLive, PointerLive, StringLive};
@@ -18,7 +19,7 @@ pub trait IBinder {
     fn store_dict(&mut self, values: HashMap<String, Symbol>, symbol: Symbol) -> ExecResult<()>;
     fn store_function(&mut self, func: FunctionGraph, symbol: Symbol, class_context: Option<SymbolPath>) -> ExecResult<()>;
     fn store_multiple(&mut self, values: Vec<StoreOp>, prefix: Symbol) -> ExecResult<Vec<Symbol>>;
-    fn get(&self, symbol: Symbol) -> ExecResult<StoredData>;
+    fn get(&self, symbol: Symbol) -> ExecResult<Arc<StoredData>>;
     fn get_ptr(&self, symbol: Symbol) -> ExecResult<PointerLive>;
     fn drop(&mut self, symbol: Symbol) -> ExecResult<()>;
 }
@@ -96,7 +97,7 @@ impl IBinder for Binder {
         Ok(symbols)
     }
 
-    fn get(&self, symbol: Symbol) -> ExecResult<StoredData> {
+    fn get(&self, symbol: Symbol) -> ExecResult<Arc<StoredData>> {
         let val_ref = self.symbol_table.get(&symbol);
 
         let val_ref = match val_ref {

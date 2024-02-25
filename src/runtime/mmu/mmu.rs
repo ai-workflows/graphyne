@@ -89,8 +89,8 @@ impl MMU {
         self.primitive_types.len()
     }
 
-    /// Gets a copy of the stored data referenced by the given value reference.
-    pub fn get_ref_value(&self, arg: &ValueReference) -> ExecResult<StoredData> {
+    /// Gets a reef of the stored data referenced by the given value reference.
+    pub fn get_ref_value(&self, arg: &ValueReference) -> ExecResult<Arc<StoredData>> {
         if !arg.is_alive() {
             return Err("Cannot use dead reference as an argument".to_string());
         }
@@ -98,9 +98,8 @@ impl MMU {
         let gc = self.state.read()
             .unwrap_or_else(|e| panic!("Could not get read lock on VM state, the lock is poisoned: {}", e));
 
-        let get_result = gc.get(&arg.pointer);
-
-        get_result.map(|value| value)
+        let get_result = gc.get(&arg.pointer)?;
+        return Ok(get_result);
     }
 
     pub fn ref_count(&self, arg: &ValueReference) -> ExecResult<usize> {
@@ -117,7 +116,7 @@ impl MMU {
         }
     }
 
-    pub fn get_ptr_value(&self, ptr: &GCPointer<StoredData>) -> ExecResult<StoredData> {
+    pub fn get_ptr_value(&self, ptr: &GCPointer<StoredData>) -> ExecResult<Arc<StoredData>> {
         let gc = self.state.read()
             .unwrap_or_else(|e| panic!("Could not get read lock on VM state, the lock is poisoned: {}", e));
 
@@ -206,13 +205,14 @@ pub fn get_stored_type(mmu: Arc<MMU>, arg: &StoredData) -> ExecResult<TypeLive> 
         Err(msg) => return Err(msg),
     };
 
-    let type_value = match mmu.get_ref_value(&type_ref) {
+    let type_value: Arc<StoredData> = match mmu.get_ref_value(&type_ref) {
         Ok(type_value) => type_value,
         Err(msg) => return Err(msg),
     };
 
-    return match type_value {
-        StoredData::TypeStored(type_live) => Ok(type_live),
+
+    return match type_value.as_ref() {
+        StoredData::TypeStored(type_live) => Ok(type_live.clone()),
         _ => Err("Could not get type of argument, type is a non-type value".to_string()),
     };
 }

@@ -21,7 +21,7 @@ impl ValueReference {
         }
     }
 
-    pub fn deref(&self) -> ExecResult<StoredData> {
+    pub fn deref(&self) -> ExecResult<Arc<StoredData>> {
         self.mmu.get_ptr_value(&self.pointer)
     }
 

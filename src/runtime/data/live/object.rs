@@ -13,7 +13,7 @@ pub struct Object {
 
 impl LiveData for ObjectLive {
     /// Returns a pointer to the type of this data.
-    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
+    fn type_of(&self, _type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
         Some(Ok(self.type_ptr.clone()))
     }
 

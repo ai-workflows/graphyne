@@ -39,7 +39,7 @@ pub fn await_call(
         Err(e) => return Err(format!("Error executing program: {}", e))
     };
 
-    let main_func: FuncLive = match get_func_from_ptr(mmu.clone(), &func.pointer){
+    let main_func: FuncLive = match get_func_from_ptr(mmu.clone(), &func.pointer) {
         Ok(v) => v,
         Err(e) => return Err(format!("Error getting main function: {}", e))
     };

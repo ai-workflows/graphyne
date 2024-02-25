@@ -1,0 +1,99 @@
+{
+  "collections": {},
+  "constants": {},
+  "functions": {
+    "get_multiples": {
+      "graph": {
+        "input_vals": [
+          "num"
+        ],
+        "output_vals": [
+          "double",
+          "triple"
+        ],
+        "values": [
+          [
+            "984e0fed-9e25-4335-8ca6-b9abe97a2b46",
+            2.0
+          ],
+          "double",
+          [
+            "87052b4c-dd64-49f2-ac65-d46ebae22f41",
+            3.0
+          ],
+          "triple",
+          "num"
+        ],
+        "ops": [
+          [
+            "mul",
+            [
+              "984e0fed-9e25-4335-8ca6-b9abe97a2b46",
+              "num"
+            ],
+            [
+              "double"
+            ]
+          ],
+          [
+            "mul",
+            [
+              "87052b4c-dd64-49f2-ac65-d46ebae22f41",
+              "num"
+            ],
+            [
+              "triple"
+            ]
+          ]
+        ]
+      }
+    },
+    "main": {
+      "graph": {
+        "input_vals": [],
+        "output_vals": [
+          "double",
+          "triple"
+        ],
+        "values": [
+          [
+            "num",
+            5.0
+          ],
+          "c4e961e5-596a-426a-bb92-31380192d1a0",
+          [
+            "02f4eb84-3b3d-469f-899a-4ceb54e7094e",
+            "get_multiples"
+          ],
+          "double",
+          "triple"
+        ],
+        "ops": [
+          [
+            "get",
+            [
+              "outer",
+              "02f4eb84-3b3d-469f-899a-4ceb54e7094e"
+            ],
+            [
+              "c4e961e5-596a-426a-bb92-31380192d1a0"
+            ]
+          ],
+          [
+            "call",
+            [
+              "c4e961e5-596a-426a-bb92-31380192d1a0",
+              "num"
+            ],
+            [
+              "double",
+              "triple"
+            ]
+          ]
+        ]
+      }
+    }
+  },
+  "imports": {},
+  "types": {}
+}
