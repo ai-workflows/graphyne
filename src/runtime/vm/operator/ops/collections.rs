@@ -9,7 +9,7 @@ use crate::runtime::vm::operator::ops::results::{handle_op_null_result, handle_o
 
 
 pub fn execute_length(mmu: Arc<MMU>, list: &ValueReference) -> ExecResult<Vec<ValueReference>> {
-    let list_value: StoredData = mmu.get_ref_value(list).map_err(|msg| msg)?;
+    let list_value: Arc<StoredData> = mmu.get_ref_value(list).map_err(|msg| msg)?;
 
     list_value.clone().as_live().op_len().map_or_else(
         || {
@@ -29,15 +29,18 @@ pub fn execute_length(mmu: Arc<MMU>, list: &ValueReference) -> ExecResult<Vec<Va
 
 pub fn execute_get_item(mmu: Arc<MMU>, collection: &ValueReference, index: &ValueReference) -> ExecResult<Vec<ValueReference>> {
     execute_two_arg_op!(mmu, op_get_item, collection, index, handle_op_null_result, handle_op_result)
+
 }
 
 pub fn execute_set_item(mmu: Arc<MMU>, collection: &ValueReference, index: &ValueReference, value: &ValueReference) -> ExecResult<Vec<ValueReference>> {
-    let collection_val = mmu.get_ref_value(collection)?;
-    let index_val = mmu.get_ref_value(index)?;
+    let collection_val: Arc<StoredData> = mmu.get_ref_value(collection)?;
+    let index_val: Arc<StoredData> = mmu.get_ref_value(index)?;
     // The gc will automatically count the cloned pointer once we allocate the new list.
     let val_ptr = value.pointer.clone();
 
-    collection_val.clone().as_live().op_set_item(&index_val, val_ptr).map_or_else(
+    let res = collection_val.as_live().op_set_item(&index_val, val_ptr);
+
+    res.map_or_else(
         || handle_op_null_result(mmu.clone(), collection_val, stringify!($op)),
         |result| handle_op_result(mmu.clone(), result)
     )
@@ -48,7 +51,9 @@ pub fn execute_push(mmu: Arc<MMU>, list: &ValueReference, value: &ValueReference
     // The gc will automatically count the cloned pointer once we allocate the new list.
     let val_ptr = value.pointer.clone();
 
-    list_val.clone().as_live().op_push(val_ptr).map_or_else(
+    let res = list_val.as_live().op_push(val_ptr);
+
+    res.map_or_else(
         || handle_op_null_result(mmu.clone(), list_val, stringify!($op)),
         |result| handle_op_result(mmu.clone(), result)
     )

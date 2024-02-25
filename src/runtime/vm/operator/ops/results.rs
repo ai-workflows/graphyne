@@ -6,7 +6,7 @@ use crate::runtime::mmu::mmu::{get_stored_type, MMU, store_value, value_ref_from
 use crate::runtime::mmu::value_ref::ValueReference;
 
 
-pub fn handle_op_null_result(mmu: Arc<MMU>, operand: StoredData, op: &str) -> ExecResult<Vec<ValueReference>> {
+pub fn handle_op_null_result(mmu: Arc<MMU>, operand: Arc<StoredData>, op: &str) -> ExecResult<Vec<ValueReference>> {
     let operand_type: TypeLive = match get_stored_type(mmu, &operand) {
         Ok(type_live) => type_live,
         Err(msg) => return Err(format!("Cannot execute operation {} on unknown type (failed to get type of operand: {}) ", op, msg))

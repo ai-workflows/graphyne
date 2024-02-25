@@ -33,18 +33,19 @@ impl Binder {
 
         for symbol in path.clone() {
             // get the value of the current context, or convert the symbol table to a dict if this is the first iteration
-            let context_value: StoredData = match context {
+            let context_value: Arc<StoredData> = match context {
                 Some(context) => match self.mmu.get_ref_value(&context) {
                     Ok(context_stored) => context_stored,
                     Err(err) => return Err(format!("Error getting symbol {} for path {:?}: {}", symbol, path.clone(), err))
                 },
                 None => {
-                    DictStored(self.symbol_table.iter().map(|(symbol, val_ref)| (symbol.clone(), val_ref.pointer.clone())).collect::<HashMap<Symbol, PointerLive>>())
+                    let d = DictStored(self.symbol_table.iter().map(|(symbol, val_ref)| (symbol.clone(), val_ref.pointer.clone())).collect::<HashMap<Symbol, PointerLive>>());
+                    Arc::new(d)
                 }
             };
 
             // get the current context as a dict
-            let dict = match context_value {
+            let dict = match context_value.as_ref() {
                 DictStored(dict) => dict,
                 _ => return Err(format!("Context at symbol {} for path {:?} is not a dict.", symbol, path))
             };

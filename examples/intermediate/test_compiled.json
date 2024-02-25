@@ -23,9 +23,9 @@
               "doubled"
             ],
             "values": [
-              "700c48d4-4787-4ec9-af51-6a3717e098cf",
+              "e61ec115-b415-4acd-85f5-afcf57ffc369",
               [
-                "2ec1757e-f125-4dcd-af0b-03c797b52cf8",
+                "ba277da7-fed8-4515-b022-e2d1bee96f83",
                 "two"
               ],
               "doubled",
@@ -36,17 +36,21 @@
                 "get",
                 [
                   "outer",
-                  "2ec1757e-f125-4dcd-af0b-03c797b52cf8"
+                  "ba277da7-fed8-4515-b022-e2d1bee96f83"
                 ],
-                "700c48d4-4787-4ec9-af51-6a3717e098cf"
+                [
+                  "e61ec115-b415-4acd-85f5-afcf57ffc369"
+                ]
               ],
               [
                 "mul",
                 [
                   "num",
-                  "700c48d4-4787-4ec9-af51-6a3717e098cf"
+                  "e61ec115-b415-4acd-85f5-afcf57ffc369"
                 ],
-                "doubled"
+                [
+                  "doubled"
+                ]
               ]
             ]
           }
@@ -60,20 +64,20 @@
               "doubled_list"
             ],
             "values": [
-              "e7a582e1-f504-432c-be30-2e3090491582",
+              "da0141c4-9345-4f15-ad34-3358e66cf1cd",
               [
-                "45395152-f084-4f7d-8421-7da57c266bd5",
+                "f0d7198c-8eef-47cb-86d7-685d74898ac3",
                 null
               ],
-              "5d823c82-ac47-41a1-8a1c-682f0c2f2e01",
+              "3be9cc74-1deb-463e-9316-4fbd0cfb0fa0",
               [
-                "b9f0c353-e79b-4a18-b89d-d538f16f6ecc",
+                "93553b45-4865-449f-9350-89054a24f718",
                 "my_list"
               ],
               "list",
-              "744b16e6-ef92-4dd2-ba96-1a8fc1ba6e2b",
+              "02efc231-6219-49dc-b7e6-d22a02a16656",
               [
-                "64e87a03-751f-4b54-b26f-68e1e092fe1e",
+                "a863072a-e4c1-4455-8ed3-70405cf0200b",
                 "double"
               ],
               "doubled_list",
@@ -84,42 +88,52 @@
                 "equal",
                 [
                   "l",
-                  "45395152-f084-4f7d-8421-7da57c266bd5"
+                  "f0d7198c-8eef-47cb-86d7-685d74898ac3"
                 ],
-                "e7a582e1-f504-432c-be30-2e3090491582"
+                [
+                  "da0141c4-9345-4f15-ad34-3358e66cf1cd"
+                ]
               ],
               [
                 "get",
                 [
                   "outer",
-                  "b9f0c353-e79b-4a18-b89d-d538f16f6ecc"
+                  "93553b45-4865-449f-9350-89054a24f718"
                 ],
-                "5d823c82-ac47-41a1-8a1c-682f0c2f2e01"
+                [
+                  "3be9cc74-1deb-463e-9316-4fbd0cfb0fa0"
+                ]
               ],
               [
                 "if",
                 [
-                  "e7a582e1-f504-432c-be30-2e3090491582",
-                  "5d823c82-ac47-41a1-8a1c-682f0c2f2e01",
+                  "da0141c4-9345-4f15-ad34-3358e66cf1cd",
+                  "3be9cc74-1deb-463e-9316-4fbd0cfb0fa0",
                   "l"
                 ],
-                "list"
+                [
+                  "list"
+                ]
               ],
               [
                 "get",
                 [
                   "outer",
-                  "64e87a03-751f-4b54-b26f-68e1e092fe1e"
+                  "a863072a-e4c1-4455-8ed3-70405cf0200b"
                 ],
-                "744b16e6-ef92-4dd2-ba96-1a8fc1ba6e2b"
+                [
+                  "02efc231-6219-49dc-b7e6-d22a02a16656"
+                ]
               ],
               [
                 "map",
                 [
-                  "744b16e6-ef92-4dd2-ba96-1a8fc1ba6e2b",
+                  "02efc231-6219-49dc-b7e6-d22a02a16656",
                   "list"
                 ],
-                "doubled_list"
+                [
+                  "doubled_list"
+                ]
               ]
             ]
           }
@@ -133,9 +147,9 @@
               "value"
             ],
             "values": [
-              "103fd55a-b04f-4597-a738-d62a196f3ce4",
+              "fd63b8a1-67df-4b4c-9f83-1db978696c52",
               [
-                "7bc71506-17ac-488b-901c-dc3f00d966a1",
+                "809a62dc-72b1-45fa-baa4-727cf51e6123",
                 "my_dict"
               ],
               "value",
@@ -146,17 +160,21 @@
                 "get",
                 [
                   "outer",
-                  "7bc71506-17ac-488b-901c-dc3f00d966a1"
+                  "809a62dc-72b1-45fa-baa4-727cf51e6123"
                 ],
-                "103fd55a-b04f-4597-a738-d62a196f3ce4"
+                [
+                  "fd63b8a1-67df-4b4c-9f83-1db978696c52"
+                ]
               ],
               [
                 "get",
                 [
-                  "103fd55a-b04f-4597-a738-d62a196f3ce4",
+                  "fd63b8a1-67df-4b4c-9f83-1db978696c52",
                   "key"
                 ],
-                "value"
+                [
+                  "value"
+                ]
               ]
             ]
           }
@@ -177,57 +195,57 @@
           "age"
         ],
         "values": [
-          "ad166696-fc02-49f7-af2e-0cef30caf556",
+          "11c7f015-deff-4135-92aa-a6ad05b9f1a9",
           [
-            "3049f23b-69f1-4ba7-aad6-a8fa9f3374cd",
+            "d2064761-b531-4141-bf39-889165148b5d",
             "my_collection"
           ],
-          "6595bbbf-b7f6-4158-ac56-e6a6461537b0",
+          "41add331-24cd-4e63-a7db-124ffe294afb",
           [
-            "b62d9022-300e-46ef-ac11-3fba49374d9f",
+            "081b7c5b-5841-47b1-83ad-400b966fd042",
             "double_list"
           ],
           [
-            "f4870552-c357-4fb9-83eb-f687d41c3359",
+            "5a26e2fd-97ff-4170-a090-838950221265",
             null
           ],
           "res",
-          "bcfe115e-33b1-4d9d-93d3-9987a9146bd0",
+          "25c179e1-8f84-4873-8ddb-947ff48d6a70",
           [
-            "0fe704b5-98da-46b6-bd14-a260c41423f5",
+            "cd83f4ae-e441-4671-80fe-134d53179c71",
             "my_collection"
           ],
-          "663da60a-ba8e-4690-982f-f8b64035c67f",
+          "c0df8fbe-fa1d-4ee3-ae91-908d6ef1d9b5",
           [
-            "e6b9d29c-3019-4d90-bb6e-d98493829f67",
+            "a814a549-b034-4da3-a6e7-0a9eec7f542a",
             "get_d_value"
           ],
           [
-            "02c0c5d2-a853-4175-9263-b7176fe85d0f",
+            "c69ac52c-06e5-4d6b-b4e7-8bd73311ac34",
             "Hello"
           ],
           "val",
-          "c3da0c0c-f4c6-44cb-95af-d7e5a15f8863",
+          "395637d6-ffcc-4c96-8f79-5bcf9041a346",
           [
-            "98ab4a25-3967-4e3f-b86f-5e063ef8f772",
+            "62a8abf2-ee48-4b5e-9483-55263a516e35",
             "Person"
           ],
           [
-            "33ef9e9e-6685-46bb-b39a-44cca8d7ae03",
+            "7c022dbc-2abb-47fe-8d74-4851960cd3f3",
             "John"
           ],
           [
-            "2442032a-3ee2-4f23-ba2a-2a0428ad013b",
+            "40398a80-4df2-4428-acce-fc220d86b6bc",
             30.0
           ],
           "p",
-          "fb9c9603-3275-4216-b0fe-cb013d09ca01",
+          "c49715a7-bf12-4d59-bc97-2dfa43373a67",
           [
-            "2b9a7de1-3cd2-42b5-9311-840ba883ce90",
+            "25da5163-f906-43fc-a820-aba4d5b3c345",
             "age"
           ],
           [
-            "994cbeb4-dae7-4f18-81ee-311e5913e696",
+            "c5311978-3de3-47aa-89b3-d5d1fc29b9ad",
             2.0
           ],
           "age"
@@ -237,82 +255,102 @@
             "get",
             [
               "outer",
-              "3049f23b-69f1-4ba7-aad6-a8fa9f3374cd"
+              "d2064761-b531-4141-bf39-889165148b5d"
             ],
-            "6595bbbf-b7f6-4158-ac56-e6a6461537b0"
+            [
+              "41add331-24cd-4e63-a7db-124ffe294afb"
+            ]
           ],
           [
             "get",
             [
-              "6595bbbf-b7f6-4158-ac56-e6a6461537b0",
-              "b62d9022-300e-46ef-ac11-3fba49374d9f"
+              "41add331-24cd-4e63-a7db-124ffe294afb",
+              "081b7c5b-5841-47b1-83ad-400b966fd042"
             ],
-            "ad166696-fc02-49f7-af2e-0cef30caf556"
+            [
+              "11c7f015-deff-4135-92aa-a6ad05b9f1a9"
+            ]
           ],
           [
             "call",
             [
-              "ad166696-fc02-49f7-af2e-0cef30caf556",
-              "f4870552-c357-4fb9-83eb-f687d41c3359"
+              "11c7f015-deff-4135-92aa-a6ad05b9f1a9",
+              "5a26e2fd-97ff-4170-a090-838950221265"
             ],
-            "res"
+            [
+              "res"
+            ]
           ],
           [
             "get",
             [
               "outer",
-              "0fe704b5-98da-46b6-bd14-a260c41423f5"
+              "cd83f4ae-e441-4671-80fe-134d53179c71"
             ],
-            "663da60a-ba8e-4690-982f-f8b64035c67f"
+            [
+              "c0df8fbe-fa1d-4ee3-ae91-908d6ef1d9b5"
+            ]
           ],
           [
             "get",
             [
-              "663da60a-ba8e-4690-982f-f8b64035c67f",
-              "e6b9d29c-3019-4d90-bb6e-d98493829f67"
+              "c0df8fbe-fa1d-4ee3-ae91-908d6ef1d9b5",
+              "a814a549-b034-4da3-a6e7-0a9eec7f542a"
             ],
-            "bcfe115e-33b1-4d9d-93d3-9987a9146bd0"
+            [
+              "25c179e1-8f84-4873-8ddb-947ff48d6a70"
+            ]
           ],
           [
             "call",
             [
-              "bcfe115e-33b1-4d9d-93d3-9987a9146bd0",
-              "02c0c5d2-a853-4175-9263-b7176fe85d0f"
+              "25c179e1-8f84-4873-8ddb-947ff48d6a70",
+              "c69ac52c-06e5-4d6b-b4e7-8bd73311ac34"
             ],
-            "val"
+            [
+              "val"
+            ]
           ],
           [
             "get",
             [
               "outer",
-              "98ab4a25-3967-4e3f-b86f-5e063ef8f772"
+              "62a8abf2-ee48-4b5e-9483-55263a516e35"
             ],
-            "c3da0c0c-f4c6-44cb-95af-d7e5a15f8863"
+            [
+              "395637d6-ffcc-4c96-8f79-5bcf9041a346"
+            ]
           ],
           [
             "init",
             [
-              "c3da0c0c-f4c6-44cb-95af-d7e5a15f8863",
-              "33ef9e9e-6685-46bb-b39a-44cca8d7ae03",
-              "2442032a-3ee2-4f23-ba2a-2a0428ad013b"
+              "395637d6-ffcc-4c96-8f79-5bcf9041a346",
+              "7c022dbc-2abb-47fe-8d74-4851960cd3f3",
+              "40398a80-4df2-4428-acce-fc220d86b6bc"
             ],
-            "p"
+            [
+              "p"
+            ]
           ],
           [
             "get",
             [
               "p",
-              "2b9a7de1-3cd2-42b5-9311-840ba883ce90"
+              "25da5163-f906-43fc-a820-aba4d5b3c345"
             ],
-            "fb9c9603-3275-4216-b0fe-cb013d09ca01"
+            [
+              "c49715a7-bf12-4d59-bc97-2dfa43373a67"
+            ]
           ],
           [
             "mul",
             [
-              "fb9c9603-3275-4216-b0fe-cb013d09ca01",
-              "994cbeb4-dae7-4f18-81ee-311e5913e696"
+              "c49715a7-bf12-4d59-bc97-2dfa43373a67",
+              "c5311978-3de3-47aa-89b3-d5d1fc29b9ad"
             ],
-            "age"
+            [
+              "age"
+            ]
           ]
         ]
       }

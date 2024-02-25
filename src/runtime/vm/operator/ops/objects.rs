@@ -8,7 +8,9 @@ use crate::runtime::mmu::store_op::StoreOp;
 use crate::runtime::mmu::value_ref::ValueReference;
 
 pub fn execute_init(mmu: Arc<MMU>, obj_type_ref: &ValueReference, args: Vec<&ValueReference>) -> ExecResult<Vec<ValueReference>> {
-    let obj_type = match mmu.get_ref_value(obj_type_ref)? {
+    let obj_type_arc = mmu.get_ref_value(obj_type_ref)?;
+
+    let obj_type = match obj_type_arc.as_ref() {
         StoredData::TypeStored(t) => t,
         _ => return Err("Cannot execute operation init for non-type value".to_string())
     };
@@ -28,13 +30,14 @@ pub fn execute_init(mmu: Arc<MMU>, obj_type_ref: &ValueReference, args: Vec<&Val
     for (i, field) in obj_type.2.iter().enumerate() {
         // get the expected type of the field
         let expected_type_ptr: &PointerLive = &field.1;
-        let expected_type: TypeLive = match mmu.get_ptr_value(expected_type_ptr) {
-            Ok(StoredData::TypeStored(t)) => t,
+        let expected_type = mmu.get_ptr_value(expected_type_ptr)?;
+        let expected_type = match expected_type.as_ref() {
+            StoredData::TypeStored(t) => t,
             _ => return Err(format!("Cannot initialize object of type {}, cannot get type of field {}", field.0, field.0))
         };
 
         let arg = &args[i];
-        let arg_value: StoredData = mmu.get_ref_value(arg)?;
+        let arg_value: Arc<StoredData> = mmu.get_ref_value(arg)?;
 
         // do a type check if it isn't dynamic
         match expected_type {
@@ -46,7 +49,8 @@ pub fn execute_init(mmu: Arc<MMU>, obj_type_ref: &ValueReference, args: Vec<&Val
                     None => return Err(format!("Cannot initialize object with argument {} of unknown type", i))
                 };
 
-                let arg_type: TypeLive = match mmu.get_ptr_value(&arg_type_ptr)? {
+                let arg_type_ref = mmu.get_ptr_value(&arg_type_ptr)?;
+                let arg_type: &TypeLive = match arg_type_ref.as_ref() {
                     StoredData::TypeStored(t) => t,
                     _ => return Err(format!("Cannot initialize object with argument {} of non-type value", i))
                 };

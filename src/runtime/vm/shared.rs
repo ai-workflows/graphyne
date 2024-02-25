@@ -204,10 +204,10 @@ impl SharedCallState {
     }
 
     /// Sends a new value to be handled by the orchestrator.
-    pub fn send_new_val(&self, call_context_id: CallContextId, func_val: FuncValLive, value: ValueReference) {
+    pub fn send_new_val(&self, call_context_id: CallContextId, func_val: &FuncValLive, value: ValueReference) {
         let message = NewValMessage {
             call_context_id: call_context_id.clone(),
-            func_val,
+            func_val: func_val.clone(),
             value
         };
 
@@ -523,9 +523,9 @@ pub fn get_func_from_ptr(
     func_ptr: &PointerLive
 ) -> ExecResult<FuncLive> {
     match mmu.get_ptr_value(func_ptr) {
-        Ok(value_stored) => match value_stored {
-            StoredData::FuncStored(func) => Ok(func),
-            _ => return Err(format!("Expected Func, got: {:?}", value_stored))
+        Ok(arc) => match arc.as_ref() {
+            StoredData::FuncStored(func) => Ok(func.clone()),
+            _ => return Err(format!("Expected Func, got: {:?}", arc))
         }
         Err(e) => return Err(format!("Error getting Func: {}", e))
     }
@@ -536,9 +536,9 @@ pub fn get_func_val_from_ptr(
     func_val_ptr: &PointerLive
 ) -> ExecResult<FuncValLive> {
     match mmu.get_ptr_value(func_val_ptr) {
-        Ok(value_stored) => match value_stored {
-            StoredData::FuncValStored(func_val) => Ok(func_val),
-            _ => return Err(format!("Expected FuncVal, got: {:?}", value_stored))
+        Ok(arc) => match arc.as_ref() {
+            StoredData::FuncValStored(func_val) => Ok(func_val.clone()),
+            _ => return Err(format!("Expected FuncVal, got: {:?}", arc))
         }
         Err(e) => return Err(format!("Error getting FuncVal: {}", e))
     }
@@ -555,10 +555,9 @@ pub fn get_func_op_from_ptr(
     func_op_ptr: &PointerLive
 ) -> ExecResult<FuncOpLive> {
     match mmu.get_ptr_value(func_op_ptr) {
-        Ok(value_stored) => match value_stored {
-            StoredData::FuncOpStored(func_op) => Ok(func_op),
-            _ => return Err(format!("Expected FuncOp, got: {:?}", value_stored))
-
+        Ok(arc) => match arc.as_ref() {
+            StoredData::FuncOpStored(func_op) => Ok(func_op.clone()),
+            _ => return Err(format!("Expected FuncOp, got: {:?}", arc))
         }
         Err(e) => return Err(format!("Error getting FuncOp: {}", e))
     }

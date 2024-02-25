@@ -141,10 +141,10 @@ fn fill_fn_val_buffers(mmu: Arc<MMU>, values: &HashMap<Symbol, ValueReference>, 
         let stored_val_ref = execute_store(mmu.clone(), store_op)?.get(0).cloned().ok_or("Failed to store function value")?;
 
         // Get the stored function value
-        let val_stored = mmu.get_ref_value(&stored_val_ref)?;
+        let val_stored: Arc<StoredData> = mmu.get_ref_value(&stored_val_ref)?;
 
         // Fill the buffer with the retrieved value
-        let fill_buf_op = StoreOp::FillBuffer(val_ref, val_stored);
+        let fill_buf_op = StoreOp::FillBuffer(val_ref, (*val_stored).clone());
         execute_store(mmu.clone(), fill_buf_op)?;
     }
 

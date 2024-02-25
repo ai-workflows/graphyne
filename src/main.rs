@@ -60,7 +60,13 @@ fn main() {
 
     match args.command {
         Commands::Stream { intermediate, verbose, execution_workers, orchestration_workers } => {
-            let program: Collection = load_intermediate(&intermediate).unwrap();
+            let program: Collection = match load_intermediate(&intermediate) {
+                Ok(v) => v,
+                Err(e) => {
+                    log_error(format!("Error loading intermediate program: {}", e));
+                    return;
+                }
+            };
             let main_collection_symbol = uuid::Uuid::new_v4().to_string();
             let mmu: Arc<MMU> = Arc::new(MMU::new());
             let binder = match bind(program, mmu.clone(), Some(main_collection_symbol.clone())) {
@@ -107,7 +113,14 @@ fn main() {
         },
 
         Commands::Await { intermediate, verbose, execution_workers, orchestration_workers } => {
-            let program: Collection = load_intermediate(&intermediate).unwrap();
+            let program: Collection = match load_intermediate(&intermediate) {
+                Ok(v) => v,
+                Err(e) => {
+                    log_error(format!("Error loading intermediate program: {}", e));
+                    return;
+                }
+            };
+
             let main_collection_symbol = uuid::Uuid::new_v4().to_string();
             let mmu: Arc<MMU> = Arc::new(MMU::new());
             let binder = match bind(program, mmu.clone(), Some(main_collection_symbol.clone())) {

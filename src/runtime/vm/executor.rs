@@ -130,10 +130,12 @@ fn handle_reduce_op(shared_state: Arc<SharedCallState>, args: Vec<ValueReference
     }
 
     let func = args[0].clone();
-    let list = match shared_state.mmu.get_ref_value(&args[1]) {
-        Ok(StoredData::ListStored(list)) => list,
+    let list_ref = shared_state.mmu.get_ref_value(&args[1])?;
+    let list: &ListLive = match list_ref.as_ref() {
+        StoredData::ListStored(list) => list,
         _ => return Err("Reduce operation requires a list as the second arg".to_string())
     };
+
     let mut current = args[2].clone();
 
     for item_ptr in list.iter() {
@@ -172,17 +174,20 @@ fn handle_map_op(
     }
 
     let func = args[0].clone();
-    let list = match shared_state.mmu.get_ref_value(&args[1]) {
-        Ok(StoredData::ListStored(list)) => list,
+
+    let list_ref = shared_state.mmu.get_ref_value(&args[1])?;
+    let list: &ListLive = match list_ref.as_ref() {
+        StoredData::ListStored(list) => list,
         _ => return Err("Map operation requires a list as the second arg".to_string())
     };
 
-    let output_fn_val: FuncValLive = match shared_state.mmu.get_ptr_value(&op.output_vals[0]) {
-        Ok(StoredData::FuncValStored(func_val)) => func_val,
+    let output_fn_val_ref = shared_state.mmu.get_ptr_value(&op.output_vals[0])?;
+    let output_fn_val: &FuncValLive = match output_fn_val_ref.as_ref() {
+        StoredData::FuncValStored(func_val) => func_val,
         _ => return Err("Output func val not found".to_string())
     };
 
-    dispatch_map(shared_state.clone(), call_context_id.clone(), func, list, output_fn_val.clone(), op.guid.clone());
+    dispatch_map(shared_state.clone(), call_context_id.clone(), func, list, output_fn_val, op.guid.clone());
 
     Ok(vec![ExecutorMessage::Pending(ValPendingMessage {
         call_context_id: call_context_id.clone(),
@@ -194,10 +199,13 @@ fn dispatch_map(
     shared_state: Arc<SharedCallState>,
     call_context_id: CallContextId,
     func: ValueReference,
-    list: ListLive,
-    output_fn_val: FuncValLive,
+    list: &ListLive,
+    output_fn_val: &FuncValLive,
     op_id: FuncOpId
 ) {
+    let list = list.clone();
+    let output_fn_val = output_fn_val.clone();
+
     thread::spawn(move || {
         // dispatch calls for each item in the list
         let results = match dispatch_calls(
@@ -225,7 +233,7 @@ fn dispatch_map(
         shared_state.complete_pending_op(&call_context_id, &op_id);
 
         // send the result list as a new value
-        shared_state.send_new_val(call_context_id.clone(), output_fn_val.clone(), result_list);
+        shared_state.send_new_val(call_context_id.clone(), &output_fn_val, result_list);
     });
 }
 
@@ -240,17 +248,20 @@ fn handle_filter_op(
     }
 
     let func = args[0].clone();
-    let list = match shared_state.mmu.get_ref_value(&args[1]) {
-        Ok(StoredData::ListStored(list)) => list,
+
+    let list_ref = shared_state.mmu.get_ref_value(&args[1])?;
+    let list: &ListLive = match list_ref.as_ref() {
+        StoredData::ListStored(list) => list,
         _ => return Err("Filter operation requires a list as the second arg".to_string())
     };
 
-    let output_fn_val: FuncValLive = match shared_state.mmu.get_ptr_value(&op.output_vals[0]) {
-        Ok(StoredData::FuncValStored(func_val)) => func_val,
+    let output_fn_val_ref = shared_state.mmu.get_ptr_value(&op.output_vals[0])?;
+    let output_fn_val: &FuncValLive = match output_fn_val_ref.as_ref() {
+        StoredData::FuncValStored(func_val) => func_val,
         _ => return Err("Output func val not found".to_string())
     };
 
-    dispatch_filter(shared_state.clone(), call_context_id.clone(), func, list, output_fn_val.clone(), op.guid.clone());
+    dispatch_filter(shared_state.clone(), call_context_id.clone(), func, list, output_fn_val, op.guid.clone());
 
     Ok(vec![ExecutorMessage::Pending(ValPendingMessage {
         call_context_id: call_context_id.clone(),
@@ -262,10 +273,13 @@ fn dispatch_filter(
     shared_state: Arc<SharedCallState>,
     call_context_id: CallContextId,
     func: ValueReference,
-    list: ListLive,
-    output_fn_val: FuncValLive,
+    list: &ListLive,
+    output_fn_val: &FuncValLive,
     op_id: FuncOpId
 ) {
+    let list = list.clone();
+    let output_fn_val = output_fn_val.clone();
+
     thread::spawn(move || {
         // dispatch calls for each item in the list
         let results = dispatch_calls(shared_state.clone(), &list, func.clone())
@@ -277,8 +291,8 @@ fn dispatch_filter(
                         shared_state
                             .mmu
                             .get_ref_value(val)
-                            .and_then(|stored_data| match stored_data {
-                                StoredData::BoolStored(b) => Ok(b),
+                            .and_then(|stored_data| match stored_data.as_ref() {
+                                StoredData::BoolStored(b) => Ok(b.clone()),
                                 _ => Err("Expected filter function to return a boolean value".to_string()),
                             })
                     })
@@ -315,7 +329,7 @@ fn dispatch_filter(
         shared_state.complete_pending_op(&call_context_id, &op_id);
 
         // send the result list as a new value
-        shared_state.send_new_val(call_context_id.clone(), output_fn_val.clone(), result_list);
+        shared_state.send_new_val(call_context_id.clone(), &output_fn_val, result_list);
     });
 }
 

@@ -30,7 +30,7 @@ pub fn manage_await_call(
         mmu.clone(),
         ex_pool,
         or_pool,
-        func,
+        func.clone(),
         args,
         Arc::new(Mutex::new(output_sender)),
         verbose,
@@ -148,7 +148,7 @@ pub fn manage_start_call<'a>(
 
     // send the inputs as new values
     for (val_ref, func_val) in input_fn_vals {
-        shared_state.send_new_val(main_call_id.clone(), func_val, val_ref);
+        shared_state.send_new_val(main_call_id.clone(), &func_val, val_ref);
     }
 
     // send the function's constants as new values
@@ -238,7 +238,7 @@ fn start_executor(
                                     // remove the op from the pending ops
                                     ss.complete_pending_op(&message.call_context_id, &message.op.guid);
 
-                                    ss.send_new_val(result.call_context_id.clone(), result.func_val, result.value);
+                                    ss.send_new_val(result.call_context_id.clone(), &result.func_val, result.value);
                                 },
                                 ExecutorMessage::Pending(result) => {
                                     // expect the thread that sends the new value to remove the op from the pending ops

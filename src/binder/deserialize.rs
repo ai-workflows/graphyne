@@ -21,14 +21,13 @@ impl<'de> Deserialize<'de> for FunctionOpNode {
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: serde::de::SeqAccess<'de>, {
                 let opcode: OpCode = seq.next_element()?.ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
                 let input_vals: Vec<Symbol> = seq.next_element()?.ok_or_else(|| serde::de::Error::invalid_length(1, &self))?;
-                // let output_vals: Vec<Symbol> = seq.next_element()?.ok_or_else(|| serde::de::Error::invalid_length(2, &self))?;
-                // if there is only one output, it may be a single symbol instead of a list
-                let output_vals: Vec<Symbol> = match seq.next_element()? {
-                    Some(val) => vec![val],
-                    None => match seq.next_element()? {
-                        Some(val) => val,
-                        None => return Err(serde::de::Error::invalid_length(2, &self)),
-                    }
+
+                let next_sequence: Result<Option<Vec<Symbol>>, _> = seq.next_element();
+
+                let output_vals: Vec<Symbol> = match next_sequence {
+                    Ok(Some(val)) => val,
+                    Ok(None) => vec![],
+                    Err(e) => return Err(e),
                 };
 
                 Ok(FunctionOpNode {
@@ -130,6 +129,10 @@ impl<'de> Deserialize<'de> for CCData {
                 Ok(Some(CCData::String(value.into())))
             }
 
+            fn visit_none<E>(self) -> Result<Self::Value, E> where E: serde::de::Error {
+                Ok(Some(CCData::Null))
+            }
+
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: serde::de::SeqAccess<'de> {
                 let mut list = Vec::new();
 
@@ -149,10 +152,6 @@ impl<'de> Deserialize<'de> for CCData {
 
                 Ok(Some(CCData::Dict(dict)))
             }
-
-            fn visit_none<E>(self) -> Result<Self::Value, E> where E: serde::de::Error {
-                Ok(Some(CCData::Null))
-            }
         }
 
         match deserializer.deserialize_any(CCDataVisitor) {
@@ -171,7 +170,7 @@ impl<'de> Deserialize<'de> for CCData {
 
 
 impl<'de> Deserialize<'de> for CollectionConst {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: serde::Deserializer<'de> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
         Ok(CollectionConst(CCData::deserialize(deserializer)?))
     }
 }
@@ -243,5 +242,46 @@ impl<'de> Deserialize<'de> for CFnValueNode {
 
         deserializer.deserialize_any(CFnValueNodeVisitor)
 
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use std::fs;
+    use std::sync::Arc;
+    use crate::api::await_call;
+    use crate::binder::Binder;
+    use crate::binder::intermediate::collection::Collection;
+    use crate::runtime::data::live::{IntLive, LiveData};
+    use crate::runtime::mmu::mmu::MMU;
+
+    #[test]
+    fn test_deserialize_multi_output() {
+        let path = "examples/intermediate/multi_output_compiled.json";
+        let contents = fs::read_to_string(path).unwrap();
+        let program: Collection = serde_json::from_str(&contents).unwrap();
+
+        let mmu: Arc<MMU> = Arc::new(MMU::new());
+        let mut binder = Binder {mmu: mmu.clone(), symbol_table: HashMap::new()};
+
+        binder.store_collection(program, "my_collection".to_string()).unwrap();
+
+        let main_ref = binder.get_path(vec!["my_collection".into(), "main".into()]).unwrap();
+
+        let res = await_call(
+            main_ref,
+            vec![],
+            mmu.clone(),
+            true,
+            Some(1),
+            Some(1),
+        ).unwrap();
+
+        let double: IntLive = mmu.get_ref_value(res.get("double").unwrap()).unwrap().as_live().as_int().unwrap().unwrap();
+        let triple: IntLive = mmu.get_ref_value(res.get("triple").unwrap()).unwrap().as_live().as_int().unwrap().unwrap();
+
+        assert_eq!(double, 10);
+        assert_eq!(triple, 15);
     }
 }

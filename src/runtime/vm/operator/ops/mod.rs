@@ -12,7 +12,9 @@ macro_rules! execute_one_arg_op {
         {
             let arg_value = $mmu.get_ref_value($arg)?;
 
-            arg_value.clone().as_live().$op().map_or_else(
+            let op_result = arg_value.as_live().$op();
+
+            op_result.map_or_else(
                 || $handle_op_null_result($mmu.clone(), arg_value, stringify!($op)),
                 |result| $handle_op_result($mmu.clone(), result)
             )
@@ -26,7 +28,9 @@ macro_rules! execute_two_arg_op {
             let lhs_value = $mmu.get_ref_value($lhs)?;
             let rhs_value = $mmu.get_ref_value($rhs)?;
 
-            lhs_value.clone().as_live().$op(&rhs_value).map_or_else(
+            let op_result = lhs_value.as_live().$op(&rhs_value);
+
+            op_result.map_or_else(
                 || $handle_op_null_result($mmu.clone(), lhs_value, stringify!($op)),
                 |result| $handle_op_result($mmu.clone(), result)
             )
@@ -41,7 +45,9 @@ macro_rules! execute_three_arg_op {
             let arg2_value = $mmu.get_ref_value($arg2)?;
             let arg3_value = $mmu.get_ref_value($arg3)?;
 
-            arg1_value.clone().as_live().$op(&arg2_value, &arg3_value).map_or_else(
+            let op_result = arg1_value.as_live().$op(&arg2_value, &arg3_value);
+
+            op_result.map_or_else(
                 || $handle_op_null_result($mmu.clone(), arg1_value, stringify!($op)),
                 |result| $handle_op_result($mmu.clone(), result)
             )
@@ -52,9 +58,9 @@ macro_rules! execute_three_arg_op {
 macro_rules! execute_cast_op {
     ($mmu:ident, $arg:ident, $cast_fn:ident, $store_variant:path, $get_stored_type:ident, $store_value:ident) => {
         {
-            let arg_value: StoredData = $mmu.get_ref_value($arg).map_err(|msg| msg)?;
+            let arg_value: Arc<StoredData> = $mmu.get_ref_value($arg).map_err(|msg| msg)?;
 
-            arg_value.clone().as_live().$cast_fn().map_or_else(
+            let res = arg_value.as_live().$cast_fn().map_or_else(
                 || {
                     let arg_type: TypeLive = match get_stored_type($mmu.clone(), &arg_value) {
                         Ok(type_live) => type_live,
@@ -67,7 +73,9 @@ macro_rules! execute_cast_op {
                     let stored_result = $store_variant(result_value);
                     $store_value($mmu.clone(), stored_result)
                 }
-            )
+            );
+
+            res
         }
     };
 }

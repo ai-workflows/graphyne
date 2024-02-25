@@ -11,7 +11,6 @@ pub fn execute_as_int(mmu: Arc<MMU>, arg: &ValueReference) -> ExecResult<Vec<Val
     execute_cast_op!(mmu, arg, as_int, StoredData::IntStored, get_stored_type, store_value)
 }
 
-
 pub fn execute_as_float(mmu: Arc<MMU>, arg: &ValueReference) -> ExecResult<Vec<ValueReference>> {
     execute_cast_op!(mmu, arg, as_float, StoredData::FloatStored, get_stored_type, store_value)
 }
