@@ -125,7 +125,7 @@ pub fn manage_start_call<'a>(
 
     // send the inputs as new values
     for (val_ref, func_val) in input_fn_vals {
-        send_new_val(shared_state.clone(), main_call_id.clone(), &func_val, val_ref);
+        send_new_val(shared_state.clone(), &main_call_id, &func_val, val_ref);
     }
 
     // send the function's constants as new values
@@ -261,7 +261,7 @@ pub fn manage_orchestrator_result(
                             // remove the op from the pending ops
                             ss2.complete_pending_op(&message.call_context_id, &message.op.guid);
 
-                            send_new_val(ss2.clone(), result.call_context_id.clone(), &result.func_val, result.value);
+                            send_new_val(ss2.clone(), &result.call_context_id, &result.func_val, result.value);
                         },
                         ExecutorMessage::Pending(result) => {
                             // expect the thread that sends the new value to remove the op from the pending ops

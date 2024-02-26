@@ -174,7 +174,7 @@ fn handle_reduce_op(
         shared_state.complete_pending_op(&cc_id, &op.guid);
 
         // send the result list as a new value
-        send_new_val(shared_state.clone(), cc_id.clone(), &output_fn_val2, result);
+        send_new_val(shared_state.clone(), &cc_id, &output_fn_val2, result);
     });
 
     // return pending message
@@ -283,7 +283,7 @@ fn handle_map_op(
         shared_state.complete_pending_op(&cc_id, &op.guid);
 
         // send the result list as a new value
-        send_new_val(shared_state.clone(), cc_id.clone(), &output_fn_val2, result);
+        send_new_val(shared_state.clone(), &cc_id, &output_fn_val2, result);
     });
 
     Ok(vec![ExecutorMessage::Pending(ValPendingMessage {
@@ -350,7 +350,7 @@ fn handle_filter_op(
         shared_state.complete_pending_op(&cc_id, &op.guid);
 
         // send the result list as a new value
-        send_new_val(shared_state.clone(), cc_id.clone(), &output_fn_val, result);
+        send_new_val(shared_state.clone(), &cc_id, &output_fn_val, result);
     });
 
     Ok(vec![ExecutorMessage::Pending(ValPendingMessage {

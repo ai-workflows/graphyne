@@ -483,7 +483,7 @@ impl SharedCallState {
     ) -> ExecResult<ValueReference> {
         value_ref_from_ptr(self.mmu.clone(), ptr)
     }
-    
+
     pub fn value_refs_from_ptrs(
         &self,
         ptrs: Vec<PointerLive>
@@ -639,6 +639,17 @@ pub fn get_func_op_from_ptr(
     }
 }
 
+pub fn get_func_ops_from_ptrs(mmu: Arc<MMU>, ptrs: &Vec<PointerLive>) -> ExecResult<Vec<FuncOpLive>> {
+    mmu.get_ptrs_values(ptrs).map(|arcs| {
+        arcs.iter().map(|arc| {
+            match arc.as_ref() {
+                StoredData::FuncOpStored(func_op) => func_op.clone(),
+                _ => panic!("Expected FuncOp, got: {:?}", arc)
+            }
+        }).collect()
+    })
+}
+
 pub fn send_new_op(shared_state: Arc<SharedCallState>, call_context_id: CallContextId, op: FuncOpLive) {
     // try to register the pending op, do not dispatch if it is already pending
     if !shared_state.try_register_pending_op(&call_context_id, &op.guid) {
@@ -663,7 +674,7 @@ pub fn send_new_op(shared_state: Arc<SharedCallState>, call_context_id: CallCont
     manage_orchestrator_result(OrchestratorMessage::NewOp(message), shared_state.clone());
 }
 
-pub fn send_new_val(shared_state: Arc<SharedCallState>, call_context_id: CallContextId, func_val: &FuncValLive, value: ValueReference) {
+pub fn send_new_val(shared_state: Arc<SharedCallState>, call_context_id: &CallContextId, func_val: &FuncValLive, value: ValueReference) {
     let message = NewValMessage {
         call_context_id: call_context_id.clone(),
         func_val: func_val.clone(),
@@ -675,7 +686,7 @@ pub fn send_new_val(shared_state: Arc<SharedCallState>, call_context_id: CallCon
         None => message.func_val.guid.clone(),
     };
 
-    shared_state.log_async(&call_context_id, &format!(
+    shared_state.log_async(call_context_id, &format!(
         "Sending new value: {} in {}",
         symbol,
         message.call_context_id));

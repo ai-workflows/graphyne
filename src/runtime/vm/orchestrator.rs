@@ -2,7 +2,7 @@ use std::sync::{Arc};
 use crate::runtime::data::functions::OpCode;
 use crate::runtime::data::live::{FuncLive, FuncOpLive, FuncValLive, PointerLive};
 use crate::runtime::ExecResult;
-use crate::runtime::vm::shared::{CallContextId, get_func_from_ptr, get_func_op_from_ptr, get_func_val_from_ptr, get_func_vals_from_ptrs, send_new_op, send_new_val, SharedCallState};
+use crate::runtime::vm::shared::{CallContextId, get_func_from_ptr, get_func_ops_from_ptrs, get_func_val_from_ptr, get_func_vals_from_ptrs, send_new_op, send_new_val, SharedCallState};
 use crate::runtime::mmu::value_ref::ValueReference;
 
 /// The orchestrator receives messages that new values are known, stores/links them, and determines which operations
@@ -23,9 +23,7 @@ pub fn handle_new_value_v2(
     shared_state.set_val(call_context_id.clone(), func_val.clone(), value.clone());
 
     // get the dependent ops for the value
-    let dependent_ops: Vec<FuncOpLive> = match func_val.dependents.iter()
-        .map(|op_ptr| get_func_op_from_ptr(shared_state.mmu.clone(), op_ptr))
-        .collect() {
+    let dependent_ops: Vec<FuncOpLive> = match get_func_ops_from_ptrs(shared_state.mmu.clone(), &func_val.dependents) {
         Ok(ops) => ops,
         Err(e) => return Err(format!("Error getting dependent ops: {}", e))
     };
@@ -56,7 +54,7 @@ pub fn handle_new_value_v2(
         shared_state.remove_output(call_context_id, func_val);
 
         // send the new value message to the parent context
-        send_new_val(shared_state.clone(), parent_call_context.clone(), &parent_output_fn_val, value);
+        send_new_val(shared_state.clone(), &parent_call_context, &parent_output_fn_val, value);
 
         // if this was the last output, the call context has been fully executed and can be cleaned up
         if shared_state.num_remaining_outputs(call_context_id) == 0 {
@@ -133,7 +131,7 @@ fn handle_func_call<'a>(
 
     for (i, arg_val) in arg_vals.iter().enumerate() {
         match arg_val {
-            Some(v_ref) => send_new_val(shared_state.clone(), call_context_id.clone(), &called_fn_input_vals[i], v_ref.clone()),
+            Some(v_ref) => send_new_val(shared_state.clone(), &call_context_id, &called_fn_input_vals[i], v_ref.clone()),
             None => return Err(format!("Arg val not found in parent call context: {}", parent_call_context_id))
         }
     }
@@ -190,7 +188,7 @@ pub fn handle_called_fn_constants(
     let constant_vals = shared_state.value_refs_from_ptrs(constant_ptrs)?;
 
     for (constant_fn_val, constant_val) in constant_fn_vals.iter().zip(constant_vals) {
-        send_new_val(shared_state.clone(), call_context_id.clone(), &constant_fn_val, constant_val);
+        send_new_val(shared_state.clone(), &call_context_id, &constant_fn_val, constant_val);
     }
 
     Ok(())
@@ -241,7 +239,7 @@ fn handle_call_arg(
     let matching_input_val: FuncValLive = get_func_val_from_ptr(shared_state.mmu.clone(), matching_input_ptr)?;
 
     // send a new value message for the matching input val
-    send_new_val(shared_state.clone(), called_fn_context_id.clone(), &matching_input_val, first_arg_val.clone());
+    send_new_val(shared_state.clone(), &called_fn_context_id, &matching_input_val, first_arg_val.clone());
 
     Ok(())
 }
@@ -252,19 +250,15 @@ fn handle_normal_op(
     call_context_id: &CallContextId,
 ) -> ExecResult<()> {
     // check if the op has already been executed (output vals are known)
-    for output_fn_val in get_func_vals_from_ptrs(shared_state.mmu.clone(), &op.output_vals)? {
-        if shared_state.contains_val(call_context_id, &output_fn_val) {
-            return Err(format!("Operation {} has already been executed.", op.opcode));
-        }
+    let output_fn_vals = get_func_vals_from_ptrs(shared_state.mmu.clone(), &op.output_vals)?;
+    if shared_state.contains_any_val(call_context_id, &output_fn_vals) {
+        return Err(format!("Operation {} has already been executed.", op.opcode));
     }
 
-    // check if all input vals are known
     let input_fn_vals = get_func_vals_from_ptrs(shared_state.mmu.clone(), &op.input_vals)?;
-    for input_fn_val in input_fn_vals {
-        if !shared_state.contains_val(call_context_id, &input_fn_val) {
-            // The operation will be executed later, when the last input value is known
-            return Ok(());
-        }
+    if !shared_state.contains_all_vals(call_context_id, &input_fn_vals) {
+        // The operation will be executed later, when the last input value is known
+        return Ok(());
     }
 
     // // if this is a map op, handle it differently
