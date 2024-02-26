@@ -209,6 +209,37 @@ pub fn value_ref_from_ptr(mmu: Arc<MMU>, mut ptr: GCPointer<StoredData>) -> Exec
     return Ok(result)
 }
 
+pub fn value_refs_from_ptrs(mmu: Arc<MMU>, mut ptrs: Vec<GCPointer<StoredData>>) -> ExecResult<Vec<ValueReference>> {
+    let mut gc = None;
+    for ptr in ptrs.iter_mut() {
+        if !ptr.counted {
+            match gc {
+                Some(_) => {},
+                None => {
+                    gc = Some(mmu.state.write()
+                        .unwrap_or_else(|e| panic!("Could not get write lock on VM state, the lock is poisoned: {}", e)));
+                }
+            }
+
+            match gc {
+                Some(ref mut gc) => match gc.count_pointer(ptr) {
+                    Ok(_) => {},
+                    Err(msg) => return Err(format!("Could not count pointer: {}", msg)),
+                }
+                None => return Err("Could not get write lock on VM state".to_string()),
+            }
+        }
+    }
+
+    let mut result = Vec::new();
+    for ptr in ptrs {
+        let value_ref = ValueReference::new(ptr, mmu.clone());
+        result.push(value_ref);
+    }
+
+    Ok(result)
+}
+
 /// Gets the live type of stored data.
 pub fn get_stored_type(mmu: Arc<MMU>, arg: &StoredData) -> ExecResult<TypeLive> {
     let type_ptr = match get_stored_type_ptr(mmu.clone(), arg) {

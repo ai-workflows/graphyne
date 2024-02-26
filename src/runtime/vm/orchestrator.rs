@@ -1,6 +1,6 @@
 use std::sync::{Arc};
 use crate::runtime::data::functions::OpCode;
-use crate::runtime::data::live::{FuncLive, FuncOpLive, FuncValLive};
+use crate::runtime::data::live::{FuncLive, FuncOpLive, FuncValLive, PointerLive};
 use crate::runtime::ExecResult;
 use crate::runtime::vm::shared::{CallContextId, get_func_from_ptr, get_func_op_from_ptr, get_func_val_from_ptr, get_func_vals_from_ptrs, send_new_op, send_new_val, SharedCallState};
 use crate::runtime::mmu::value_ref::ValueReference;
@@ -110,53 +110,32 @@ fn handle_func_call<'a>(
     // add the call to the call cache
     shared_state.register_call(&parent_call_context_id, &op.guid, &call_context_id);
 
-    // register the function outputs in the output lookup
-    for (i, output_ptr) in op.output_vals.iter().enumerate() {
-        let parent_output_fn_val = match get_func_val_from_ptr(shared_state.mmu.clone(), output_ptr) {
-            Ok(val) => val,
-            Err(e) => return Err(format!("Error getting output val: {}", e))
-        };
+    // register the outputs of the called function with the output vals of the call op
+    let op_outputs_fn_vals: Vec<FuncValLive> = get_func_vals_from_ptrs(shared_state.mmu.clone(), &op.output_vals)?;
+    let called_fn_output_vals: Vec<FuncValLive> = get_func_vals_from_ptrs(shared_state.mmu.clone(), &called_fn.output_vals)?;
 
-        // get the matching output fn val in the called function's context
-        let called_fn_output_ptr = called_fn.output_vals.get(i)
-            .ok_or(format!("Could not find matching output for output index: {}", i))?;
-        let output_fn_val = get_func_val_from_ptr(shared_state.mmu.clone(), called_fn_output_ptr)?;
-
-        shared_state.register_output(&call_context_id, &output_fn_val, parent_call_context_id, &parent_output_fn_val);
+    if op_outputs_fn_vals.len() != called_fn_output_vals.len() {
+        return Err(format!("Number of outputs of operation does not match number of outputs for called function: {} != {}", op_outputs_fn_vals.len(), called_fn_output_vals.len()));
     }
 
-    // loop over the arg values. If any are known, send a new value message for the matching input val in the called function's context
-    for (i, arg_ptr) in op.input_vals.iter().enumerate() {
-        // Skip the first element (the function being called)
-        if i == 0 {
-            continue;
-        }
+    shared_state.register_outputs(&call_context_id, &op_outputs_fn_vals, parent_call_context_id, &called_fn_output_vals);
 
-        // get the fn val for the arg in the parent context
-        let arg_fn_val = match get_func_val_from_ptr(shared_state.mmu.clone(), arg_ptr) {
-            Ok(val) => val,
-            Err(e) => return Err(format!("Error getting arg val: {}", e))
-        };
+    // get the fn vals for the args in the parent context and the called function's context
+    let arg_fn_vals: Vec<FuncValLive> = get_func_vals_from_ptrs(shared_state.mmu.clone(), &op.input_vals[1..].to_vec())?;
+    let called_fn_input_vals: Vec<FuncValLive> = get_func_vals_from_ptrs(shared_state.mmu.clone(), &called_fn.input_vals)?;
 
-        // if the value is not known, we will handle this arg later
-        if !shared_state.contains_val(parent_call_context_id, &arg_fn_val) {
-            continue;
-        }
+    if arg_fn_vals.len() != called_fn_input_vals.len() {
+        return Err(format!("Number of args for operation does not match number of inputs for called function: {} != {}", arg_fn_vals.len(), called_fn_input_vals.len()));
+    }
 
-        // get the value for the arg in the parent context
-        let arg_val: ValueReference = match shared_state.get_val(parent_call_context_id, &arg_fn_val) {
-            Some(val) => val,
+    // get the values for the args in the parent context
+    let arg_vals: Vec<Option<ValueReference>> = shared_state.get_vals(parent_call_context_id, &arg_fn_vals);
+
+    for (i, arg_val) in arg_vals.iter().enumerate() {
+        match arg_val {
+            Some(v_ref) => send_new_val(shared_state.clone(), call_context_id.clone(), &called_fn_input_vals[i], v_ref.clone()),
             None => return Err(format!("Arg val not found in parent call context: {}", parent_call_context_id))
-        };
-
-        // get the to matching input fn val in the called function's context
-        let called_fn_input_ptr = called_fn.input_vals.get(i - 1)
-            .ok_or(format!("Could not find matching input for arg index: {}", i - 1))?;
-
-        let call_input_fn_val = get_func_val_from_ptr(shared_state.mmu.clone(), called_fn_input_ptr)?;
-
-        // send a new value message for the matching input val
-        send_new_val(shared_state.clone(), call_context_id.clone(), &call_input_fn_val, arg_val);
+        }
     }
 
     // handle the constants
@@ -197,18 +176,20 @@ pub fn handle_called_fn_constants(
     called_fn: &FuncLive
 ) -> ExecResult<()> {
     // loop over the constant values. Send a new value message for each
-    for constant_ptr in called_fn.constant_vals.iter() {
-        let constant_fn_val = match get_func_val_from_ptr(shared_state.mmu.clone(), constant_ptr) {
-            Ok(val) => val,
-            Err(e) => return Err(format!("Error getting constant val: {}", e))
-        };
+    let constant_fn_vals = get_func_vals_from_ptrs(shared_state.mmu.clone(), &called_fn.constant_vals)?;
 
+    let mut constant_ptrs: Vec<PointerLive> = vec![];
+    for constant_fn_val in &constant_fn_vals {
         let constant_ptr = match &constant_fn_val.constant {
             Some(ptr) => ptr,
             None => return Err(format!("Constant ptr not found for constant func val: {}", constant_fn_val.guid))
         };
-        let constant_val = shared_state.value_ref_from_ptr(constant_ptr.clone())?;
+        constant_ptrs.push(constant_ptr.clone());
+    }
 
+    let constant_vals = shared_state.value_refs_from_ptrs(constant_ptrs)?;
+
+    for (constant_fn_val, constant_val) in constant_fn_vals.iter().zip(constant_vals) {
         send_new_val(shared_state.clone(), call_context_id.clone(), &constant_fn_val, constant_val);
     }
 

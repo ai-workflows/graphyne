@@ -121,14 +121,13 @@ pub fn handle_call_function_op(shared_state: Arc<SharedCallState>, op_code: &OpC
 
 /// Gets the arguments to a function's operation from the state manager
 fn get_func_op_args(shared_state: Arc<SharedCallState>, args: &Vec<FuncValLive>, call_context_id: &CallContextId) -> ExecResult<Vec<ValueReference>> {
-    args.iter()
-        .map(move |arg_fn_val| {
-            match shared_state.get_val(call_context_id, arg_fn_val) {
-                Some(val) => Ok(val),
-                None => Err("Arg value not found in state and not caught by validation".to_string())
-            }
-        })
-        .collect()
+    let res: Vec<Option<ValueReference>> = shared_state.get_vals(call_context_id, args);
+    // if any of the args are not found, return an error
+    if res.iter().any(|val| val.is_none()) {
+        return Err("Not all input values are known.".to_string());
+    }
+
+    Ok(res.into_iter().map(|val| val.unwrap()).collect())
 }
 
 

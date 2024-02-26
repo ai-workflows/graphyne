@@ -10,7 +10,7 @@ use crate::runtime::data::stored::StoredData;
 use crate::runtime::{ExecResult, Symbol};
 use crate::runtime::data::functions::FuncVal;
 use crate::runtime::data::functions::op::FuncOpId;
-use crate::runtime::mmu::mmu::{MMU, value_ref_from_ptr};
+use crate::runtime::mmu::mmu::{MMU, value_ref_from_ptr, value_refs_from_ptrs};
 use crate::runtime::mmu::value_ref::ValueReference;
 use crate::runtime::vm::manager::{manage_executor_result, manage_orchestrator_result, StreamResult};
 
@@ -165,6 +165,16 @@ impl SharedCallState {
         func_vals.iter().all(|func_val| call_context_map.contains_key(&func_val.guid))
     }
 
+    // returns a list of bools indicating if the value is present for each func val
+    pub fn contains_vals(&self, call_context_id: &CallContextId, func_vals: &Vec<FuncValLive>) -> Vec<bool> {
+        let val_lookup = self.val_lookup.read().expect("val_lookup lock is poisoned");
+        let call_context_map = match val_lookup.get(call_context_id) {
+            Some(map) => map,
+            None => return vec![false; func_vals.len()]
+        };
+        func_vals.iter().map(|func_val| call_context_map.contains_key(&func_val.guid)).collect()
+    }
+
     /// Gets the value reference associated with a given call context and function value.
     pub fn get_val(&self, call_context_id: &CallContextId, func_val: &FuncValLive) -> Option<ValueReference> {
         let val_lookup = self.val_lookup.read().expect("val_lookup lock is poisoned");
@@ -176,6 +186,18 @@ impl SharedCallState {
             Some(val) => Some(val.clone()),
             None => None
         }
+    }
+
+    pub fn get_vals(&self, call_context_id: &CallContextId, func_vals: &Vec<FuncValLive>) -> Vec<Option<ValueReference>> {
+        let val_lookup = self.val_lookup.read().expect("val_lookup lock is poisoned");
+        let call_context_map = match val_lookup.get(call_context_id) {
+            Some(map) => map,
+            None => return vec![None; func_vals.len()]
+        };
+        func_vals.iter().map(|func_val| match call_context_map.get(&func_val.guid) {
+            Some(val) => Some(val.clone()),
+            None => None
+        }).collect()
     }
 
     /// Sets the value reference associated with a given call context and function value.
@@ -332,6 +354,30 @@ impl SharedCallState {
             parent_call_context_id));
     }
 
+    pub fn register_outputs(&self,
+                            call_context_id: &CallContextId,
+                            func_vals: &Vec<FuncValLive>,
+                            parent_call_context_id: &CallContextId,
+                            parent_func_vals: &Vec<FuncValLive>
+    ) {
+        let mut output_lookup = self.output_lookup.write().expect("output_lookup lock is poisoned");
+
+        if !output_lookup.contains_key(call_context_id) {
+            output_lookup.insert(call_context_id.clone(), HashMap::new());
+        }
+
+        if let Some(outputs) = output_lookup.get_mut(call_context_id) {
+            for (func_val, parent_func_val) in func_vals.iter().zip(parent_func_vals.iter()) {
+                outputs.insert(func_val.guid.clone(), (parent_call_context_id.clone(), parent_func_val.clone()));
+            }
+        }
+
+        self.log_async(&call_context_id, &format!(
+            "Registered outputs: {} linked to {}",
+            func_vals.iter().map(|func_val| func_val.symbol.clone().unwrap_or(func_val.guid.clone())).collect::<Vec<Symbol>>().join(", "),
+            parent_call_context_id));
+    }
+
     pub fn remove_output(&self, call_context_id: &CallContextId, func_val: &FuncValLive) {
         let mut output_lookup = self.output_lookup.write().expect("output_lookup lock is poisoned");
         let outputs = match output_lookup.get_mut(call_context_id) {
@@ -436,6 +482,13 @@ impl SharedCallState {
         ptr: PointerLive
     ) -> ExecResult<ValueReference> {
         value_ref_from_ptr(self.mmu.clone(), ptr)
+    }
+    
+    pub fn value_refs_from_ptrs(
+        &self,
+        ptrs: Vec<PointerLive>
+    ) -> ExecResult<Vec<ValueReference>> {
+        value_refs_from_ptrs(self.mmu.clone(), ptrs)
     }
 
     /// Checks if a new value is a final output. If so, removes it from the final outputs set.

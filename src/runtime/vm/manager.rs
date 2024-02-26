@@ -532,7 +532,7 @@ mod tests {
 
             let main_ref = api.get_path(vec!["my_collection".into(), "main".into()]).unwrap();
 
-            let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
+            let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
 
             let start_time = std::time::Instant::now();
 
