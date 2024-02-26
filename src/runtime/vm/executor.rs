@@ -1,8 +1,9 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Receiver;
 use std::thread;
 use crate::runtime::data::live::{BoolLive, FuncOpLive, FuncValLive, ListLive};
-use crate::runtime::{ExecResult};
+use crate::runtime::{ExecResult, Symbol};
 use crate::runtime::data::functions::OpCode;
 use crate::runtime::data::stored::StoredData;
 use crate::runtime::mmu::mmu::{execute_store, MMU, value_ref_from_ptr};
@@ -10,8 +11,8 @@ use crate::runtime::mmu::store_op::StoreOp;
 use crate::runtime::mmu::value_ref::ValueReference;
 use crate::runtime::vm::operator::operator::execute_op;
 use crate::runtime::vm::operator::ops::Operation;
-use crate::runtime::vm::manager::{manage_start_call};
-use crate::runtime::vm::shared::{CallContextId, get_func_vals_from_ptrs, NewValMessage, SharedCallState, ValPendingMessage, ExecutorMessage};
+use crate::runtime::vm::manager::{manage_await_call, manage_start_call};
+use crate::runtime::vm::shared::{CallContextId, get_func_vals_from_ptrs, NewValMessage, SharedCallState, ValPendingMessage, ExecutorMessage, send_new_val};
 
 /// A worker responsible for executing
 
@@ -174,7 +175,7 @@ fn handle_reduce_op(
         shared_state.complete_pending_op(&cc_id, &op.guid);
 
         // send the result list as a new value
-        shared_state.send_new_val(cc_id.clone(), &output_fn_val2, result);
+        send_new_val(shared_state.clone(), cc_id.clone(), &output_fn_val2, result);
     });
 
     // return pending message
@@ -197,23 +198,41 @@ fn dispatch_reduce(
 
         let args: Vec<ValueReference> = vec![current.clone(), item_ref];
 
-        let result = manage_start_call(
+        let result = manage_await_call(
             shared_state.mmu.clone(),
             shared_state.worker_pool.clone(),
             func.clone(),
             args,
-            None,
             shared_state.verbose,
         );
 
         match result {
             Ok(result) => {
-                current = match result.get(0) {
+                if result.len() != 1 {
+                    return Err("Error executing reduce function: Expected 1 result value".to_string());
+                }
+
+                // get the only result value from the hash map
+                let res_key: &Symbol = match result.keys().next() {
+                    Some(val) => val,
+                    None => {
+                        return Err("Error executing reduce function: No result value".to_string());
+                    }
+                };
+
+                current = match result.get(res_key) {
                     Some(val) => val.clone(),
                     None => {
                         return Err("Error executing reduce function: No result value".to_string());
                     }
                 }
+
+                // current = match result.get(0) {
+                //     Some(val) => val.clone(),
+                //     None => {
+                //         return Err("Error executing reduce function: No result value".to_string());
+                //     }
+                // }
             },
             Err(msg) => {
                 return Err(format!("Error executing reduce function: {}", msg));
@@ -265,7 +284,7 @@ fn handle_map_op(
         shared_state.complete_pending_op(&cc_id, &op.guid);
 
         // send the result list as a new value
-        shared_state.send_new_val(cc_id.clone(), &output_fn_val2, result);
+        send_new_val(shared_state.clone(), cc_id.clone(), &output_fn_val2, result);
     });
 
     Ok(vec![ExecutorMessage::Pending(ValPendingMessage {
@@ -332,7 +351,7 @@ fn handle_filter_op(
         shared_state.complete_pending_op(&cc_id, &op.guid);
 
         // send the result list as a new value
-        shared_state.send_new_val(cc_id.clone(), &output_fn_val, result);
+        send_new_val(shared_state.clone(), cc_id.clone(), &output_fn_val, result);
     });
 
     Ok(vec![ExecutorMessage::Pending(ValPendingMessage {
@@ -399,12 +418,11 @@ fn dispatch_calls(
             let args: Vec<ValueReference> = vec![value_ref_from_ptr(ss.mmu.clone(), item_ptr).unwrap()];
 
             // start the call and add the receiver to the list
-            let result: ExecResult<Vec<ValueReference>> = manage_start_call(
+            let result: ExecResult<HashMap<Symbol, ValueReference>> = manage_await_call(
                 ss.mmu.clone(),
                 ss.worker_pool.clone(),
                 f,
                 args,
-                None,
                 ss.verbose
             );
 
@@ -418,7 +436,7 @@ fn dispatch_calls(
 
             let msg = match result.len() {
                 0 => (i, Err("No result value returned".to_string())),
-                1 => (i, Ok(result[0].clone())),
+                1 => (i, Ok(result.values().next().unwrap().clone())),
                 _ => (i, Err("Too many result values returned".to_string()))
             };
 

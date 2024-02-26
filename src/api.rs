@@ -10,31 +10,47 @@ use crate::runtime::data::live::{FuncLive, FuncValLive};
 use crate::runtime::mmu::mmu::MMU;
 use crate::runtime::mmu::value_ref::ValueReference;
 use crate::runtime::{ExecResult, Symbol};
-use crate::runtime::vm::manager::{manage_start_call, StreamResult};
+use crate::runtime::vm::manager::{manage_await_call, manage_start_call, StreamResult};
 use crate::runtime::vm::shared::{get_func_from_ptr};
 
-pub fn call(
+pub fn await_call(
     func: ValueReference,
     args: Vec<ValueReference>,
     mmu: Arc<MMU>,
     verbose: bool,
     workers: Option<usize>,
-    outputs_sender: Option<Sender<StreamResult>>,
-) -> ExecResult<Vec<ValueReference>> {
+) -> ExecResult<HashMap<Symbol, ValueReference>> {
     let worker_count = get_worker_counts(workers);
     let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(worker_count).build().unwrap());
 
-    let outputs_sender = match outputs_sender {
-        Some(v) => Some(Arc::new(Mutex::new(v))),
-        None => None,
-    };
+    manage_await_call(
+        mmu.clone(),
+        worker_pool,
+        func,
+        args,
+        verbose,
+    )
+}
+
+pub fn stream_call(
+    func: ValueReference,
+    args: Vec<ValueReference>,
+    mmu: Arc<MMU>,
+    verbose: bool,
+    workers: Option<usize>,
+    output_sender: Sender<StreamResult>,
+) -> ExecResult<()> {
+    let worker_count = get_worker_counts(workers);
+    let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(worker_count).build().unwrap());
+
+    let output_sender = Arc::new(Mutex::new(output_sender));
 
     manage_start_call(
         mmu.clone(),
         worker_pool,
         func,
         args,
-        outputs_sender,
+        output_sender,
         verbose,
     )
 }
@@ -119,7 +135,7 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
     use std::thread;
-    use crate::api::{call, load_intermediate};
+    use crate::api::{load_intermediate, stream_call};
     use crate::binder::Binder;
     use crate::binder::intermediate::collection::Collection;
     use crate::binder::json::jsonify;
@@ -141,13 +157,13 @@ mod tests {
 
         let mmu2 = mmu.clone();
         thread::spawn(move || {
-            let _ = call(
+            let _ = stream_call(
                 main_ref,
                 vec![],
                 mmu2,
                 true,
                 Some(4),
-                Some(output_sender),
+                output_sender
             );
         });
 

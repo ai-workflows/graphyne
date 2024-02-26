@@ -2,7 +2,7 @@ use std::sync::{Arc};
 use crate::runtime::data::functions::OpCode;
 use crate::runtime::data::live::{FuncLive, FuncOpLive, FuncValLive};
 use crate::runtime::ExecResult;
-use crate::runtime::vm::shared::{CallContextId, get_func_from_ptr, get_func_op_from_ptr, get_func_val_from_ptr, get_func_vals_from_ptrs, SharedCallState};
+use crate::runtime::vm::shared::{CallContextId, get_func_from_ptr, get_func_op_from_ptr, get_func_val_from_ptr, get_func_vals_from_ptrs, send_new_op, send_new_val, SharedCallState};
 use crate::runtime::mmu::value_ref::ValueReference;
 
 /// The orchestrator receives messages that new values are known, stores/links them, and determines which operations
@@ -56,7 +56,7 @@ pub fn handle_new_value_v2(
         shared_state.remove_output(call_context_id, func_val);
 
         // send the new value message to the parent context
-        shared_state.send_new_val(parent_call_context.clone(), &parent_output_fn_val, value);
+        send_new_val(shared_state.clone(), parent_call_context.clone(), &parent_output_fn_val, value);
 
         // if this was the last output, the call context has been fully executed and can be cleaned up
         if shared_state.num_remaining_outputs(call_context_id) == 0 {
@@ -156,7 +156,7 @@ fn handle_func_call<'a>(
         let call_input_fn_val = get_func_val_from_ptr(shared_state.mmu.clone(), called_fn_input_ptr)?;
 
         // send a new value message for the matching input val
-        shared_state.send_new_val(call_context_id.clone(), &call_input_fn_val, arg_val);
+        send_new_val(shared_state.clone(), call_context_id.clone(), &call_input_fn_val, arg_val);
     }
 
     // handle the constants
@@ -209,7 +209,7 @@ pub fn handle_called_fn_constants(
         };
         let constant_val = shared_state.value_ref_from_ptr(constant_ptr.clone())?;
 
-        shared_state.send_new_val(call_context_id.clone(), &constant_fn_val, constant_val);
+        send_new_val(shared_state.clone(), call_context_id.clone(), &constant_fn_val, constant_val);
     }
 
     Ok(())
@@ -260,7 +260,7 @@ fn handle_call_arg(
     let matching_input_val: FuncValLive = get_func_val_from_ptr(shared_state.mmu.clone(), matching_input_ptr)?;
 
     // send a new value message for the matching input val
-    shared_state.send_new_val(called_fn_context_id.clone(), &matching_input_val, first_arg_val.clone());
+    send_new_val(shared_state.clone(), called_fn_context_id.clone(), &matching_input_val, first_arg_val.clone());
 
     Ok(())
 }
@@ -292,7 +292,7 @@ fn handle_normal_op(
     // }
 
     // send a new op message to the executor
-    shared_state.send_new_op(call_context_id.clone(), op.clone());
+    send_new_op(shared_state.clone(), call_context_id.clone(), op.clone());
 
     Ok(())
 }

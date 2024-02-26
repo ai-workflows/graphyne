@@ -1,11 +1,12 @@
+use std::collections::HashMap;
 use clap::{Parser};
 use std::sync::Arc;
 use std::thread;
-use crate::api::{bind, call, load_intermediate, log_async, log_error};
+use crate::api::{await_call, bind, load_intermediate, log_async, log_error, stream_call};
 use crate::binder::intermediate::collection::Collection;
 use crate::binder::json::jsonify;
 use crate::runtime::data::stored::StoredData;
-use crate::runtime::ExecResult;
+use crate::runtime::{ExecResult, Symbol};
 use crate::runtime::mmu::mmu::MMU;
 use crate::runtime::mmu::value_ref::ValueReference;
 use crate::runtime::vm::manager::StreamResult;
@@ -80,13 +81,13 @@ fn main() {
 
             let mmu2 = mmu.clone();
             thread::spawn(move || {
-                let _ = call(
+                let _ = stream_call(
                     main_func,
                     vec![],
                     mmu2,
                     verbose,
                     workers,
-                    Some(outputs_sender.clone())
+                    outputs_sender
                 );
             });
 
@@ -137,16 +138,15 @@ fn main() {
 
             let main_func: ValueReference = binder.get_path(vec![main_collection_symbol, "main".to_string()]).unwrap();
 
-            let res: ExecResult<Vec<ValueReference>> = call(
+            let res: ExecResult<HashMap<Symbol, ValueReference>> = await_call(
                 main_func.clone(),
                 vec![],
                 mmu.clone(),
                 verbose,
                 workers,
-                None
             );
 
-            let res: Vec<ValueReference> = match res {
+            let res: HashMap<Symbol, ValueReference> = match res {
                 Ok(v) => v,
                 Err(e) => {
                     log_error(format!("result | error: {}", e));
@@ -156,23 +156,28 @@ fn main() {
 
             log_async("result | success".to_string());
 
-            let main_func_stored = mmu.get_ref_value(&main_func).unwrap();
-            let main_func = match main_func_stored.as_ref() {
-                StoredData::FuncStored(f) => f,
-                _ => panic!("main function is not a function")
-            };
-
-            for i in 0..res.len() {
-                let output_fn_val_ptr = main_func.output_vals.get(i).unwrap();
-                let output_fn_val = mmu.get_ptr_value(output_fn_val_ptr).unwrap();
-                match output_fn_val.as_ref() {
-                    StoredData::FuncValStored(k) => {
-                        let k_symbol = k.symbol.clone().unwrap_or(k.guid.clone());
-                        log_async(format!("out | {}: {}", k_symbol, jsonify(mmu.clone(), &mmu.get_ref_value(&res[i]).unwrap())));
-                    },
-                    _ => panic!("output value is not a function value")
-                }
+            for (k, v) in res.iter() {
+                log_async(format!("out | {}: {}", k, jsonify(mmu.clone(), &mmu.get_ref_value(v).unwrap())));
             }
+
+
+            // let main_func_stored = mmu.get_ref_value(&main_func).unwrap();
+            // let main_func = match main_func_stored.as_ref() {
+            //     StoredData::FuncStored(f) => f,
+            //     _ => panic!("main function is not a function")
+            // };
+            //
+            // for i in 0..res.len() {
+            //     let output_fn_val_ptr = main_func.output_vals.get(i).unwrap();
+            //     let output_fn_val = mmu.get_ptr_value(output_fn_val_ptr).unwrap();
+            //     match output_fn_val.as_ref() {
+            //         StoredData::FuncValStored(k) => {
+            //             let k_symbol = k.symbol.clone().unwrap_or(k.guid.clone());
+            //             log_async(format!("out | {}: {}", k_symbol, jsonify(mmu.clone(), &mmu.get_ref_value(&res[i]).unwrap())));
+            //         },
+            //         _ => panic!("output value is not a function value")
+            //     }
+            // }
         }
     }
 }

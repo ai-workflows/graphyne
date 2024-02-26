@@ -1,7 +1,8 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, mpsc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::io;
 use std::io::Write;
+use std::sync::mpsc::Sender;
 use rayon::{ThreadPool};
 use crate::runtime::data::functions::val::FuncValId;
 use crate::runtime::data::live::{FuncLive, FuncOpLive, FuncValLive, PointerLive};
@@ -11,6 +12,7 @@ use crate::runtime::data::functions::FuncVal;
 use crate::runtime::data::functions::op::FuncOpId;
 use crate::runtime::mmu::mmu::{MMU, value_ref_from_ptr};
 use crate::runtime::mmu::value_ref::ValueReference;
+use crate::runtime::vm::manager::{manage_executor_result, manage_orchestrator_result, StreamResult};
 
 pub type CallContextId = String;
 // pub type MetaValueId = String;
@@ -91,7 +93,7 @@ pub struct SharedCallState {
     pending_ops: Arc<RwLock<HashMap<CallContextId, HashSet<FuncOpId>>>>,
 
     /// A sender for sending outputs back to the main thread.
-    // output_sender: mpsc::Sender<NewValMessage<'a>>,
+    output_sender: Arc<Mutex<Sender<StreamResult>>>,
 
     /// Callback that is called when one of the output values is calculated.
     // output_callback: Box<dyn Fn(CallContextId, &FuncValLive, ValueReference<'a>)>,
@@ -102,8 +104,6 @@ pub struct SharedCallState {
     /// The virtual machine that this shared state is associated with.
     // pub vm: Arc<VM>,
     pub mmu: Arc<MMU>,
-
-    control_sender: mpsc::Sender<ControlMessage>,
 
     pub worker_pool: Arc<ThreadPool>,
 
@@ -117,7 +117,7 @@ impl SharedCallState {
     /// Creates a new shared call state.
     pub fn new(
         mmu: Arc<MMU>,
-        control_sender: mpsc::Sender<ControlMessage>,
+        output_sender: Arc<Mutex<Sender<StreamResult>>>,
         final_outputs: HashSet<(CallContextId, FuncValId)>,
         worker_pool: Arc<ThreadPool>,
         verbose: bool
@@ -126,7 +126,7 @@ impl SharedCallState {
             val_lookup: Arc::new(RwLock::new(HashMap::new())),
             output_lookup: Arc::new(RwLock::new(HashMap::new())),
             call_lookup: Arc::new(Default::default()),
-            control_sender,
+            output_sender,
             final_outputs: Arc::new(RwLock::new(final_outputs)),
             pending_ops: Arc::new(RwLock::new(HashMap::new())),
             mmu,
@@ -196,57 +196,57 @@ impl SharedCallState {
     }
 
     /// Sends a new operation to be executed by the executor.
-    pub fn send_new_op(&self, call_context_id: CallContextId, op: FuncOpLive) {
-        // try to register the pending op, do not dispatch if it is already pending
-        if !self.try_register_pending_op(&call_context_id, &op.guid) {
-            return;
-        }
-
-        let message = NewOpMessage {
-            call_context_id: call_context_id.clone(),
-            op
-        };
-
-        let op_code = message.op.opcode.clone();
-
-        // println!("Sending new operation: {:?}", message.op.opcode);
-        self.log_async(&call_context_id, &format!("Sending new operation: {:?}", op_code));
-
-        match self.control_sender.send(ControlMessage::FromOrchestrator(OrchestratorMessage::NewOp(message))) {
-            Ok(_) => {},
-            Err(e) => self.log_error(&call_context_id, &format!("Error sending new operation ({}): {}", op_code, e))
-        }
-    }
+    // pub fn send_new_op(&self, call_context_id: CallContextId, op: FuncOpLive) {
+    //     // try to register the pending op, do not dispatch if it is already pending
+    //     if !self.try_register_pending_op(&call_context_id, &op.guid) {
+    //         return;
+    //     }
+    //
+    //     let message = NewOpMessage {
+    //         call_context_id: call_context_id.clone(),
+    //         op
+    //     };
+    //
+    //     let op_code = message.op.opcode.clone();
+    //
+    //     // println!("Sending new operation: {:?}", message.op.opcode);
+    //     self.log_async(&call_context_id, &format!("Sending new operation: {:?}", op_code));
+    //
+    //     match self.control_sender.send(ControlMessage::FromOrchestrator(OrchestratorMessage::NewOp(message))) {
+    //         Ok(_) => {},
+    //         Err(e) => self.log_error(&call_context_id, &format!("Error sending new operation ({}): {}", op_code, e))
+    //     }
+    // }
 
     /// Sends a new value to be handled by the orchestrator.
-    pub fn send_new_val(&self, call_context_id: CallContextId, func_val: &FuncValLive, value: ValueReference) {
-        let message = NewValMessage {
-            call_context_id: call_context_id.clone(),
-            func_val: func_val.clone(),
-            value
-        };
-
-        let symbol: Symbol = match &message.func_val.symbol {
-            Some(s) => s.clone(),
-            None => message.func_val.guid.clone(),
-        };
-
-        self.log_async(&call_context_id, &format!(
-            "Sending new value: {} in {}",
-            symbol,
-            message.call_context_id));
-
-        // // check if it is a final output
-        // if self.final_outputs.read().unwrap().contains(&(call_context_id.clone(), func_val.guid.clone())) {
-        //     self.output_sender.send(message.clone()).unwrap();
-        // }
-
-        match self.control_sender.send(ControlMessage::FromExecutor(ExecutorMessage::NewVal(message))) {
-            Ok(_) => {},
-            Err(e) => self.log_error(&call_context_id, &format!(
-                "Error sending new value ({}): {}", symbol, e))
-        }
-    }
+    // pub fn send_new_val(&self, call_context_id: CallContextId, func_val: &FuncValLive, value: ValueReference) {
+    //     let message = NewValMessage {
+    //         call_context_id: call_context_id.clone(),
+    //         func_val: func_val.clone(),
+    //         value
+    //     };
+    //
+    //     let symbol: Symbol = match &message.func_val.symbol {
+    //         Some(s) => s.clone(),
+    //         None => message.func_val.guid.clone(),
+    //     };
+    //
+    //     self.log_async(&call_context_id, &format!(
+    //         "Sending new value: {} in {}",
+    //         symbol,
+    //         message.call_context_id));
+    //
+    //     // // check if it is a final output
+    //     // if self.final_outputs.read().unwrap().contains(&(call_context_id.clone(), func_val.guid.clone())) {
+    //     //     self.output_sender.send(message.clone()).unwrap();
+    //     // }
+    //
+    //     match self.control_sender.send(ControlMessage::FromExecutor(ExecutorMessage::NewVal(message))) {
+    //         Ok(_) => {},
+    //         Err(e) => self.log_error(&call_context_id, &format!(
+    //             "Error sending new value ({}): {}", symbol, e))
+    //     }
+    // }
 
     /// Drops the values associated with a given call context.
     /// This is used when execution of a function call is complete.
@@ -257,7 +257,28 @@ impl SharedCallState {
 
     pub fn throw_error(&self, call_context_id: &CallContextId, msg: &str) {
         // send an error control message
-        self.control_sender.send(ControlMessage::Error(call_context_id.clone(), msg.to_string())).expect("Error sending error message");
+        // self.control_sender.send(ControlMessage::Error(call_context_id.clone(), msg.to_string())).expect("Error sending error message");
+
+        match self.output_sender.lock().unwrap().send(StreamResult::Error(msg.to_string())) {
+            Ok(_) => {},
+            Err(e) => {
+                if self.verbose {
+                    self.log_error(call_context_id, &format!("Error sending error message ({}): {}", msg, e))
+                }
+            }
+        }
+    }
+
+    pub fn send_output(&self, func_val: FuncValLive, value: ValueReference) {
+        match self.output_sender.lock().unwrap().send(StreamResult::Output(
+            func_val,
+            value
+        )) {
+            Ok(_) => {},
+            Err(e) => if self.verbose {
+                self.log_error(&"".to_string(), &format!("Error sending output: {}", e))
+            }
+        }
     }
 
     pub fn is_output(&self, call_context_id: &CallContextId, func_val: &FuncValLive) -> bool {
@@ -563,4 +584,59 @@ pub fn get_func_op_from_ptr(
         }
         Err(e) => return Err(format!("Error getting FuncOp: {}", e))
     }
+}
+
+pub fn send_new_op(shared_state: Arc<SharedCallState>, call_context_id: CallContextId, op: FuncOpLive) {
+    // try to register the pending op, do not dispatch if it is already pending
+    if !shared_state.try_register_pending_op(&call_context_id, &op.guid) {
+        return;
+    }
+
+    let message = NewOpMessage {
+        call_context_id: call_context_id.clone(),
+        op
+    };
+
+    let op_code = message.op.opcode.clone();
+
+    // println!("Sending new operation: {:?}", message.op.opcode);
+    shared_state.log_async(&call_context_id, &format!("Sending new operation: {:?}", op_code));
+
+    // match self.control_sender.send(ControlMessage::FromOrchestrator(OrchestratorMessage::NewOp(message))) {
+    //     Ok(_) => {},
+    //     Err(e) => self.log_error(&call_context_id, &format!("Error sending new operation ({}): {}", op_code, e))
+    // }
+
+    manage_orchestrator_result(OrchestratorMessage::NewOp(message), shared_state.clone());
+}
+
+pub fn send_new_val(shared_state: Arc<SharedCallState>, call_context_id: CallContextId, func_val: &FuncValLive, value: ValueReference) {
+    let message = NewValMessage {
+        call_context_id: call_context_id.clone(),
+        func_val: func_val.clone(),
+        value
+    };
+
+    let symbol: Symbol = match &message.func_val.symbol {
+        Some(s) => s.clone(),
+        None => message.func_val.guid.clone(),
+    };
+
+    shared_state.log_async(&call_context_id, &format!(
+        "Sending new value: {} in {}",
+        symbol,
+        message.call_context_id));
+
+    // // check if it is a final output
+    // if self.final_outputs.read().unwrap().contains(&(call_context_id.clone(), func_val.guid.clone())) {
+    //     self.output_sender.send(message.clone()).unwrap();
+    // }
+
+    // match self.control_sender.send(ControlMessage::FromExecutor(ExecutorMessage::NewVal(message))) {
+    //     Ok(_) => {},
+    //     Err(e) => self.log_error(&call_context_id, &format!(
+    //         "Error sending new value ({}): {}", symbol, e))
+    // }
+
+    manage_executor_result(ExecutorMessage::NewVal(message), shared_state.clone());
 }
