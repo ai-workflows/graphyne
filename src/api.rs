@@ -3,28 +3,26 @@ use std::{fs, io};
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
-use crate::binder::Binder;
+use crate::binder::binder;
 use crate::binder::intermediate::collection::Collection;
 use crate::binder::json::jsonify;
-use crate::runtime::data::live::{FuncLive, FuncValLive};
-use crate::runtime::mmu::mmu::MMU;
-use crate::runtime::mmu::value_ref::ValueReference;
+use crate::runtime::data::live::{FuncValLive, PointerLive};
 use crate::runtime::{ExecResult, Symbol};
+use crate::runtime::static_state::state::StaticState;
 use crate::runtime::vm::manager::{manage_await_call, manage_start_call, StreamResult};
-use crate::runtime::vm::shared::{get_func_from_ptr};
 
 pub fn await_call(
-    func: ValueReference,
-    args: Vec<ValueReference>,
-    mmu: Arc<MMU>,
+    func: PointerLive,
+    args: Vec<PointerLive>,
+    static_state: Arc<StaticState>,
     verbose: bool,
     workers: Option<usize>,
-) -> ExecResult<HashMap<Symbol, ValueReference>> {
+) -> ExecResult<HashMap<Symbol, PointerLive>> {
     let worker_count = get_worker_counts(workers);
     let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(worker_count).build().unwrap());
 
     manage_await_call(
-        mmu.clone(),
+        static_state.clone(),
         worker_pool,
         func,
         args,
@@ -33,9 +31,9 @@ pub fn await_call(
 }
 
 pub fn stream_call(
-    func: ValueReference,
-    args: Vec<ValueReference>,
-    mmu: Arc<MMU>,
+    func: PointerLive,
+    args: Vec<PointerLive>,
+    static_state: Arc<StaticState>,
     verbose: bool,
     workers: Option<usize>,
     output_sender: Sender<StreamResult>,
@@ -46,7 +44,7 @@ pub fn stream_call(
     let output_sender = Arc::new(Mutex::new(output_sender));
 
     manage_start_call(
-        mmu.clone(),
+        static_state.clone(),
         worker_pool,
         func,
         args,
@@ -63,12 +61,12 @@ pub fn load_intermediate(path: &str) -> Result<Collection, String> {
     Ok(program)
 }
 
-pub fn bind(program: Collection, mmu: Arc<MMU>, program_symbol: Option<Symbol>) -> Result<Binder, String> {
-    let program_symbol = program_symbol.unwrap_or_else(|| "main".to_string());
-    let mut binder = Binder { mmu, symbol_table: HashMap::new() };
-    binder.store_collection(program, program_symbol).map_err(|e| format!("Error binding program: {}", e))?;
+pub fn bind(program: Collection, program_symbol: Option<Symbol>) -> Result<Arc<StaticState>, String> {
+    let static_state = Arc::new(StaticState::new());
 
-    Ok(binder)
+    binder::bind_program(program, static_state.clone(), program_symbol).map_err(|e| format!("Error binding program: {}", e))?;
+
+    Ok(static_state)
 }
 
 pub fn get_worker_counts(
@@ -85,16 +83,16 @@ pub fn get_worker_counts(
     count
 }
 
-pub fn get_main_func_ref(main_collection_symbol: Symbol,
-                         binder: &Binder
-) -> Result<ValueReference, String> {
-    binder.get_path(vec![main_collection_symbol, "main".to_string()])
-}
-
-pub fn get_func_output_count(fn_ref: &ValueReference, mmu: Arc<MMU>) -> Result<usize, String> {
-    let main_func: FuncLive = get_func_from_ptr(mmu.clone(), &fn_ref.pointer)?;
-    Ok(main_func.output_vals.len())
-}
+// pub fn get_main_func_ref(main_collection_symbol: Symbol,
+//                          binder: &Binder
+// ) -> Result<PointerLive, String> {
+//     binder.get_path(vec![main_collection_symbol, "main".to_string()])
+// }
+//
+// pub fn get_func_output_count(fn_ref: &PointerLive, mmu: Arc<MMU>) -> Result<usize, String> {
+//     let main_func: FuncLive = get_func_from_ptr(mmu.clone(), &fn_ref.pointer)?;
+//     Ok(main_func.output_vals.len())
+// }
 
 pub fn log_async(message: String) {
     let stdout = io::stdout();
@@ -112,20 +110,13 @@ pub fn log_error(msg: String) {
 }
 
 
-pub fn log_output(mmu: Arc<MMU>, func_val: &FuncValLive, value: &ValueReference) {
+pub fn log_output(func_val: &FuncValLive, value: &PointerLive) {
     let symbol = match &func_val.symbol {
         Some(s) => s,
         None => &func_val.guid,
     };
 
-    let stored = match mmu.get_ref_value(value) {
-        Ok(v) => v,
-        Err(e) => {
-            log_error(format!("Error getting output value: {}", e));
-            return;
-        },
-    };
-    let val = jsonify(mmu.clone(), &stored);
+    let val = jsonify(value.as_ref());
     log_async(format!("out | {}: {}", symbol, val));
 }
 

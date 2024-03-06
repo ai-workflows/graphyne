@@ -1,35 +1,36 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, mpsc, Mutex};
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::{Sender};
 use rayon::ThreadPool;
 use crate::runtime::data::functions::val::FuncValId;
-use crate::runtime::data::live::{FuncLive, FuncValLive};
+use crate::runtime::data::live::{FuncValLive};
 use crate::runtime::{ExecResult, Symbol};
-use crate::runtime::mmu::mmu::MMU;
-use crate::runtime::mmu::value_ref::ValueReference;
+use crate::runtime::data::stored::lists::ptrs_to_func_val_list;
+use crate::runtime::data::stored::StoredData;
+use crate::runtime::static_state::state::StaticState;
 use crate::runtime::vm::{executor, orchestrator};
 use crate::runtime::vm::orchestrator::handle_called_fn_constants;
-use crate::runtime::vm::shared::{CallContextId, ControlMessage, ExecutorMessage, get_func_from_ptr, get_func_vals_from_ptrs, NewOpMessage, OrchestratorMessage, send_new_val, SharedCallState};
+use crate::runtime::vm::shared::{CallContextId, ExecutorMessage, NewOpMessage, OrchestratorMessage, send_new_val, SharedCallState};
 
 
 
 pub enum StreamResult {
     NumOutputs(usize),
-    Output(FuncValLive, ValueReference),
+    Output(FuncValLive, Arc<StoredData>),
     Error(String)
 }
 
 pub fn manage_await_call(
-    mmu: Arc<MMU>,
+    static_state: Arc<StaticState>,
     worker_pool: Arc<ThreadPool>,
-    func: ValueReference,
-    args: Vec<ValueReference>,
+    func: Arc<StoredData>,
+    args: Vec<Arc<StoredData>>,
     verbose: bool,
-) -> ExecResult<HashMap<Symbol, ValueReference>> {
+) -> ExecResult<HashMap<Symbol, Arc<StoredData>>> {
     let (outputs_sender, outputs_receiver) = mpsc::channel::<StreamResult>();
 
     manage_start_call(
-        mmu.clone(),
+        static_state.clone(),
         worker_pool.clone(),
         func,
         args,
@@ -37,7 +38,7 @@ pub fn manage_await_call(
         verbose,
     ).unwrap();
 
-    let mut outputs: HashMap<Symbol, ValueReference> = HashMap::new();
+    let mut outputs: HashMap<Symbol, Arc<StoredData>> = HashMap::new();
     let mut output_count: Option<usize> = None;
 
     for res in outputs_receiver.iter() {
@@ -66,10 +67,10 @@ pub fn manage_await_call(
 
 
 pub fn manage_start_call<'a>(
-    mmu: Arc<MMU>,
+    static_state: Arc<StaticState>,
     worker_pool: Arc<ThreadPool>,
-    func: ValueReference,
-    args: Vec<ValueReference>,
+    func: Arc<StoredData>,
+    args: Vec<Arc<StoredData>>,
     output_sender: Arc<Mutex<Sender<StreamResult>>>,
     verbose: bool,
 
@@ -78,25 +79,15 @@ pub fn manage_start_call<'a>(
     let main_call_id = uuid::Uuid::new_v4().to_string();
 
     // get the function's outputs
-    let func_live = get_func_from_ptr(mmu.clone(), &func.pointer).unwrap();
-    let output_fn_vals = match get_func_vals_from_ptrs(
-        mmu.clone(),
-        &func_live.output_vals,
-    ) {
-        Ok(v) => v,
-        Err(e) => {
-            let error_msg = format!("Error getting function outputs: {}", e);
-
-            return Err(error_msg);
-        }
-    };
+    let func_live = func.stored_as_func()?;
+    let output_fn_vals = ptrs_to_func_val_list(&func_live.output_vals)?;
 
     let final_outputs: HashSet<(CallContextId, FuncValId)> = output_fn_vals.iter()
         .map(|val| (main_call_id.clone(), val.guid.clone()))
         .collect();
 
     let shared_state: Arc<SharedCallState> = SharedCallState::new(
-        mmu.clone(),
+        static_state.clone(),
         output_sender.clone(),
         final_outputs,
         worker_pool.clone(),
@@ -106,19 +97,10 @@ pub fn manage_start_call<'a>(
     shared_state.log_async(&main_call_id, &"Starting new call".to_string());
 
     // get the function's inputs
-    let input_fn_vals = match get_func_vals_from_ptrs(
-        mmu.clone(),
-        &func_live.input_vals,
-    ) {
-        Ok(v) => v,
-        Err(e) => {
-            // shared_state.halt_execution(&main_call_id, CallResult::Error(e.clone()));
-            return Err(e);
-        }
-    };
+    let input_fn_vals = ptrs_to_func_val_list(&func_live.input_vals)?;
 
     // match the function's inputs with the provided args
-    let input_fn_vals: Vec<(ValueReference, FuncValLive)> = args.iter()
+    let input_fn_vals: Vec<(Arc<StoredData>, FuncValLive)> = args.iter()
         .zip(input_fn_vals)
         .map(|(arg, val)| (arg.clone(), val.clone()))
         .collect();
@@ -150,8 +132,8 @@ pub fn manage_start_call<'a>(
 //     control_receiver: Receiver<ControlMessage>,
 //     output_sender: Option<Arc<Mutex<Sender<StreamResult>>>>,
 //     main_func: &FuncLive
-// ) -> ExecResult<Vec<ValueReference>> {
-//     let outputs: Arc<Mutex<Vec<(FuncValLive, ValueReference)>>> = Arc::new(Mutex::new(vec![]));
+// ) -> ExecResult<Vec<Arc<StoredData>>> {
+//     let outputs: Arc<Mutex<Vec<(FuncValLive, Arc<StoredData>)>>> = Arc::new(Mutex::new(vec![]));
 //
 //     for message in control_receiver.iter() {
 //         let ss = shared_state.clone();
@@ -182,7 +164,7 @@ pub fn manage_start_call<'a>(
 //     // get the outputs in the same order as the function's output values
 //     let outputs = outputs.lock().unwrap();
 //     let fn_output_vals = get_func_vals_from_ptrs(shared_state.mmu.clone(), &main_func.output_vals).unwrap();
-//     let outputs: Vec<ValueReference> = fn_output_vals.iter()
+//     let outputs: Vec<Arc<StoredData>> = fn_output_vals.iter()
 //         .map(|val| {
 //             let output = outputs.iter()
 //                 .find(|(output_fn_val, _)| output_fn_val.guid == val.guid)
@@ -288,12 +270,11 @@ pub fn manage_orchestrator_result(
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use std::sync::{Arc, mpsc, Mutex};
+    use std::sync::{Arc, mpsc};
     use crate::binder::intermediate::collection::Collection;
     use crate::binder::Binder;
     use crate::runtime::data::live::{LiveData, IntLive};
     use crate::runtime::mmu::mmu::MMU;
-    use crate::runtime::mmu::value_ref::ValueReference;
     use crate::runtime::vm::manager::{manage_await_call, manage_start_call, StreamResult};
 
     #[test]
@@ -365,7 +346,7 @@ mod tests {
 
             assert_eq!(outputs.len(), 1);
 
-            let output_values: Vec<ValueReference> = outputs.values().cloned().collect();
+            let output_values: Vec<Arc<StoredData>> = outputs.values().cloned().collect();
 
             let result = api.mmu.get_ref_value(&output_values[0]).unwrap().as_live().as_int().unwrap().unwrap();
 
@@ -445,7 +426,7 @@ mod tests {
                 true,
             ).unwrap();
 
-            // let mut outputs: Vec<(FuncValLive, ValueReference)> = vec![];
+            // let mut outputs: Vec<(FuncValLive, Arc<StoredData>)> = vec![];
             //
             // for i in 0..expected_num_outputs {
             //     let res = outputs_receiver.recv().unwrap();
@@ -463,7 +444,7 @@ mod tests {
 
             assert_eq!(res.len(), 1);
 
-            let output_values: Vec<ValueReference> = res.values().cloned().collect();
+            let output_values: Vec<Arc<StoredData>> = res.values().cloned().collect();
 
             let value = api.mmu.get_ref_value(&output_values[0]).unwrap().as_live().as_int().unwrap().unwrap();
 
@@ -566,7 +547,7 @@ mod tests {
 
             // let result = outputs[0].deref().unwrap().as_live().as_int().unwrap().unwrap();
 
-            let output_values: Vec<ValueReference> = outputs.values().cloned().collect();
+            let output_values: Vec<Arc<StoredData>> = outputs.values().cloned().collect();
             assert_eq!(output_values.len(), 1);
             let result = api.mmu.get_ref_value(&output_values[0]).unwrap().as_live().as_int().unwrap().unwrap();
 
@@ -658,7 +639,7 @@ mod tests {
 
             assert_eq!(outputs.len(), 1);
 
-            let output_values: Vec<ValueReference> = outputs.values().cloned().collect();
+            let output_values: Vec<Arc<StoredData>> = outputs.values().cloned().collect();
             assert_eq!(output_values.len(), 1);
 
             let result = api.mmu.get_ref_value(&output_values[0]).unwrap().as_live().as_list().unwrap().unwrap();
@@ -763,7 +744,7 @@ mod tests {
 
         assert_eq!(outputs.len(), 1);
 
-        let output_values: Vec<ValueReference> = outputs.values().cloned().collect();
+        let output_values: Vec<Arc<StoredData>> = outputs.values().cloned().collect();
         assert_eq!(output_values.len(), 1);
 
         let result = binder.mmu.get_ref_value(&output_values[0]).unwrap().as_live().as_list().unwrap().unwrap();

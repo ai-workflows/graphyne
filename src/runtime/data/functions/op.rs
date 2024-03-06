@@ -4,7 +4,7 @@ use crate::runtime::data::live::{PointerLive, StringLive};
 pub type FuncOpId = StringLive;
 
 /// Represents an operation that is executed within a function.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FuncOp {
     pub guid: FuncOpId,
 

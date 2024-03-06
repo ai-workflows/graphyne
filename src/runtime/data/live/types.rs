@@ -1,14 +1,14 @@
-use std::collections::HashMap;
 use std::hash::Hash;
+use std::sync::Arc;
 use crate::runtime::data::live::live_data::{TypeLive};
 use crate::runtime::data::live::{LiveData, PointerLive, StringLive};
 use crate::runtime::{ExecResult, Symbol};
-use crate::runtime::data::live::helpers::type_of_helper;
 use crate::runtime::data::stored::StoredData;
+use crate::runtime::static_state::state::StaticState;
 
 /// Represents the "language" type of a piece of data.
 /// Note: there may not be a one-to-one correspondence between this, rust-types, and stored-types.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Integer,
     Float,
@@ -71,8 +71,8 @@ fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 }
 
 impl LiveData for TypeLive {
-    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
-        type_of_helper(&TypeLive::Type, &type_map)
+    fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {
+        type_map.get_primitive_type(&TypeLive::Type).map(|r| Ok(r))
     }
 
     fn as_string(&self) -> Option<ExecResult<StringLive>> {

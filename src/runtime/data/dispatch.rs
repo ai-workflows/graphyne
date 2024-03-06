@@ -1,11 +1,11 @@
-use std::collections::HashMap;
+use std::sync::Arc;
 use crate::runtime::{ExecResult};
-use crate::runtime::data::live::{NullLive, IntLive, FloatLive, StringLive, PointerLive, ListLive, LiveData, DictLive, BoolLive, FuncLive, FuncValLive, FuncOpLive};
+use crate::runtime::data::live::{NullLive, IntLive, FloatLive, StringLive, PointerLive, ListLive, LiveData, DictLive, BoolLive, FuncLive, FuncValLive, FuncOpLive, StaticRefLive};
 use crate::runtime::data::live::live_data::{ObjectLive, TypeLive};
 use crate::runtime::data::stored::StoredData;
-use crate::runtime::gc::GCPointer;
+use crate::runtime::static_state::state::StaticState;
 
-/// New type wrapper for StoredData that implements LiveData using enum-based static dispatch.
+/// New type wrapper for StoredData that implements LiveData using enum-based static_state dispatch.
 struct LiveDispatch<'a>(&'a StoredData);
 
 /// Add functions to convert stored data to live data.
@@ -32,6 +32,7 @@ macro_rules! static_dispatch {
                 StoredData::FuncOpStored(value) => <FuncOpLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::TypeStored(value) => <TypeLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::ObjectStored(value) => <ObjectLive as LiveData>::$name(value, $( $arg ),* ),
+                StoredData::StaticRefStored(value) => <StaticRefLive as LiveData>::$name(value, $( $arg ),* ),
             }
         }
     };
@@ -40,7 +41,7 @@ macro_rules! static_dispatch {
 
 /// Implement LiveData for LiveDispatch.
 impl LiveData for LiveDispatch<'_> {
-    static_dispatch!{ fn type_of(type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> }
+    static_dispatch!{ fn type_of(static_state: Arc<StaticState>) -> Option<ExecResult<PointerLive>> }
     static_dispatch!{ fn as_int() -> Option<ExecResult<IntLive>> }
     static_dispatch!{ fn as_float() -> Option<ExecResult<FloatLive>> }
     static_dispatch!{ fn as_string() -> Option<ExecResult<StringLive>> }
@@ -64,8 +65,8 @@ impl LiveData for LiveDispatch<'_> {
     static_dispatch!{ fn is_null() -> Option<ExecResult<BoolLive>> }
     static_dispatch!{ fn op_len() -> Option<ExecResult<IntLive>> }
     static_dispatch!{ fn op_get_item(index: &StoredData) -> Option<ExecResult<StoredData>> }
-    static_dispatch!{ fn op_set_item(index: &StoredData, value: GCPointer<StoredData>) -> Option<ExecResult<StoredData>> }
-    static_dispatch!{ fn op_push(value: GCPointer<StoredData>) -> Option<ExecResult<StoredData>> }
+    static_dispatch!{ fn op_set_item(index: &StoredData, value: PointerLive) -> Option<ExecResult<StoredData>> }
+    static_dispatch!{ fn op_push(value: PointerLive) -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_remove(index: &StoredData) -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_add(rhs: &StoredData) -> Option<ExecResult<StoredData>> }
     static_dispatch!{ fn op_sub(rhs: &StoredData) -> Option<ExecResult<StoredData>> }

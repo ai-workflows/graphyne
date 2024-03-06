@@ -1,13 +1,13 @@
-use std::collections::HashMap;
+use std::sync::Arc;
 use crate::runtime::data::live::{BoolLive, FuncLive, FuncOpLive, FuncValLive, LiveData, PointerLive};
 use crate::runtime::{ExecResult};
-use crate::runtime::data::live::helpers::type_of_helper;
 use crate::runtime::data::live::live_data::TypeLive;
 use crate::runtime::data::stored::StoredData;
+use crate::runtime::static_state::state::StaticState;
 
 impl LiveData for FuncLive {
-    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
-        type_of_helper(&TypeLive::Function, &type_map)
+    fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {
+        type_map.get_primitive_type(&TypeLive::Function).map(|r| Ok(r))
     }
 
     fn as_func(&self) -> Option<ExecResult<FuncLive>> {
@@ -27,8 +27,8 @@ impl LiveData for FuncLive {
 }
 
 impl LiveData for FuncValLive {
-    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
-        type_of_helper(&TypeLive::FunctionVal, &type_map)
+    fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {
+        type_map.get_primitive_type(&TypeLive::FunctionVal).map(|r| Ok(r))
     }
 
     fn as_func_val(&self) -> Option<ExecResult<FuncValLive>> {
@@ -48,8 +48,8 @@ impl LiveData for FuncValLive {
 }
 
 impl LiveData for FuncOpLive {
-    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
-        type_of_helper(&TypeLive::FunctionOp, &type_map)
+    fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {
+        type_map.get_primitive_type(&TypeLive::FunctionOp).map(|r| Ok(r))
     }
 
     fn as_func_op(&self) -> Option<ExecResult<FuncOpLive>> {

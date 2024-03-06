@@ -1,10 +1,13 @@
 use crate::runtime::data::live::PointerLive;
+use crate::runtime::{SymbolPath};
 
 pub type FunctionId = String;
 
 /// Represents the signature of a function.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FuncSig {
+    pub symbol_path: Option<SymbolPath>,
+
     pub guid: FunctionId,
     
     /// A list of pointers to the func value nodes that args will be binded to when the function is called.

@@ -4,7 +4,7 @@ use crate::runtime::Symbol;
 pub type FuncValId = StringLive;
 
 /// Represents a value that exists within the scope of a function call.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FuncVal {
     /// The local symbol for this value.
     pub symbol: Option<Symbol>,

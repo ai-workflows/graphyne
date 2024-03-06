@@ -1,19 +1,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use crate::runtime::data::live::{LiveData, PointerLive, TypeLive};
+use crate::runtime::data::live::{LiveData, ObjectLive, PointerLive, TypeLive};
 use crate::runtime::data::stored::StoredData;
 use crate::runtime::{ExecResult};
-use crate::runtime::mmu::mmu::{execute_store, MMU};
-use crate::runtime::mmu::store_op::StoreOp;
-use crate::runtime::mmu::value_ref::ValueReference;
+use crate::runtime::static_state::state::StaticState;
 
-pub fn execute_init(mmu: Arc<MMU>, obj_type_ref: &ValueReference, args: Vec<&ValueReference>) -> ExecResult<Vec<ValueReference>> {
-    let obj_type_arc = mmu.get_ref_value(obj_type_ref)?;
-
-    let obj_type = match obj_type_arc.as_ref() {
-        StoredData::TypeStored(t) => t,
-        _ => return Err("Cannot execute operation init for non-type value".to_string())
-    };
+pub fn execute_init(obj_type_ref: Arc<StoredData>, args: Vec<Arc<StoredData>>, static_state: Arc<StaticState>) -> ExecResult<Vec<PointerLive>> {
+    let obj_type = obj_type_ref.stored_as_type()?;
 
     // make sure it is a custom type
     let obj_type = match obj_type {
@@ -21,51 +14,49 @@ pub fn execute_init(mmu: Arc<MMU>, obj_type_ref: &ValueReference, args: Vec<&Val
         _ => return Err("Cannot execute operation init for non-custom type".to_string())
     };
 
-    if obj_type.2.len() != args.len() {
-        return Err(format!("Cannot initialize object of type {} with {} arguments, expected {}", obj_type.0, args.len(), obj_type.2.len()));
+    let (obj_t_name, _, obj_t_fields) = obj_type;
+
+    if obj_t_fields.len() != args.len() {
+        return Err(format!("Cannot initialize object of type {} with {} arguments, expected {}", obj_t_name, args.len(), obj_t_fields.len()));
     }
 
-    let mut vals: HashMap<String, &ValueReference> = HashMap::new();
+    let mut vals: HashMap<String, Arc<StoredData>> = HashMap::new();
 
-    for (i, field) in obj_type.2.iter().enumerate() {
+    for (i, field) in obj_t_fields.iter().enumerate() {
+        let (field_name, field_type_ptr) = field;
+
         // get the expected type of the field
-        let expected_type_ptr: &PointerLive = &field.1;
-        let expected_type = mmu.get_ptr_value(expected_type_ptr)?;
-        let expected_type = match expected_type.as_ref() {
-            StoredData::TypeStored(t) => t,
-            _ => return Err(format!("Cannot initialize object of type {}, cannot get type of field {}", field.0, field.0))
-        };
+        let field_type: &TypeLive = field_type_ptr.stored_as_type()?;
 
         let arg = &args[i];
-        let arg_value: Arc<StoredData> = mmu.get_ref_value(arg)?;
 
         // do a type check if it isn't dynamic
-        match expected_type {
+        match field_type {
             TypeLive::Dynamic => (),
             _ => {
-                let arg_type_ptr = match arg_value.as_live().type_of(&mmu.primitive_types) {
+                let arg_type_ptr = match arg.as_ref().as_live().type_of(static_state.clone()) {
                     Some(Ok(ptr)) => ptr,
                     Some(Err(msg)) => return Err(format!("Could not get type of argument {}: {}", i, msg)),
                     None => return Err(format!("Cannot initialize object with argument {} of unknown type", i))
                 };
 
-                let arg_type_ref = mmu.get_ptr_value(&arg_type_ptr)?;
-                let arg_type: &TypeLive = match arg_type_ref.as_ref() {
-                    StoredData::TypeStored(t) => t,
-                    _ => return Err(format!("Cannot initialize object with argument {} of non-type value", i))
-                };
+                let arg_type: &TypeLive = arg_type_ptr.stored_as_type()?;
 
-                if arg_type != expected_type {
-                    return Err(format!("Cannot initialize object of type {} with argument {} of type {}, expected {}", obj_type.0, i, arg_type.get_name(), expected_type.get_name()));
+                if arg_type != field_type {
+                    return Err(format!("Cannot initialize object of type {} with argument {} of type {}, expected {}", obj_t_name, i, arg_type.get_name(), field_type.get_name()));
                 }
             }
         }
 
-        vals.insert(field.0.clone(), arg);
+        vals.insert(field_name.clone(), arg.clone());
     }
 
-    let store_op: StoreOp = StoreOp::StoreObject(obj_type_ref, vals);
-    execute_store(mmu, store_op)
+    let stored_data = StoredData::ObjectStored(ObjectLive {
+        type_ptr: obj_type_ref.clone(),
+        fields: vals
+    });
+
+    Ok(vec![Arc::new(stored_data)])
 }
 
 // #[cfg(test)]
@@ -74,7 +65,7 @@ pub fn execute_init(mmu: Arc<MMU>, obj_type_ref: &ValueReference, args: Vec<&Val
 //     use crate::runtime::data::live::{TypeLive, PointerLive};
 //     use crate::runtime::data::stored::StoredData;
 //     use crate::runtime::vm::mmu::store_op::StoreOp;
-//     use crate::runtime::vm::value_ref::ValueReference;
+//     use crate::runtime::vm::value_ref::PointerLive;
 //     use crate::runtime::vm::VM;
 //     use std::intermediate::HashMap;
 //     use crate::runtime::Symbol;
@@ -84,7 +75,7 @@ pub fn execute_init(mmu: Arc<MMU>, obj_type_ref: &ValueReference, args: Vec<&Val
 //         let vm = VM::new(2, 2);
 //
 //         let type_name: Symbol = "TestType".into();
-//         let mut type_fields: Vec<(Symbol, &ValueReference)> = vec![];
+//         let mut type_fields: Vec<(Symbol, Arc<StoredData>)> = vec![];
 //
 //         let int_type = vm.get_primitive_type(&TypeLive::Integer).unwrap();
 //         let string_type = vm.get_primitive_type(&TypeLive::String).unwrap();

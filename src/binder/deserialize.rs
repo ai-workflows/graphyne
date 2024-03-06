@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 use serde::{Deserialize, Deserializer};
 use crate::binder::intermediate::r#const::{CCData, CollectionConst};
-use crate::binder::intermediate::func::CFnValueNode;
-use crate::binder::functions::FunctionOpNode;
+use crate::binder::intermediate::func::{CFnValueNode, FunctionOpNode};
 use crate::runtime::data::functions::OpCode;
 use crate::runtime::Symbol;
 

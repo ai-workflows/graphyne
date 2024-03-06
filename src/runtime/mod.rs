@@ -1,8 +1,7 @@
 mod fundamentals;
 pub(crate) mod data;
-pub(crate) mod gc;
 pub(crate) mod vm;
-pub(crate) mod mmu;
+pub(crate)mod static_state;
 
 
 pub(crate) use fundamentals::{ExecResult, Symbol, SymbolPath};

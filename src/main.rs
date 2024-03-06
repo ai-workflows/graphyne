@@ -5,10 +5,9 @@ use std::thread;
 use crate::api::{await_call, bind, load_intermediate, log_async, log_error, stream_call};
 use crate::binder::intermediate::collection::Collection;
 use crate::binder::json::jsonify;
-use crate::runtime::data::stored::StoredData;
 use crate::runtime::{ExecResult, Symbol};
-use crate::runtime::mmu::mmu::MMU;
-use crate::runtime::mmu::value_ref::ValueReference;
+use crate::runtime::data::live::PointerLive;
+use crate::runtime::static_state::state::StaticState;
 use crate::runtime::vm::manager::StreamResult;
 
 
@@ -66,25 +65,22 @@ fn main() {
                 }
             };
             let main_collection_symbol = uuid::Uuid::new_v4().to_string();
-            let mmu: Arc<MMU> = Arc::new(MMU::new());
-            let binder = match bind(program, mmu.clone(), Some(main_collection_symbol.clone())) {
-                Ok(v) => v,
-                Err(e) => {
-                    log_error(format!("Error binding program: {}", e));
-                    return;
-                },
-            };
 
-            let main_func: ValueReference = binder.get_path(vec![main_collection_symbol, "main".to_string()]).unwrap();
+            let static_state: Arc<StaticState> = bind(program, Some(main_collection_symbol.clone()))
+                .map_err(|e| log_error(format!("Error binding program: {}", e)))
+                .unwrap();
+
+            let main_func_ptr: PointerLive = static_state.get_ptr_to_ref(&vec![main_collection_symbol, "main".to_string()])
+                .map_err(|e| log_error(format!("Error getting main function: {}", e)))
+                .unwrap();
 
             let (outputs_sender, outputs_receiver) = std::sync::mpsc::channel::<StreamResult>();
 
-            let mmu2 = mmu.clone();
             thread::spawn(move || {
                 let _ = stream_call(
-                    main_func,
+                    main_func_ptr,
                     vec![],
-                    mmu2,
+                    static_state.clone(),
                     verbose,
                     workers,
                     outputs_sender
@@ -101,7 +97,7 @@ fn main() {
                         expected_output_count = Some(num);
                     },
                     StreamResult::Output(fn_val, val_ref) => {
-                        log_async(format!("out | {}: {}", fn_val.symbol.unwrap_or(fn_val.guid), jsonify(mmu.clone(), &mmu.get_ref_value(&val_ref).unwrap())));
+                        log_async(format!("out | {}: {}", fn_val.symbol.unwrap_or(fn_val.guid), jsonify(val_ref.as_ref())));
                         output_count += 1;
                         if let Some(expected) = expected_output_count {
                             if output_count >= expected {
@@ -127,26 +123,24 @@ fn main() {
             };
 
             let main_collection_symbol = uuid::Uuid::new_v4().to_string();
-            let mmu: Arc<MMU> = Arc::new(MMU::new());
-            let binder = match bind(program, mmu.clone(), Some(main_collection_symbol.clone())) {
-                Ok(v) => v,
-                Err(e) => {
-                    log_error(format!("Error binding program: {}", e));
-                    return;
-                },
-            };
 
-            let main_func: ValueReference = binder.get_path(vec![main_collection_symbol, "main".to_string()]).unwrap();
+            let static_state: Arc<StaticState> = bind(program, Some(main_collection_symbol.clone()))
+                .map_err(|e| log_error(format!("Error binding program: {}", e)))
+                .unwrap();
 
-            let res: ExecResult<HashMap<Symbol, ValueReference>> = await_call(
+            let main_func: PointerLive = static_state.get_ptr_to_ref(&vec![main_collection_symbol, "main".to_string()])
+                .map_err(|e| log_error(format!("Error getting main function: {}", e)))
+                .unwrap();
+
+            let res: ExecResult<HashMap<Symbol, PointerLive>> = await_call(
                 main_func.clone(),
                 vec![],
-                mmu.clone(),
+                static_state.clone(),
                 verbose,
                 workers,
             );
 
-            let res: HashMap<Symbol, ValueReference> = match res {
+            let res: HashMap<Symbol, PointerLive> = match res {
                 Ok(v) => v,
                 Err(e) => {
                     log_error(format!("result | error: {}", e));
@@ -157,7 +151,7 @@ fn main() {
             log_async("result | success".to_string());
 
             for (k, v) in res.iter() {
-                log_async(format!("out | {}: {}", k, jsonify(mmu.clone(), &mmu.get_ref_value(v).unwrap())));
+                log_async(format!("out | {}: {}", k, jsonify(v.as_ref())));
             }
 
 
