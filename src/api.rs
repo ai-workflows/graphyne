@@ -62,11 +62,11 @@ pub fn load_intermediate(path: &str) -> Result<Collection, String> {
 }
 
 pub fn bind(program: Collection, program_symbol: Option<Symbol>) -> Result<Arc<StaticState>, String> {
-    let static_state = Arc::new(StaticState::new());
+    let mut static_state = StaticState::new();
 
-    binder::bind_program(program, static_state.clone(), program_symbol).map_err(|e| format!("Error binding program: {}", e))?;
+    binder::bind_program(program, &mut static_state, program_symbol).map_err(|e| format!("Error binding program: {}", e))?;
 
-    Ok(static_state)
+    Ok(Arc::new(static_state))
 }
 
 pub fn get_worker_counts(

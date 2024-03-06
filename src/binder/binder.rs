@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 use uuid::Uuid;
 use crate::binder::intermediate::collection::Collection;
 use crate::binder::intermediate::func::CollectionFunc;
@@ -14,7 +13,7 @@ use crate::runtime::data::stored::StoredData;
 
 fn buffer_collection_property_group<T>(
     group: &Option<HashMap<Symbol, T>>,
-    mut static_state: Arc<StaticState>,
+    static_state: &mut StaticState,
     symbol_path: &SymbolPath,
     collection_refs: &mut DictLive
 ) -> ExecResult<()> {
@@ -32,22 +31,22 @@ fn buffer_collection_property_group<T>(
 
 
 pub fn buffer_collection(
-    mut static_state: Arc<StaticState>,
+    static_state: &mut StaticState,
     symbol_path: &SymbolPath,
     value: &Collection
 ) -> ExecResult<PointerLive> {
     let mut res: DictLive = DictLive::new();
 
-    buffer_collection_property_group(&value.functions, static_state.clone(), symbol_path, &mut res)?;
-    buffer_collection_property_group(&value.constants, static_state.clone(), symbol_path, &mut res)?;
-    buffer_collection_property_group(&value.types, static_state.clone(), symbol_path, &mut res)?;
-    buffer_collection_property_group(&value.imports, static_state.clone(), symbol_path, &mut res)?;
+    buffer_collection_property_group(&value.functions, static_state, symbol_path, &mut res)?;
+    buffer_collection_property_group(&value.constants, static_state, symbol_path, &mut res)?;
+    buffer_collection_property_group(&value.types, static_state, symbol_path, &mut res)?;
+    buffer_collection_property_group(&value.imports, static_state, symbol_path, &mut res)?;
 
     if let Some(collections) = &value.collections {
         for (name, sub_collection) in collections {
             let mut path = symbol_path.clone();
             path.push(name.clone());
-            let ref_ptr = buffer_collection(static_state.clone(), &path, sub_collection)?;
+            let ref_ptr = buffer_collection(static_state, &path, sub_collection)?;
             res.insert(name.clone(), ref_ptr);
         }
     }
@@ -59,14 +58,14 @@ pub fn buffer_collection(
 
 fn collection_const_data_to_stored(
     data: &CollectionConst,
-    static_state: Arc<StaticState>
+    static_state: &mut StaticState
 ) -> ExecResult<StoredData> {
     cc_data_to_stored(&data.0, static_state)
 }
 
 fn cc_data_to_stored(
     data: &CCData,
-    mut static_state: Arc<StaticState>
+    static_state: &mut StaticState
 ) -> ExecResult<StoredData> {
     match data {
         CCData::Int(val) => Ok(StoredData::IntStored(val.clone())),
@@ -80,7 +79,9 @@ fn cc_data_to_stored(
                 let child_guid: SymbolPath = vec![Uuid::new_v4().to_string()];
                 let static_ref_ptr: PointerLive = static_state.get_ptr_to_ref(&child_guid)?;
 
-                static_state.set(&child_guid, cc_data_to_stored(child, static_state.clone())?)?;
+                let cc_data_stored: StoredData = cc_data_to_stored(child, static_state)?;
+
+                static_state.set(&child_guid, cc_data_stored)?;
                 res.push(static_ref_ptr);
             }
 
@@ -93,7 +94,9 @@ fn cc_data_to_stored(
                 let child_guid: SymbolPath = vec![Uuid::new_v4().to_string()];
                 let static_ref_ptr: PointerLive = static_state.get_ptr_to_ref(&child_guid)?;
 
-                static_state.set(&child_guid, cc_data_to_stored(child, static_state.clone())?)?;
+                let cc_data_stored: StoredData = cc_data_to_stored(child, static_state)?;
+
+                static_state.set(&child_guid, cc_data_stored)?;
                 res.insert(key.clone(), static_ref_ptr);
             }
 
@@ -105,7 +108,7 @@ fn cc_data_to_stored(
 
 fn type_def_to_live_type(
     type_def: &CustomTypeDef,
-    static_state: Arc<StaticState>,
+    static_state: &mut StaticState,
     type_symbol: &Symbol
 ) -> ExecResult<TypeLive> {
     let mut fields: Vec<(Symbol, PointerLive)> = Vec::new();
@@ -141,7 +144,7 @@ fn type_def_to_live_type(
 fn cl_func_to_live_func(
     func: &CollectionFunc,
     func_symbol_path: &SymbolPath,
-    mut static_state: Arc<StaticState>
+    static_state: &mut StaticState
 ) -> ExecResult<FuncLive> {
     // create buffers for the function values
     for val in &func.graph.values {
@@ -201,7 +204,7 @@ fn cl_func_to_live_func(
 
         let constant_ptr: Option<PointerLive> = match &val.constant {
             Some(constant_cc_data) => {
-                let constant_stored_data: StoredData = cc_data_to_stored(constant_cc_data, static_state.clone())?;
+                let constant_stored_data: StoredData = cc_data_to_stored(constant_cc_data, static_state)?;
                 let constant_ptr: PointerLive = static_state.buffer(&path)?;
                 static_state.set(&path, constant_stored_data)?;
 
@@ -255,7 +258,7 @@ fn cl_func_to_live_func(
 }
 
 pub fn fill_collection(
-    static_state: Arc<StaticState>,
+    static_state: &mut StaticState,
     symbol_path: &SymbolPath,
     value: &Collection
 ) -> ExecResult<()> {
@@ -266,7 +269,7 @@ pub fn fill_collection(
             path.push(name.clone());
 
             let static_ref: StaticRefLive = static_state.get_ref(&path)?;
-            static_ref.set(collection_const_data_to_stored(constant, static_state.clone())?)
+            static_ref.set(collection_const_data_to_stored(constant, static_state)?)
                 .map_err(|_| format!("Error setting constant at path {:?}", path))?;
         }
     }
@@ -292,7 +295,7 @@ pub fn fill_collection(
             path.push(name.clone());
 
             let static_ref: StaticRefLive = static_state.get_ref(&path)?;
-            let live_type: TypeLive = type_def_to_live_type(type_def, static_state.clone(), &name)?;
+            let live_type: TypeLive = type_def_to_live_type(type_def, static_state, &name)?;
             static_ref.set(StoredData::TypeStored(live_type))
                 .map_err(|_| format!("Error setting type at path {:?}", path))?;
         }
@@ -305,7 +308,7 @@ pub fn fill_collection(
             path.push(name.clone());
 
             let static_ref: StaticRefLive = static_state.get_ref(&path)?;
-            let live_func: FuncLive = cl_func_to_live_func(func, &path, static_state.clone())?;
+            let live_func: FuncLive = cl_func_to_live_func(func, &path, static_state)?;
             static_ref.set(StoredData::FuncStored(live_func))
                 .map_err(|_| format!("Error setting function at path {:?}", path))?;
         }
@@ -317,7 +320,7 @@ pub fn fill_collection(
             let mut path: SymbolPath = symbol_path.clone();
             path.push(name.clone());
 
-            fill_collection(static_state.clone(), &path, sub_collection)?;
+            fill_collection(static_state, &path, sub_collection)?;
         }
     }
 
@@ -326,14 +329,14 @@ pub fn fill_collection(
 
 pub fn bind_program(
     program: Collection,
-    static_state: Arc<StaticState>,
+    static_state: &mut StaticState,
     main_symbol: Option<Symbol>
 ) -> ExecResult<PointerLive> {
     let main_symbol: Symbol = main_symbol.unwrap_or_else(|| "main".to_string());
     let main_path: SymbolPath = vec![main_symbol.clone()];
 
-    let main_ptr: PointerLive = buffer_collection(static_state.clone(), &main_path, &program)?;
-    fill_collection(static_state.clone(), &main_path, &program)?;
+    let main_ptr: PointerLive = buffer_collection(static_state, &main_path, &program)?;
+    fill_collection(static_state, &main_path, &program)?;
 
     Ok(main_ptr)
 }

@@ -116,7 +116,8 @@ fn handle_func_call<'a>(
     shared_state.register_outputs(&call_context_id, &op_outputs_fn_vals, parent_call_context_id, &called_fn_output_vals);
 
     // get the fn vals for the args in the parent context and the called function's context
-    let arg_fn_vals: Vec<&FuncValLive> = ptrs_to_func_val_list(&op.input_vals[1..].to_vec())?;
+    let arg_fn_val_ptrs = &op.input_vals[1..].to_vec();
+    let arg_fn_vals: Vec<&FuncValLive> = ptrs_to_func_val_list(&arg_fn_val_ptrs)?;
     let called_fn_input_vals: Vec<&FuncValLive> = ptrs_to_func_val_list(&called_fn.input_vals)?;
 
     if arg_fn_vals.len() != called_fn_input_vals.len() {

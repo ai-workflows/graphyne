@@ -48,7 +48,10 @@ impl StoredData {
         }
     }
 
-    fn match_stored_data<T, F: Fn(&StoredData) -> ExecResult<T>>(&self, f: F) -> ExecResult<T> {
+    fn match_stored_data<'a, T, F>(&'a self, f: F) -> ExecResult<T>
+        where
+            F: Fn(&'a StoredData) -> ExecResult<T>,
+    {
         match self {
             StoredData::StaticRefStored(val) => match val.get() {
                 Some(data) => f(data),

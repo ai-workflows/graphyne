@@ -76,14 +76,14 @@ impl StaticState {
             .map_err(|_| format!("Error setting static reference at path {:?}", symbol_path))
     }
 
-    pub fn get_deref_val(&self, symbol_path: &SymbolPath) -> ExecResult<&StoredData> {
-        let static_ref: StaticRefLive = self.get_ref(symbol_path)?;
-
-        match static_ref.get() {
-            Some(data) => Ok(data),
-            None => Err(format!("Static reference at path {:?} is not initialized.", symbol_path)),
-        }
-    }
+    // pub fn get_deref_val(&self, symbol_path: &SymbolPath) -> ExecResult<&StoredData> {
+    //     let static_ref: StaticRefLive = self.get_ref(symbol_path)?;
+    //
+    //     match static_ref.get() {
+    //         Some(data) => Ok(data),
+    //         None => Err(format!("Static reference at path {:?} is not initialized.", symbol_path)),
+    //     }
+    // }
 
     pub fn get_ref(&self, symbol_path: &SymbolPath) -> ExecResult<StaticRefLive> {
         match self.static_refs.get(symbol_path) {
