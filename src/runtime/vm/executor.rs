@@ -138,15 +138,15 @@ fn handle_reduce_op(
     let func = args[0].clone();
     
     let list_ref = args[1].clone();
-    let list: ListLive = match list_ref.as_ref() {
-        StoredData::ListStored(list) => list.clone(),
-        _ => return Err("Reduce operation requires a list as the second arg".to_string())
+    let list: ListLive = match list_ref.as_ref().stored_as_list() {
+        Ok(list) => list.clone(),
+        Err(e) => return Err(format!("Reduce operation requires a list as the second arg: {}", e))
     };
 
     let output_fn_val_ref = &op.output_vals[0];
-    let output_fn_val: FuncValLive = match output_fn_val_ref.as_ref() {
-        StoredData::FuncValStored(func_val) => func_val.clone(),
-        _ => return Err("Output func val not found".to_string())
+    let output_fn_val: FuncValLive = match output_fn_val_ref.as_ref().stored_as_func_val() {
+        Ok(func_val) => func_val.clone(),
+        Err(e) => return Err(format!("Output func val not found: {}", e))
     };
 
     // spawn a new thread so that orchestrating the reduce operation doesn't block a worker
@@ -244,14 +244,14 @@ fn handle_map_op(
 
     let func = args[0].clone();
 
-    let list: ListLive = match args[1].as_ref() {
-        StoredData::ListStored(list) => list.clone(),
-        _ => return Err("Map operation requires a list as the second arg".to_string())
+    let list: &ListLive = match args[1].as_ref().stored_as_list() {
+        Ok(list) => list,
+        Err(e) => return Err(format!("Map operation requires a list as the second arg: {}", e))
     };
 
-    let output_fn_val: FuncValLive = match op.output_vals[0].as_ref() {
-        StoredData::FuncValStored(func_val) => func_val.clone(),
-        _ => return Err("Output func val not found".to_string())
+    let output_fn_val: &FuncValLive = match op.output_vals[0].as_ref().stored_as_func_val() {
+        Ok(func_val) => func_val,
+        Err(e) => return Err(format!("Output func val not found: {}", e))
     };
 
     let cc_id = call_context_id.clone();
@@ -276,7 +276,7 @@ fn handle_map_op(
 
     Ok(vec![ExecutorMessage::Pending(ValPendingMessage {
         call_context_id: call_context_id.clone(),
-        func_val: output_fn_val
+        func_val: output_fn_val.clone()
     })])
 }
 
@@ -309,14 +309,14 @@ fn handle_filter_op(
 
     let func = args[0].clone();
 
-    let list: ListLive = match args[1].as_ref() {
-        StoredData::ListStored(list) => list.clone(),
-        _ => return Err("Filter operation requires a list as the second arg".to_string())
+    let list: ListLive = match args[1].as_ref().stored_as_list() {
+        Ok(list) => list.clone(),
+        Err(e) => return Err(format!("Filter operation requires a list as the second arg: {}", e))
     };
 
-    let output_fn_val: FuncValLive = match op.output_vals[0].as_ref() {
-        StoredData::FuncValStored(func_val) => func_val.clone(),
-        _ => return Err("Output func val not found".to_string())
+    let output_fn_val: FuncValLive = match op.output_vals[0].as_ref().stored_as_func_val() {
+        Ok(func_val) => func_val.clone(),
+        Err(e) => return Err(format!("Output func val not found: {}", e))
     };
 
     // spawn a new thread so that orchestrating the filter operation doesn't block a worker
@@ -356,9 +356,9 @@ fn dispatch_filter(
             // Convert and validate values together
             results
                 .iter()
-                .map(|val| match val.as_ref() {
-                    StoredData::BoolStored(b) => Ok(b.clone()),
-                    _ => Err("Expected filter function to return a boolean value".to_string()),
+                .map(|val| match val.as_ref().stored_as_bool() {
+                    Ok(b) => Ok(b.clone()),
+                    Err(e) => Err(format!("Filter function returned a non-boolean value: {}", e))
                 })
                 .collect::<Result<Vec<BoolLive>, String>>()
         })?;

@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, mpsc, Mutex};
 use std::sync::mpsc::{Sender};
 use rayon::ThreadPool;
+use crate::api::log_async;
 use crate::runtime::data::functions::val::FuncValId;
 use crate::runtime::data::live::{FuncValLive};
 use crate::runtime::{ExecResult, Symbol};
@@ -115,7 +116,7 @@ pub fn manage_start_call<'a>(
         Ok(_) => {},
         Err(e) => {
             // shared_state.halt_execution(&main_call_id, CallResult::Error(e.clone()));
-            return Err(e);
+            return Err(format!("Error handling called function constants: {}", e));
         }
     }
 
@@ -271,393 +272,360 @@ pub fn manage_orchestrator_result(
 mod tests {
     use std::collections::HashMap;
     use std::sync::{Arc, mpsc};
+    use crate::api::bind;
     use crate::binder::intermediate::collection::Collection;
-    use crate::binder::Binder;
-    use crate::runtime::data::live::{LiveData, IntLive};
-    use crate::runtime::mmu::mmu::MMU;
+    use crate::runtime::data::live::{LiveData, IntLive, PointerLive};
+    use crate::runtime::data::stored::StoredData;
+    use crate::runtime::static_state::state::StaticState;
     use crate::runtime::vm::manager::{manage_await_call, manage_start_call, StreamResult};
 
     #[test]
     fn test_start_call_simple() {
-        let mmu: Arc<MMU> = Arc::new(MMU::new());
-
-        {
-            let mut api = Binder { mmu, symbol_table: HashMap::new() };
-
-            let json_collection = r#"{
-                "constants": {
-                    "two": 2
-                },
-                "functions": {
-                    "main": {
-                        "name": "Main",
-                        "description": "Main function",
-                        "graph": {
-                            "values": [
-                                ["_two", "two"],
-                                "two",
-                                ["num", 10],
-                                "result"
-                            ],
-                            "ops": [
-                                ["Get", ["outer", "_two"], ["two"]],
-                                ["Add", ["num", "two"], ["result"]]
-                            ],
-                            "input_vals": [],
-                            "output_vals": ["result"]
-                        }
+        let json_collection = r#"{
+            "constants": {
+                "two": 2
+            },
+            "functions": {
+                "main": {
+                    "name": "Main",
+                    "description": "Main function",
+                    "graph": {
+                        "values": [
+                            "two",
+                            ["num", 10],
+                            "result"
+                        ],
+                        "ops": [
+                            ["Static", ["two"], ["two"]],
+                            ["Add", ["num", "two"], ["result"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["result"]
                     }
                 }
-            }"#;
-
-            let collection: Collection = serde_json::from_str(json_collection).unwrap();
-
-            api.store_collection(collection, "my_collection".to_string()).unwrap();
-
-            let main_ref = api.get_path(vec!["my_collection".into(), "main".into()]).unwrap();
-
-            let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
-
-            let start_time = std::time::Instant::now();
-            for _ in 0..1000 {
-                let _ = manage_await_call(
-                    api.mmu.clone(),
-                    worker_pool.clone(),
-                    main_ref.clone(),
-                    vec![],
-                    false,
-                );
             }
-            let elapsed = start_time.elapsed();
-            println!("Average time: {:?}", elapsed / 1000);
+        }"#;
 
-            let res = manage_await_call(
-                api.mmu.clone(),
-                worker_pool,
-                main_ref,
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+
+        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
+
+        let main_ref: PointerLive = static_state.get_ptr_to_ref(&vec!["my_collection".to_string(), "main".to_string()]).unwrap();
+
+        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
+
+        let start_time = std::time::Instant::now();
+        for _ in 0..1000 {
+            let _ = manage_await_call(
+                static_state.clone(),
+                worker_pool.clone(),
+                main_ref.clone(),
                 vec![],
-                true,
+                false,
             );
-
-            let outputs = match res {
-                Ok(outputs) => outputs,
-                Err(e) => panic!("Call returned an error: {}", e)
-            };
-
-            assert_eq!(outputs.len(), 1);
-
-            let output_values: Vec<Arc<StoredData>> = outputs.values().cloned().collect();
-
-            let result = api.mmu.get_ref_value(&output_values[0]).unwrap().as_live().as_int().unwrap().unwrap();
-
-            assert_eq!(result, 12);
         }
+        let elapsed = start_time.elapsed();
+        println!("Average time: {:?}", elapsed / 1000);
+
+        let res = manage_await_call(
+            static_state.clone(),
+            worker_pool,
+            main_ref,
+            vec![],
+            true,
+        );
+
+        let outputs = match res {
+            Ok(outputs) => outputs,
+            Err(e) => panic!("Call returned an error: {}", e)
+        };
+
+        assert_eq!(outputs.len(), 1);
+
+        let output_values: Vec<PointerLive> = outputs.values().cloned().collect();
+
+        let result = output_values[0].as_live().as_int().unwrap().unwrap();
+
+        assert_eq!(result, 12);
     }
 
     #[test]
     fn test_start_call() {
-        let mmu = Arc::new(MMU::new());
-
-        {
-            let mut api = Binder { mmu, symbol_table: HashMap::new() };
-
-            let json_collection = r#"{
-                "constants": {
-                    "two": 2
-                },
-                "functions": {
-                    "double": {
-                       "name": "Double",
-                       "description": "Doubles a number",
-                       "graph": {
-                            "values": [
-                                ["_two", "two"],
-                                "two",
-                                "num",
-                                "doubled"
-                            ],
-                            "ops": [
-                                ["Get", ["outer", "_two"], ["two"]],
-                                ["Mul", ["num", "two"], ["doubled"]]
-                            ],
-                            "input_vals": ["num"],
-                            "output_vals": ["doubled"]
-                        }
-                    },
-                    "main": {
-                        "name": "Main",
-                        "description": "Main function",
-                        "graph": {
-                            "values": [
-                                ["_double", "double"],
-                                "double",
-                                ["arg", 10],
-                                "result"
-                            ],
-                            "ops": [
-                                ["Get", ["outer", "_double"], ["double"]],
-                                ["Call", ["double", "arg"], ["result"]]
-                            ],
-                            "input_vals": [],
-                            "output_vals": ["result"]
-                        }
+        let json_collection = r#"{
+            "constants": {
+                "two": 2
+            },
+            "functions": {
+                "double": {
+                   "name": "Double",
+                   "description": "Doubles a number",
+                   "graph": {
+                        "values": [
+                            ["_two", "two"],
+                            "two",
+                            "num",
+                            "doubled"
+                        ],
+                        "ops": [
+                            ["Get", ["outer", "_two"], ["two"]],
+                            ["Mul", ["num", "two"], ["doubled"]]
+                        ],
+                        "input_vals": ["num"],
+                        "output_vals": ["doubled"]
                     }
                 },
-                "intermediate": {},
-                "imports": {},
-                "types": {}
-            }"#;
+                "main": {
+                    "name": "Main",
+                    "description": "Main function",
+                    "graph": {
+                        "values": [
+                            ["_double", "double"],
+                            "double",
+                            ["arg", 10],
+                            "result"
+                        ],
+                        "ops": [
+                            ["Get", ["outer", "_double"], ["double"]],
+                            ["Call", ["double", "arg"], ["result"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["result"]
+                    }
+                }
+            },
+            "intermediate": {},
+            "imports": {},
+            "types": {}
+        }"#;
 
-            let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
 
-            api.store_collection(collection, "my_collection".to_string()).unwrap();
+        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
 
-            let main_ref = api.get_path(vec!["my_collection".into(), "main".into()]).unwrap();
+        let main_ref: PointerLive = static_state.get_ptr_to_ref(&vec!["my_collection".to_string(), "main".to_string()]).unwrap();
 
-            let (outputs_sender, _) = mpsc::channel::<StreamResult>();
+        let (outputs_sender, _) = mpsc::channel::<StreamResult>();
 
-            let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap());
+        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap());
 
-            let res = manage_await_call(
-                api.mmu.clone(),
-                worker_pool,
-                main_ref,
-                vec![],
-                true,
-            ).unwrap();
+        let res = manage_await_call(
+            static_state.clone(),
+            worker_pool,
+            main_ref,
+            vec![],
+            true,
+        ).unwrap();
 
-            // let mut outputs: Vec<(FuncValLive, Arc<StoredData>)> = vec![];
-            //
-            // for i in 0..expected_num_outputs {
-            //     let res = outputs_receiver.recv().unwrap();
-            //     match res {
-            //         StreamResult::Output(fn_val, val_ref) => {
-            //             outputs.push((fn_val, val_ref));
-            //         },
-            //         StreamResult::Error(e) => {
-            //             panic!("Call returned an error: {}", e);
-            //         }
-            //     }
-            // }
+        // let mut outputs: Vec<(FuncValLive, Arc<StoredData>)> = vec![];
+        //
+        // for i in 0..expected_num_outputs {
+        //     let res = outputs_receiver.recv().unwrap();
+        //     match res {
+        //         StreamResult::Output(fn_val, val_ref) => {
+        //             outputs.push((fn_val, val_ref));
+        //         },
+        //         StreamResult::Error(e) => {
+        //             panic!("Call returned an error: {}", e);
+        //         }
+        //     }
+        // }
 
-            // let value: IntLive = api.mmu.get_ref_value(&res.get(0).unwrap()).unwrap().as_live().as_int().unwrap().unwrap();
+        // let value: IntLive = api.mmu.get_ref_value(&res.get(0).unwrap()).unwrap().as_live().as_int().unwrap().unwrap();
 
-            assert_eq!(res.len(), 1);
+        assert_eq!(res.len(), 1);
 
-            let output_values: Vec<Arc<StoredData>> = res.values().cloned().collect();
+        let output_values: Vec<Arc<StoredData>> = res.values().cloned().collect();
 
-            let value = api.mmu.get_ref_value(&output_values[0]).unwrap().as_live().as_int().unwrap().unwrap();
+        let value = output_values[0].as_live().as_int().unwrap().unwrap();
 
-            assert_eq!(value, 20);
-        }
+        assert_eq!(value, 20);
     }
 
     #[test]
     fn test_reduce() {
-        let mmu: Arc<MMU> = Arc::new(MMU::new());
-
-        {
-            let mut api = Binder { mmu, symbol_table: HashMap::new() };
-
-            let json_collection = r#"{
-                "constants": {
-                    "my_list": [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150]
-                },
-                "functions": {
-                    "add": {
-                       "name": "Add",
-                       "description": "Adds two numbers",
-                       "graph": {
-                            "values": [
-                                "num1",
-                                "num2",
-                                "sum"
-                            ],
-                            "ops": [
-                                ["Add", ["num1", "num2"], ["sum"]]
-                            ],
-                            "input_vals": ["num1", "num2"],
-                            "output_vals": ["sum"]
-                        }
-                    },
-                    "main": {
-                        "name": "Main",
-                        "description": "Main function",
-                        "graph": {
-                            "values": [
-                                ["_add", "add"],
-                                "add",
-                                ["_my_list", "my_list"],
-                                "my_list",
-                                ["initial", 0],
-                                "result"
-                            ],
-                            "ops": [
-                                ["Get", ["outer", "_add"], ["add"]],
-                                ["Get", ["outer", "_my_list"], ["my_list"]],
-                                ["Reduce", ["add", "my_list", "initial"], ["result"]]
-                            ],
-                            "input_vals": [],
-                            "output_vals": ["result"]
-                        }
+        let json_collection = r#"{
+            "constants": {
+                "my_list": [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150]
+            },
+            "functions": {
+                "add": {
+                   "name": "Add",
+                   "description": "Adds two numbers",
+                   "graph": {
+                        "values": [
+                            "num1",
+                            "num2",
+                            "sum"
+                        ],
+                        "ops": [
+                            ["Add", ["num1", "num2"], ["sum"]]
+                        ],
+                        "input_vals": ["num1", "num2"],
+                        "output_vals": ["sum"]
                     }
                 },
-                "intermediate": {},
-                "imports": {},
-                "types": {}
-            }"#;
+                "main": {
+                    "name": "Main",
+                    "description": "Main function",
+                    "graph": {
+                        "values": [
+                            "add",
+                            "my_list",
+                            ["initial", 0],
+                            "result"
+                        ],
+                        "ops": [
+                            ["Static", ["add"], ["add"]],
+                            ["Static", ["my_list"], ["my_list"]],
+                            ["Reduce", ["add", "my_list", "initial"], ["result"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["result"]
+                    }
+                }
+            },
+            "intermediate": {},
+            "imports": {},
+            "types": {}
+        }"#;
 
-            let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
 
-            api.store_collection(collection, "my_collection".to_string()).unwrap();
+        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
 
-            let main_ref = api.get_path(vec!["my_collection".into(), "main".into()]).unwrap();
+        let main_ref: PointerLive = static_state.get_ptr_to_ref(&vec!["my_collection".to_string(), "main".to_string()]).unwrap();
 
-            let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
+        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
 
-            let start_time = std::time::Instant::now();
+        let start_time = std::time::Instant::now();
 
-            for _ in 0..1000 {
-                let _ = manage_await_call(
-                    api.mmu.clone(),
-                    worker_pool.clone(),
-                    main_ref.clone(),
-                    vec![],
-                    false,
-                );
-            }
-
-            let elapsed = start_time.elapsed();
-            println!("Average time: {:?}", elapsed / 1000);
-
-            let res = manage_await_call(
-                api.mmu.clone(),
-                worker_pool,
-                main_ref,
+        for _ in 0..1000 {
+            let _ = manage_await_call(
+                static_state.clone(),
+                worker_pool.clone(),
+                main_ref.clone(),
                 vec![],
-                true,
+                false,
             );
-
-            let outputs = match res {
-                Ok(outputs) => outputs,
-                Err(e) => panic!("Call returned an error: {}", e)
-            };
-
-            assert_eq!(outputs.len(), 1);
-
-            // let result = outputs[0].deref().unwrap().as_live().as_int().unwrap().unwrap();
-
-            let output_values: Vec<Arc<StoredData>> = outputs.values().cloned().collect();
-            assert_eq!(output_values.len(), 1);
-            let result = api.mmu.get_ref_value(&output_values[0]).unwrap().as_live().as_int().unwrap().unwrap();
-
-            assert_eq!(result, 1200);
         }
+
+        let elapsed = start_time.elapsed();
+        println!("Average time: {:?}", elapsed / 1000);
+
+        let res = manage_await_call(
+            static_state.clone(),
+            worker_pool,
+            main_ref,
+            vec![],
+            true,
+        );
+
+        let outputs = match res {
+            Ok(outputs) => outputs,
+            Err(e) => panic!("Call returned an error: {}", e)
+        };
+
+        assert_eq!(outputs.len(), 1);
+
+        // let result = outputs[0].deref().unwrap().as_live().as_int().unwrap().unwrap();
+
+        let output_values: Vec<Arc<StoredData>> = outputs.values().cloned().collect();
+        assert_eq!(output_values.len(), 1);
+        let result = output_values[0].as_live().as_int().unwrap().unwrap();
+
+        assert_eq!(result, 1200);
     }
 
     #[test]
     fn test_start_call_map() {
-        let mmu = Arc::new(MMU::new());
-
-        {
-            let mut api = Binder { mmu, symbol_table: HashMap::new() };
-
-            let json_collection = r#"{
-                "constants": {
-                    "two": 2,
-                    "my_list": [10, 20, 30],
-                    "my_dict": {
-                        "Hello": "World",
-                        "Foo": "Bar"
+        let json_collection = r#"{
+            "constants": {
+                "two": 2,
+                "my_list": [10, 20, 30],
+                "my_dict": {
+                    "Hello": "World",
+                    "Foo": "Bar"
+                }
+            },
+            "functions": {
+                "double": {
+                   "name": "Double",
+                   "description": "Doubles a number",
+                   "graph": {
+                        "values": [
+                            "two",
+                            "num",
+                            "doubled"
+                        ],
+                        "ops": [
+                            ["Static", ["two"], ["two"]],
+                            ["Mul", ["num", "two"], ["doubled"]]
+                        ],
+                        "input_vals": ["num"],
+                        "output_vals": ["doubled"]
                     }
                 },
-                "functions": {
-                    "double": {
-                       "name": "Double",
-                       "description": "Doubles a number",
-                       "graph": {
-                            "values": [
-                                ["_two", "two"],
-                                "two",
-                                "num",
-                                "doubled"
-                            ],
-                            "ops": [
-                                ["Get", ["outer", "_two"], ["two"]],
-                                ["Mul", ["num", "two"], ["doubled"]]
-                            ],
-                            "input_vals": ["num"],
-                            "output_vals": ["doubled"]
-                        }
-                    },
-                    "double_list": {
-                        "name": "Double List",
-                        "description": "Doubles a list of numbers",
-                        "graph": {
-                            "values": [
-                                "double_func",
-                                ["_double", "double"],
-                                ["_my_list", "my_list"],
-                                "my_list",
-                                "double_list"
-                            ],
-                            "ops": [
-                                ["Get", ["outer", "_double"], ["double_func"]],
-                                ["Get", ["outer", "_my_list"], ["my_list"]],
-                                ["Map", ["double_func", "my_list"], ["double_list"]]
-                            ],
-                            "input_vals": [],
-                            "output_vals": ["double_list"]
-                        }
+                "double_list": {
+                    "name": "Double List",
+                    "description": "Doubles a list of numbers",
+                    "graph": {
+                        "values": [
+                            "double_func",
+                            "my_list",
+                            "double_list"
+                        ],
+                        "ops": [
+                            ["Static", ["double"], ["double_func"]],
+                            ["Static", ["my_list"], ["my_list"]],
+                            ["Map", ["double_func", "my_list"], ["double_list"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["double_list"]
                     }
-                },
-                "intermediate": {},
-                "imports": {},
-                "types": {}
-            }"#;
+                }
+            },
+            "intermediate": {},
+            "imports": {},
+            "types": {}
+        }"#;
 
-            let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
 
-            api.store_collection(collection, "my_collection".to_string()).unwrap();
+        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
 
-            let main_ref = api.get_path(vec!["my_collection".into(), "double_list".into()]).unwrap();
+        let main_ref: PointerLive = static_state.get_ptr_to_ref(&vec!["my_collection".to_string(), "double_list".to_string()]).unwrap();
 
-            let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap());
+        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap());
 
-            let res = manage_await_call(
-                api.mmu.clone(),
-                worker_pool,
-                main_ref,
-                vec![],
-                true,
-            );
+        let res = manage_await_call(
+            static_state.clone(),
+            worker_pool,
+            main_ref,
+            vec![],
+            true,
+        );
 
-            let outputs = match res {
-                Ok(outputs) => outputs,
-                Err(e) => panic!("Call returned an error: {}", e)
-            };
+        let outputs = match res {
+            Ok(outputs) => outputs,
+            Err(e) => panic!("Call returned an error: {}", e)
+        };
 
-            assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs.len(), 1);
 
-            let output_values: Vec<Arc<StoredData>> = outputs.values().cloned().collect();
-            assert_eq!(output_values.len(), 1);
+        let output_values: Vec<Arc<StoredData>> = outputs.values().cloned().collect();
+        assert_eq!(output_values.len(), 1);
 
-            let result = api.mmu.get_ref_value(&output_values[0]).unwrap().as_live().as_list().unwrap().unwrap();
+        let result = output_values[0].as_live().as_list().unwrap().unwrap();
 
-            // let result = outputs[0].deref().unwrap().as_live().as_list().unwrap().unwrap();
-            let result: Vec<IntLive> = result.iter().map(|ptr|
-                api.mmu.get_ptr_value(ptr).unwrap().as_live().as_int().unwrap().unwrap()).collect();
+        // let result = outputs[0].deref().unwrap().as_live().as_list().unwrap().unwrap();
+        let result: Vec<IntLive> = result.iter().map(|ptr|
+            ptr.as_live().as_int().unwrap().unwrap()).collect();
 
-            assert_eq!(result, vec![20, 40, 60]);
-        }
+        assert_eq!(result, vec![20, 40, 60]);
     }
 
     #[test]
     fn test_filter() {
-        let mmu: Arc<MMU> = Arc::new(MMU::new());
-
-        let mut binder = Binder { mmu, symbol_table: HashMap::new() };
-
         let json_collection = r#"{
             "constants": {
                 "my_list": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
@@ -688,14 +656,12 @@ mod tests {
                     "graph": {
                         "values": [
                             "is_even",
-                            ["_is_even", "is_even"],
-                            ["_my_list", "my_list"],
                             "my_list",
                             "even_list"
                         ],
                         "ops": [
-                            ["Get", ["outer", "_is_even"], ["is_even"]],
-                            ["Get", ["outer", "_my_list"], ["my_list"]],
+                            ["Static", ["is_even"], ["is_even"]],
+                            ["Static", ["my_list"], ["my_list"]],
                             ["Filter", ["is_even", "my_list"], ["even_list"]]
                         ],
                         "input_vals": [],
@@ -710,16 +676,16 @@ mod tests {
 
         let collection: Collection = serde_json::from_str(json_collection).unwrap();
 
-        binder.store_collection(collection, "my_collection".to_string()).unwrap();
+        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
 
-        let main_ref = binder.get_path(vec!["my_collection".into(), "filter_even".into()]).unwrap();
+        let main_ref = static_state.get_ptr_to_ref(&vec!["my_collection".to_string(), "filter_even".to_string()]).unwrap();
 
         let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap());
 
         let start_time = std::time::Instant::now();
         for _ in 0..1000 {
             let _ = manage_await_call(
-                binder.mmu.clone(),
+                static_state.clone(),
                 worker_pool.clone(),
                 main_ref.clone(),
                 vec![],
@@ -730,7 +696,7 @@ mod tests {
         println!("1000 calls took: {:?}", elapsed);
 
         let res = manage_await_call(
-            binder.mmu.clone(),
+            static_state.clone(),
             worker_pool,
             main_ref,
             vec![],
@@ -747,11 +713,11 @@ mod tests {
         let output_values: Vec<Arc<StoredData>> = outputs.values().cloned().collect();
         assert_eq!(output_values.len(), 1);
 
-        let result = binder.mmu.get_ref_value(&output_values[0]).unwrap().as_live().as_list().unwrap().unwrap();
+        let result = output_values[0].as_live().as_list().unwrap().unwrap();
 
         // let result = outputs[0].deref().unwrap().as_live().as_list().unwrap().unwrap();
         let result: Vec<IntLive> = result.iter().map(|ptr|
-            binder.mmu.get_ptr_value(ptr).unwrap().as_live().as_int().unwrap().unwrap()).collect();
+            ptr.as_live().as_int().unwrap().unwrap()).collect();
 
         assert_eq!(result, vec![2, 4, 6, 8, 10]);
     }

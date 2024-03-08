@@ -72,7 +72,9 @@ pub enum OpCode {
     #[serde(alias="filter", alias="Filter", alias="FILTER")]
     Filter,
     #[serde(alias="init", alias="Init", alias="INIT")]
-    Init
+    Init,
+    #[serde(alias="static", alias="Static", alias="STATIC")]
+    Static,
 }
 
 impl OpCode {
@@ -112,6 +114,7 @@ impl OpCode {
             OpCode::Reduce => Operation::Reduce(args[0].clone(), args[1].clone(), args[2].clone()),
             OpCode::Filter => Operation::Filter(args[0].clone(), args[1].clone()),
             OpCode::Init => Operation::Init(args[0].clone(), args[1..].to_vec()),
+            OpCode::Static => panic!("Cannot convert OpCode::Static to Operation"),
         }
     }
 }
@@ -152,6 +155,7 @@ impl fmt::Display for OpCode {
             OpCode::Reduce => write!(f, "reduce"),
             OpCode::Filter => write!(f, "filter"),
             OpCode::Init => write!(f, "init"),
+            OpCode::Static => write!(f, "static"),
         }
     }
 }

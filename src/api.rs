@@ -64,7 +64,10 @@ pub fn load_intermediate(path: &str) -> Result<Collection, String> {
 pub fn bind(program: Collection, program_symbol: Option<Symbol>) -> Result<Arc<StaticState>, String> {
     let mut static_state = StaticState::new();
 
-    binder::bind_program(program, &mut static_state, program_symbol).map_err(|e| format!("Error binding program: {}", e))?;
+    match binder::bind_program(program, &mut static_state, program_symbol) {
+        Ok(_) => {},
+        Err(e) => return Err(format!("Error binding program: {}", e)),
+    }
 
     Ok(Arc::new(static_state))
 }
@@ -126,32 +129,27 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
     use std::thread;
-    use crate::api::{load_intermediate, stream_call};
-    use crate::binder::Binder;
+    use crate::api::{bind, load_intermediate, stream_call};
     use crate::binder::intermediate::collection::Collection;
     use crate::binder::json::jsonify;
-    use crate::runtime::mmu::mmu::MMU;
+    use crate::runtime::data::live::PointerLive;
     use crate::runtime::vm::manager::StreamResult;
 
     #[test]
     fn test_stream_with_types() {
         let collection: Collection = load_intermediate("examples/intermediate/test_compiled.json").unwrap();
 
-        let mmu: Arc<MMU> = Arc::new(MMU::new());
-        let mut binder = Binder { mmu: mmu.clone(), symbol_table: HashMap::new() };
+        let static_state = bind(collection, Some("my_collection".to_string())).unwrap();
 
-        binder.store_collection(collection, "my_collection".to_string()).unwrap();
-
-        let main_ref = binder.get_path(vec!["my_collection".into(), "main".into()]).unwrap();
+        let main_func_ptr: PointerLive = static_state.get_ptr_to_ref(&vec!["my_collection".to_string(), "main".to_string()]).unwrap();
 
         let (output_sender, output_receiver) = std::sync::mpsc::channel();
 
-        let mmu2 = mmu.clone();
         thread::spawn(move || {
             let _ = stream_call(
-                main_ref,
+                main_func_ptr,
                 vec![],
-                mmu2,
+                static_state.clone(),
                 true,
                 Some(4),
                 output_sender
@@ -169,7 +167,7 @@ mod tests {
                     expected_output_count = Some(num);
                 },
                 StreamResult::Output(fn_val, val_ref) => {
-                    outputs.insert(fn_val.symbol.unwrap_or(fn_val.guid), jsonify(mmu.clone(), &mmu.get_ref_value(&val_ref).unwrap()));
+                    outputs.insert(fn_val.symbol.unwrap_or(fn_val.guid), jsonify(val_ref.as_ref()));
                     output_count += 1;
                     if let Some(expected) = expected_output_count {
                         if output_count >= expected {

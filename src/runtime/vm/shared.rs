@@ -202,7 +202,13 @@ impl SharedCallState {
 
     /// Sets the value reference associated with a given call context and function value.
     pub fn set_val(&self, call_context_id: CallContextId, func_val: FuncValLive, value: Arc<StoredData>) {
-        let mut val_lookup = self.val_lookup.write().expect("val_lookup lock is poisoned");
+        let mut val_lookup = match self.val_lookup.write() {
+            Ok(map) => map,
+            Err(_) => {
+                self.throw_error(&call_context_id, "Error setting value: lock poisoned");
+                return;
+            }
+        };
         // let call_context_map = val_lookup.get_mut(&call_context_id).unwrap_or_else(|| {
         //     let map = HashMap::new();
         //     val_lookup.insert(call_context_id.clone(), map);

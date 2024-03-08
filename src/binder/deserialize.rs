@@ -246,14 +246,10 @@ impl<'de> Deserialize<'de> for CFnValueNode {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
     use std::fs;
-    use std::sync::Arc;
-    use crate::api::await_call;
-    use crate::binder::Binder;
+    use crate::api::{await_call, bind};
     use crate::binder::intermediate::collection::Collection;
-    use crate::runtime::data::live::{IntLive, LiveData};
-    use crate::runtime::mmu::mmu::MMU;
+    use crate::runtime::data::live::{IntLive, LiveData, PointerLive};
 
     #[test]
     fn test_deserialize_multi_output() {
@@ -261,23 +257,20 @@ mod tests {
         let contents = fs::read_to_string(path).unwrap();
         let program: Collection = serde_json::from_str(&contents).unwrap();
 
-        let mmu: Arc<MMU> = Arc::new(MMU::new());
-        let mut binder = Binder {mmu: mmu.clone(), symbol_table: HashMap::new()};
+        let static_state = bind(program, Some("my_collection".to_string())).unwrap();
 
-        binder.store_collection(program, "my_collection".to_string()).unwrap();
-
-        let main_ref = binder.get_path(vec!["my_collection".into(), "main".into()]).unwrap();
+        let main_ref: PointerLive = static_state.get_ptr_to_ref(&vec!["my_collection".to_string(), "main".to_string()]).unwrap();
 
         let res = await_call(
             main_ref,
             vec![],
-            mmu.clone(),
+            static_state.clone(),
             true,
             Some(1),
         ).unwrap();
 
-        let double: IntLive = mmu.get_ref_value(res.get("double").unwrap()).unwrap().as_live().as_int().unwrap().unwrap();
-        let triple: IntLive = mmu.get_ref_value(res.get("triple").unwrap()).unwrap().as_live().as_int().unwrap().unwrap();
+        let double: IntLive = res.get("double").unwrap().as_live().as_int().unwrap().unwrap();
+        let triple: IntLive = res.get("triple").unwrap().as_live().as_int().unwrap().unwrap();
 
         assert_eq!(double, 10);
         assert_eq!(triple, 15);
