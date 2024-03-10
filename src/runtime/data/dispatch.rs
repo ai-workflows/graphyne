@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use crate::runtime::{ExecResult};
-use crate::runtime::data::functions::v2::FuncV2;
-use crate::runtime::data::live::{NullLive, IntLive, FloatLive, StringLive, PointerLive, ListLive, LiveData, DictLive, BoolLive, FuncLive, FuncValLive, FuncOpLive, StaticRefLive};
+use crate::runtime::data::functions::func::FuncLive;
+use crate::runtime::data::live::{NullLive, IntLive, FloatLive, StringLive, PointerLive, ListLive, LiveData, DictLive, BoolLive, StaticRefLive};
 use crate::runtime::data::live::live_data::{ObjectLive, TypeLive};
 use crate::runtime::data::stored::StoredData;
 use crate::runtime::static_state::state::StaticState;
@@ -28,13 +28,10 @@ macro_rules! static_dispatch {
                 StoredData::PointerStored(value) => <PointerLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::ListStored(value) => <ListLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::DictStored(value) => <DictLive as LiveData>::$name(value, $( $arg ),* ),
-                StoredData::FuncStored(value) => <FuncLive as LiveData>::$name(value, $( $arg ),* ),
-                StoredData::FuncValStored(value) => <FuncValLive as LiveData>::$name(value, $( $arg ),* ),
-                StoredData::FuncOpStored(value) => <FuncOpLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::TypeStored(value) => <TypeLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::ObjectStored(value) => <ObjectLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::StaticRefStored(value) => <StaticRefLive as LiveData>::$name(value, $( $arg ),* ),
-                StoredData::FuncV2Stored(value) => <FuncV2 as LiveData>::$name(value, $( $arg ),* ),
+                StoredData::FuncStored(value) => <FuncLive as LiveData>::$name(value, $( $arg ),* ),
             }
         }
     };
@@ -52,8 +49,6 @@ impl LiveData for LiveDispatch<'_> {
     static_dispatch!{ fn as_list() -> Option<ExecResult<ListLive>> }
     static_dispatch!{ fn as_dict() -> Option<ExecResult<DictLive>> }
     static_dispatch!{ fn as_func() -> Option<ExecResult<FuncLive>> }
-    static_dispatch!{ fn as_func_val() -> Option<ExecResult<FuncValLive>> }
-    static_dispatch!{ fn as_func_op() -> Option<ExecResult<FuncOpLive>> }
     static_dispatch!{ fn as_null() -> Option<ExecResult<NullLive>> }
     static_dispatch!{ fn as_type() -> Option<ExecResult<TypeLive>> }
     static_dispatch!{ fn as_object() -> Option<ExecResult<ObjectLive>> }

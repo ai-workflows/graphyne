@@ -1,15 +1,15 @@
 use std::sync::{Arc, mpsc};
 use rayon::ThreadPool;
-use crate::runtime::data::functions::v2::FuncV2;
+use crate::runtime::data::functions::func::FuncLive;
 use crate::runtime::data::live::{PointerLive};
 use crate::runtime::static_state::state::StaticState;
 use crate::runtime::SymbolPath;
 use crate::runtime::vm::call_context::{CallContext};
-use crate::runtime::vm::orchestrator_v2;
+use crate::runtime::vm::orchestrator;
 use crate::runtime::vm::outputs::OutputType;
 
 /// Initializes a stream call of a function with the given inputs.
-pub fn init_stream_call_v2(
+pub fn init_stream_call(
     main_symbol_path: SymbolPath,
     inputs: Vec<PointerLive>,
     static_state: Arc<StaticState>,
@@ -20,7 +20,7 @@ pub fn init_stream_call_v2(
         Err(e) => panic!("start_call_v2: {}", e)
     };
 
-    let func: &FuncV2 = match func_ref.stored_as_funcv2() {
+    let func: &FuncLive = match func_ref.stored_as_funcv2() {
         Ok(v) => v,
         Err(e) => panic!("start_call_v2: {}", e)
     };
@@ -37,19 +37,19 @@ pub fn init_stream_call_v2(
         func_ref.as_static_ref().unwrap().clone(),
         output_types));
 
-    orchestrator_v2::init_call(context.clone(), &inputs, static_state, worker_pool);
+    orchestrator::init_call(context.clone(), &inputs, static_state, worker_pool);
 
     (num_outputs, rx)
 }
 
 /// Awaits the result of a function call with the given inputs.
-pub fn init_await_call_v2(
+pub fn init_await_call(
     main_symbol_path: SymbolPath,
     inputs: Vec<PointerLive>,
     static_state: Arc<StaticState>,
     worker_pool: Arc<ThreadPool>
 ) -> Vec<PointerLive> {
-    let (num_outputs, rx) = init_stream_call_v2(main_symbol_path, inputs, static_state, worker_pool);
+    let (num_outputs, rx) = init_stream_call(main_symbol_path, inputs, static_state, worker_pool);
 
     // initialize vector of length num_outputs
     let mut outputs: Vec<Option<PointerLive>> = Vec::with_capacity(num_outputs);
@@ -73,7 +73,7 @@ mod tests {
     use crate::binder::json::jsonify;
     use crate::runtime::data::live::{LiveData, IntLive, PointerLive};
     use crate::runtime::static_state::state::StaticState;
-    use crate::runtime::vm::manager_v2::init_await_call_v2;
+    use crate::runtime::vm::manager::init_await_call;
 
     #[test]
     fn test_start_call_simple() {
@@ -108,7 +108,7 @@ mod tests {
 
         let start_time = std::time::Instant::now();
         for _ in 0..10000 {
-            let _ = init_await_call_v2(
+            let _ = init_await_call(
                 vec!["my_collection".to_string(), "main".to_string()],
                 vec![],
                 static_state.clone(),
@@ -118,7 +118,7 @@ mod tests {
         let elapsed = start_time.elapsed();
         println!("Average time: {:?}", elapsed / 10000);
 
-        let res = init_await_call_v2(
+        let res = init_await_call(
             vec!["my_collection".to_string(), "main".to_string()],
             vec![],
             static_state.clone(),
@@ -185,7 +185,7 @@ mod tests {
 
         let start_time = std::time::Instant::now();
         for _ in 0..10000 {
-            let _ = init_await_call_v2(
+            let _ = init_await_call(
                 vec!["my_collection".to_string(), "main".to_string()],
                 vec![],
                 static_state.clone(),
@@ -196,7 +196,7 @@ mod tests {
         let elapsed = start_time.elapsed();
         println!("Average time: {:?}", elapsed / 10000);
 
-        let res = init_await_call_v2(
+        let res = init_await_call(
             vec!["my_collection".to_string(), "main".to_string()],
             vec![],
             static_state.clone(),
@@ -265,7 +265,7 @@ mod tests {
         let start_time = std::time::Instant::now();
 
         for _ in 0..10000 {
-            let _ = init_await_call_v2(
+            let _ = init_await_call(
                 vec!["my_collection".to_string(), "main".to_string()],
                 vec![],
                 static_state.clone(),
@@ -276,7 +276,7 @@ mod tests {
         let elapsed = start_time.elapsed();
         println!("Average time: {:?}", elapsed / 10000);
 
-        let res = init_await_call_v2(
+        let res = init_await_call(
             vec!["my_collection".to_string(), "main".to_string()],
             vec![],
             static_state.clone(),
@@ -354,7 +354,7 @@ mod tests {
         let start_time = std::time::Instant::now();
 
         for _ in 0..10000 {
-            let _ = init_await_call_v2(
+            let _ = init_await_call(
                 vec!["my_collection".to_string(), "double_list".to_string()],
                 vec![],
                 static_state.clone(),
@@ -365,7 +365,7 @@ mod tests {
         let elapsed = start_time.elapsed();
         println!("Average time: {:?}", elapsed / 10000);
 
-        let res: Vec<PointerLive> = init_await_call_v2(
+        let res: Vec<PointerLive> = init_await_call(
             vec!["my_collection".to_string(), "double_list".to_string()],
             vec![],
             static_state.clone(),
@@ -442,7 +442,7 @@ mod tests {
 
         let start_time = std::time::Instant::now();
         for _ in 0..10000 {
-            let _ = init_await_call_v2(
+            let _ = init_await_call(
                 vec!["my_collection".to_string(), "filter_even".to_string()],
                 vec![],
                 static_state.clone(),
@@ -453,7 +453,7 @@ mod tests {
         let elapsed = start_time.elapsed();
         println!("Average time: {:?}", elapsed / 10000);
 
-        let res = init_await_call_v2(
+        let res = init_await_call(
             vec!["my_collection".to_string(), "filter_even".to_string()],
             vec![],
             static_state.clone(),

@@ -6,10 +6,9 @@ use crate::binder::intermediate::r#const::{CCData, CollectionConst};
 use crate::binder::intermediate::r#type::{CollectionType, CustomTypeDef};
 use crate::runtime::static_state::state::StaticState;
 use crate::runtime::{ExecResult, Symbol, SymbolPath};
-use crate::runtime::data::functions::op::FuncOpId;
 use crate::runtime::data::functions::OpCode;
-use crate::runtime::data::functions::v2::{FuncOpV2, FuncV2, FuncValV2};
-use crate::runtime::data::live::{DictLive, FuncLive, FuncOpLive, FuncValLive, PointerLive, StaticRefLive, TypeLive};
+use crate::runtime::data::functions::func::{FuncOp, FuncLive, FuncVal};
+use crate::runtime::data::live::{DictLive, PointerLive, StaticRefLive, TypeLive};
 use crate::runtime::data::stored::StoredData;
 
 
@@ -142,11 +141,11 @@ fn type_def_to_live_type(
 }
 
 
-fn cl_func_to_live_func_v2(
+fn cl_func_to_live_func(
     func: &CollectionFunc,
     func_symbol_path: &SymbolPath,
     static_state: &mut StaticState
-) -> ExecResult<FuncV2> {
+) -> ExecResult<FuncLive> {
     let mut symbol_idxs: HashMap<Symbol, usize> = HashMap::new();
 
     for (i, val) in func.graph.values.iter().enumerate() {
@@ -154,7 +153,7 @@ fn cl_func_to_live_func_v2(
     }
 
     let mut val_deps: HashMap<Symbol, Vec<usize>> = HashMap::new();
-    let mut ops: Vec<FuncOpV2> = Vec::with_capacity(func.graph.ops.len());
+    let mut ops: Vec<FuncOp> = Vec::with_capacity(func.graph.ops.len());
 
     let mut static_val_constants: HashMap<Symbol, PointerLive> = HashMap::new();
 
@@ -203,7 +202,7 @@ fn cl_func_to_live_func_v2(
             })
             .collect::<ExecResult<Vec<usize>>>().map_err(|e| format!("Error getting output indices for op {}: {}", i, e))?;
 
-        let func_op = FuncOpV2 {
+        let func_op = FuncOp {
             index: i - static_val_constants.len(),
             opcode: op_node.opcode.clone(),
             input_vals,
@@ -237,7 +236,7 @@ fn cl_func_to_live_func_v2(
     let mut constant_vals: Vec<usize> = Vec::new();
 
     // get the function values
-    let mut values: Vec<FuncValV2> = Vec::with_capacity(func.graph.values.len());
+    let mut values: Vec<FuncVal> = Vec::with_capacity(func.graph.values.len());
 
     for (i, val) in func.graph.values.iter().enumerate() {
         let dependents: Vec<usize> = val_deps.get(&val.symbol).cloned().unwrap_or_default();
@@ -264,7 +263,7 @@ fn cl_func_to_live_func_v2(
             constant_vals.push(i);
         }
 
-        let func_val = FuncValV2 {
+        let func_val = FuncVal {
             symbol: val.symbol.clone(),
             index: i,
             dependents,
@@ -283,7 +282,7 @@ fn cl_func_to_live_func_v2(
         }
     }
 
-    let res = FuncV2 {
+    let res = FuncLive {
         symbol_path: func_symbol_path.clone(),
         values,
         ops,
@@ -293,161 +292,6 @@ fn cl_func_to_live_func_v2(
     };
 
     Ok(res)
-}
-
-
-fn cl_func_to_live_func(
-    func: &CollectionFunc,
-    func_symbol_path: &SymbolPath,
-    static_state: &mut StaticState
-) -> ExecResult<FuncLive> {
-    // create buffers for the function values
-    for val in &func.graph.values {
-        let mut path: SymbolPath = func_symbol_path.clone();
-        path.push(val.symbol.clone());
-        static_state.buffer(&path)?;
-    }
-
-    // create the func ops and track the dependencies
-    let mut val_deps: HashMap<Symbol, Vec<usize>> = HashMap::new();
-    let mut ops: Vec<PointerLive> = Vec::with_capacity(func.graph.ops.len());
-
-    let mut static_val_constants: HashMap<Symbol, PointerLive> = HashMap::new();
-
-    for (i, op_node) in func.graph.ops.iter().enumerate() {
-        if op_node.opcode == OpCode::Static {
-            // if the op is static, get the static ref and store it in the static state
-            let static_path_str = func_symbol_path[0].clone() + "." + op_node.input_vals[0].as_str();
-            let static_path: SymbolPath = static_path_str.split('.').map(|s| s.to_string()).collect();
-            let static_ref: StaticRefLive = static_state.get_ref(&static_path)?;
-
-            let output_symbol: Symbol = op_node.output_vals.get(0).cloned()
-                .expect("Static op must have an output value");
-
-            let mut static_val_path: SymbolPath = func_symbol_path.clone();
-            static_val_path.push(output_symbol.clone());
-
-            let mut static_val_const_path: SymbolPath = static_val_path.clone();
-            static_val_const_path.push("constant".to_string());
-
-            let static_val_const_ptr = static_state.buffer(&static_val_const_path)?;
-            static_state.set(&static_val_const_path, StoredData::StaticRefStored(static_ref))?;
-
-            static_val_constants.insert(output_symbol.clone(), static_val_const_ptr);
-
-            continue;
-        }
-
-        let op_id: FuncOpId = "op_".to_string() + Uuid::new_v4().to_string().as_str();
-
-        let input_ptrs: Vec<PointerLive> = op_node.input_vals.iter()
-            .map(|input_symbol| {
-                val_deps.entry(input_symbol.clone()).or_insert(Vec::new()).push(i - static_val_constants.len());
-                let mut path: SymbolPath = func_symbol_path.clone();
-                path.push(input_symbol.clone());
-                static_state.get_ptr_to_ref(&path)
-            })
-            .collect::<ExecResult<Vec<PointerLive>>>().map_err(|e| format!("Error getting input pointers for op {}: {}", op_id, e))?;
-
-        let output_ptrs: Vec<PointerLive> = op_node.output_vals.iter()
-            .map(|output_symbol| {
-                let mut path: SymbolPath = func_symbol_path.clone();
-                path.push(output_symbol.clone());
-                static_state.get_ptr_to_ref(&path)
-            })
-            .collect::<ExecResult<Vec<PointerLive>>>().map_err(|e| format!("Error getting output pointers for op {}: {}", op_id, e))?;
-
-        let func_op = FuncOpLive {
-            guid: op_id.clone(),
-            opcode: op_node.opcode.clone(),
-            input_vals: input_ptrs,
-            output_vals: output_ptrs,
-        };
-
-        let mut path: SymbolPath = func_symbol_path.clone();
-        path.push(op_id.clone());
-
-        let ptr = static_state.buffer(&path).map_err(|e| format!("Error buffering op for func {:?}: {}", func_symbol_path, e))?;
-        static_state.set(&path, StoredData::FuncOpStored(func_op)).map_err(|e| format!("Error setting op for func {:?}: {}", func_symbol_path, e))?;
-
-        ops.push(ptr);
-    }
-
-    // fill the buffers for the function values
-    let mut constant_vals: Vec<PointerLive> = Vec::new();
-
-    for val in &func.graph.values {
-        let mut path: SymbolPath = func_symbol_path.clone();
-        path.push(val.symbol.clone());
-
-        let dependents: Vec<PointerLive> = val_deps.get(&val.symbol).cloned().unwrap_or_default()
-            .iter()
-            .map(|&op_id| match ops.get(op_id).cloned() {
-                Some(ptr) => ptr,
-                None => panic!("Op not found for func value {}", val.symbol)
-            })
-            .collect();
-
-        let mut constant_ptr: Option<PointerLive> = match &val.constant {
-            Some(constant_cc_data) => {
-                let mut const_path = path.clone();
-                const_path.push("constant".to_string());
-                let constant_stored_data: StoredData = cc_data_to_stored(constant_cc_data, static_state)?;
-                let constant_ptr: PointerLive = static_state.buffer(&const_path)?;
-                static_state.set(&const_path, constant_stored_data)?;
-
-                Some(constant_ptr)
-            },
-            None => None
-        };
-
-        if let Some(static_val_const_ptr) = static_val_constants.get(&val.symbol) {
-            constant_ptr = Some(static_val_const_ptr.clone());
-        }
-
-        if let Some(_) = constant_ptr {
-            let func_val_ptr: PointerLive = static_state.get_ptr_to_ref(&path)?;
-            constant_vals.push(func_val_ptr);
-        }
-
-        let func_val = FuncValLive {
-            symbol: Some(val.symbol.clone()),
-            guid: Uuid::new_v4().to_string(),
-            dependents,
-            constant: constant_ptr,
-            is_self: val.symbol == "outer"
-        };
-
-        static_state.set(&path, StoredData::FuncValStored(func_val))?;
-    }
-
-    // get the input and output values
-    let input_vals: Vec<PointerLive> = func.graph.input_vals.iter()
-        .map(|input_symbol| {
-            let mut path: SymbolPath = func_symbol_path.clone();
-            path.push(input_symbol.clone());
-            static_state.get_ptr_to_ref(&path)
-        })
-        .collect::<ExecResult<Vec<PointerLive>>>()?;
-
-    let output_vals: Vec<PointerLive> = func.graph.output_vals.iter()
-        .map(|output_symbol| {
-            let mut path: SymbolPath = func_symbol_path.clone();
-            path.push(output_symbol.clone());
-            static_state.get_ptr_to_ref(&path)
-        })
-        .collect::<ExecResult<Vec<PointerLive>>>()?;
-
-    // create the function
-    let func = FuncLive {
-        symbol_path: Some(func_symbol_path.clone()),
-        guid: Uuid::new_v4().to_string(),
-        input_vals,
-        output_vals,
-        constant_vals
-    };
-
-    Ok(func)
 }
 
 pub fn fill_collection(
@@ -501,8 +345,8 @@ pub fn fill_collection(
             path.push(name.clone());
 
             let static_ref: StaticRefLive = static_state.get_ref(&path)?;
-            let live_func: FuncV2 = cl_func_to_live_func_v2(func, &path, static_state)?;
-            static_ref.set(StoredData::FuncV2Stored(live_func))
+            let live_func: FuncLive = cl_func_to_live_func(func, &path, static_state)?;
+            static_ref.set(StoredData::FuncStored(live_func))
                 .map_err(|_| format!("Error setting function at path {:?}", path))?;
         }
     }

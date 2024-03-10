@@ -1,13 +1,13 @@
 use std::sync::{Arc};
 use std::sync::atomic::Ordering;
 use rayon::ThreadPool;
-use crate::runtime::data::functions::v2::{FuncV2, FuncValV2};
+use crate::runtime::data::functions::func::{FuncLive, FuncVal};
 use crate::runtime::data::live::{PointerLive};
 use crate::runtime::data::stored::StoredData::ListStored;
 use crate::runtime::static_state::state::StaticState;
 use crate::runtime::vm::call_context::{CallContext, get_static_func};
-use crate::runtime::vm::executor_v2;
-use crate::runtime::vm::outputs::{OutputType, ReduceLink};
+use crate::runtime::vm::executor;
+use crate::runtime::vm::outputs::{OutputType};
 
 /// Initializes the call of a function with the given inputs.
 pub fn init_call(
@@ -16,7 +16,7 @@ pub fn init_call(
     static_state: Arc<StaticState>,
     worker_pool: Arc<ThreadPool>
 ) {
-    let func: &FuncV2 = get_static_func(&context.func_ref);
+    let func: &FuncLive = get_static_func(&context.func_ref);
 
     if inputs.len() != func.input_vals.len() {
         panic!("CallContext::new: inputs.len() != func.input_vals.len()");
@@ -59,7 +59,7 @@ pub fn set_val(
         Err(_) => panic!("CallContext::set_val: val_buffer[{}] is already initialized", index)
     };
 
-    let f_val: &FuncValV2 = match get_static_func(&context.func_ref).values.get(index) {
+    let f_val: &FuncVal = match get_static_func(&context.func_ref).values.get(index) {
         Some(v) => v,
         None => panic!("CallContext::set_val: index out of bounds")
     };
@@ -127,7 +127,7 @@ pub fn set_val(
                             worker_pool.clone());
                 }
                 else {
-                    executor_v2::dispatch_next_reduce(
+                    executor::dispatch_next_reduce(
                         link.source_context.clone(),
                         link.source_result_val,
                         link.source_list.clone(),
@@ -148,7 +148,7 @@ pub fn set_val(
         context.unknown_arg_counts[*op_index].fetch_sub(1, Ordering::Relaxed);
 
         if context.unknown_arg_counts[*op_index].load(Ordering::Relaxed) == 0 {
-            executor_v2::dispatch_op(context.clone(), *op_index, static_state.clone(), worker_pool.clone());
+            executor::dispatch_op(context.clone(), *op_index, static_state.clone(), worker_pool.clone());
         }
     }
 }

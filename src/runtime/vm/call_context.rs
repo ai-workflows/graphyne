@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicUsize};
 use std::sync::{OnceLock};
-use crate::runtime::data::functions::v2::{FuncV2};
+use crate::runtime::data::functions::func::FuncLive;
 use crate::runtime::data::live::{PointerLive, StaticRefLive};
 use crate::runtime::vm::outputs::OutputType;
 
@@ -44,7 +44,7 @@ impl CallContext {
     }
 }
 
-pub fn get_static_func(func_ref: &StaticRefLive) ->&FuncV2 {
+pub fn get_static_func(func_ref: &StaticRefLive) -> &FuncLive {
     match func_ref.as_ref().get() {
         Some(v) => match v.stored_as_funcv2() {
             Ok(v) => v,

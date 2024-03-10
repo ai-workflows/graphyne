@@ -5,12 +5,11 @@ pub(crate) mod list;
 pub(crate) mod pointer;
 pub(crate) mod dict;
 pub(crate) mod bool;
-pub(crate) mod func;
 mod null;
 pub mod types;
 mod object;
 mod r#static;
-mod func_v2;
+mod func;
 
 
-pub(crate) use live_data::{BoolLive, DictLive, FloatLive, FuncLive, FuncOpLive, FuncValLive, IntLive, ListLive, LiveData, NullLive, PointerLive, StringLive, TypeLive, ObjectLive, StaticRefLive};
+pub(crate) use live_data::{BoolLive, DictLive, FloatLive, IntLive, ListLive, LiveData, NullLive, PointerLive, StringLive, TypeLive, ObjectLive, StaticRefLive};

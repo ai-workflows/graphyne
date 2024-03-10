@@ -4,13 +4,12 @@ use std::sync::{Arc};
 use std::sync::mpsc::{Receiver};
 use crate::binder::binder;
 use crate::binder::intermediate::collection::Collection;
-use crate::binder::json::jsonify;
-use crate::runtime::data::live::{FuncValLive, PointerLive};
+use crate::runtime::data::live::{PointerLive};
 use crate::runtime::{Symbol, SymbolPath};
 use crate::runtime::static_state::state::StaticState;
-use crate::runtime::vm::manager_v2::{init_await_call_v2, init_stream_call_v2};
+use crate::runtime::vm::manager::{init_await_call, init_stream_call};
 
-pub fn await_call_v2(
+pub fn await_call(
     main_symbol_path: SymbolPath,
     inputs: Vec<PointerLive>,
     static_state: Arc<StaticState>,
@@ -19,7 +18,7 @@ pub fn await_call_v2(
     let worker_count = get_worker_counts(workers);
     let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(worker_count).build().unwrap());
 
-    init_await_call_v2(
+    init_await_call(
         main_symbol_path,
         inputs,
         static_state,
@@ -27,7 +26,7 @@ pub fn await_call_v2(
     )
 }
 
-pub fn stream_call_v2(
+pub fn stream_call(
     main_symbol_path: SymbolPath,
     inputs: Vec<PointerLive>,
     static_state: Arc<StaticState>,
@@ -36,7 +35,7 @@ pub fn stream_call_v2(
     let worker_count = get_worker_counts(workers);
     let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(worker_count).build().unwrap());
 
-    init_stream_call_v2(
+    init_stream_call(
         main_symbol_path,
         inputs,
         static_state,
@@ -104,21 +103,21 @@ pub fn log_error(msg: String) {
 }
 
 
-pub fn log_output(func_val: &FuncValLive, value: &PointerLive) {
-    let symbol = match &func_val.symbol {
-        Some(s) => s,
-        None => &func_val.guid,
-    };
-
-    let val = jsonify(value.as_ref());
-    log_async(format!("out | {}: {}", symbol, val));
-}
+// pub fn log_output(func_val: &FuncValLive, value: &PointerLive) {
+//     let symbol = match &func_val.symbol {
+//         Some(s) => s,
+//         None => &func_val.guid,
+//     };
+//
+//     let val = jsonify(value.as_ref());
+//     log_async(format!("out | {}: {}", symbol, val));
+// }
 
 
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use crate::api::{bind, load_intermediate, stream_call_v2};
+    use crate::api::{bind, load_intermediate, stream_call};
     use crate::binder::intermediate::collection::Collection;
     use crate::binder::json::jsonify;
     use crate::runtime::data::live::PointerLive;
@@ -131,7 +130,7 @@ mod tests {
 
         let main_func_ptr: PointerLive = static_state.get_ptr_to_ref(&vec!["top_level".to_string(), "main".to_string()]).unwrap();
 
-        let (output_count, output_receiver) = stream_call_v2(
+        let (output_count, output_receiver) = stream_call(
             vec!["top_level".to_string(), "main".to_string()],
             vec![],
             static_state.clone(),

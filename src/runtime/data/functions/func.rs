@@ -3,7 +3,7 @@ use crate::runtime::data::functions::OpCode;
 use crate::runtime::data::live::PointerLive;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FuncValV2 {
+pub struct FuncVal {
     /// The local symbol for this value.
     pub symbol: Symbol,
 
@@ -21,7 +21,7 @@ pub struct FuncValV2 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FuncOpV2 {
+pub struct FuncOp {
     /// The index of this operation in the func
     pub index: usize,
 
@@ -36,15 +36,15 @@ pub struct FuncOpV2 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FuncV2 {
+pub struct FuncLive {
     /// The static symbol path that this function is defined at.
     pub symbol_path: SymbolPath,
 
     /// List of the function's values
-    pub values: Vec<FuncValV2>,
+    pub values: Vec<FuncVal>,
 
     /// List of the function's operations
-    pub ops: Vec<FuncOpV2>,
+    pub ops: Vec<FuncOp>,
 
     /// A list of the indices of the func value nodes that args will be bound to when the function is called.
     pub input_vals: Vec<usize>,

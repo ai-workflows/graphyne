@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 use crate::runtime::{ExecResult, Type};
-use crate::runtime::data::functions::{FuncOp, FuncSig, FuncVal};
+use crate::runtime::data::functions::func::FuncLive;
 use crate::runtime::data::live::object::Object;
 use crate::runtime::data::stored::StoredData;
 use crate::runtime::static_state::state::StaticState;
@@ -17,11 +17,6 @@ pub type ListLive = Vec<PointerLive>;
 pub type DictLive = HashMap<StringLive, PointerLive>;
 pub type TypeLive = Type;
 pub type ObjectLive = Object;
-
-// Live function types
-pub type FuncLive = FuncSig;
-pub type FuncValLive = FuncVal;
-pub type FuncOpLive = FuncOp;
 
 // static_state ref
 pub type StaticRefLive = Arc<OnceLock<StoredData>>;
@@ -44,8 +39,6 @@ pub trait LiveData {
     fn as_list(&self) -> Option<ExecResult<ListLive>> {None}
     fn as_dict(&self) -> Option<ExecResult<DictLive>> {None}
     fn as_func(&self) -> Option<ExecResult<FuncLive>> {None}
-    fn as_func_val(&self) -> Option<ExecResult<FuncValLive>> {None}
-    fn as_func_op(&self) -> Option<ExecResult<FuncOpLive>> {None}
     fn as_null(&self) -> Option<ExecResult<NullLive>> {None}
     fn as_type(&self) -> Option<ExecResult<TypeLive>> {None}
     fn as_object(&self) -> Option<ExecResult<ObjectLive>> {None}

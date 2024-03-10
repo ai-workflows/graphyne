@@ -247,7 +247,7 @@ impl<'de> Deserialize<'de> for CFnValueNode {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use crate::api::{await_call_v2, bind};
+    use crate::api::{await_call, bind};
     use crate::binder::intermediate::collection::Collection;
     use crate::runtime::data::live::{IntLive, LiveData, PointerLive};
 
@@ -261,7 +261,7 @@ mod tests {
 
         let main_ref: PointerLive = static_state.get_ptr_to_ref(&vec!["my_collection".to_string(), "main".to_string()]).unwrap();
 
-        let res = await_call_v2(
+        let res = await_call(
             vec!["my_collection".to_string(), "main".to_string()],
             vec![],
             static_state.clone(),

@@ -2,13 +2,13 @@ use std::sync::{Arc, OnceLock};
 use std::sync::atomic::AtomicUsize;
 use rayon::ThreadPool;
 use crate::runtime::data::functions::OpCode;
-use crate::runtime::data::functions::v2::{FuncOpV2, FuncV2};
+use crate::runtime::data::functions::func::{FuncOp, FuncLive};
 use crate::runtime::data::live::PointerLive;
 use crate::runtime::static_state::state::StaticState;
 use crate::runtime::vm::call_context::{CallContext, get_static_func};
 use crate::runtime::vm::operator::operator::execute_op;
 use crate::runtime::vm::operator::ops::Operation;
-use crate::runtime::vm::orchestrator_v2::{get_val, init_call, set_val};
+use crate::runtime::vm::orchestrator::{get_val, init_call, set_val};
 use crate::runtime::vm::outputs::{FilterLink, MapLink, OutputType, ReduceLink};
 
 
@@ -19,8 +19,8 @@ pub fn dispatch_op(
     worker_pool: Arc<ThreadPool>
 ) {
     worker_pool.clone().spawn(move || {
-        let func: &FuncV2 = get_static_func(&context.func_ref);
-        let fn_op: &FuncOpV2 = match func.ops.get(op_idx) {
+        let func: &FuncLive = get_static_func(&context.func_ref);
+        let fn_op: &FuncOp = match func.ops.get(op_idx) {
             Some(o) => o,
             None => panic!("dispatch_op: op_idx out of bounds")
         };
@@ -42,7 +42,7 @@ pub fn dispatch_op(
 }
 
 pub fn handle_normal_op(
-    fn_op: &FuncOpV2,
+    fn_op: &FuncOp,
     op: Operation,
     context: Arc<CallContext>,
     static_state: Arc<StaticState>,
@@ -60,7 +60,7 @@ pub fn handle_normal_op(
 }
 
 pub fn handle_call_op(
-    fn_op: &FuncOpV2,
+    fn_op: &FuncOp,
     inputs: Vec<PointerLive>,
     context: Arc<CallContext>,
     static_state: Arc<StaticState>,
@@ -87,7 +87,7 @@ pub fn handle_call_op(
 }
 
 pub fn handle_map_op(
-    fn_op: &FuncOpV2,
+    fn_op: &FuncOp,
     inputs: Vec<PointerLive>,
     context: Arc<CallContext>,
     static_state: Arc<StaticState>,
@@ -141,7 +141,7 @@ pub fn handle_map_op(
 }
 
 pub fn handle_filter_op(
-    fn_op: &FuncOpV2,
+    fn_op: &FuncOp,
     inputs: Vec<PointerLive>,
     context: Arc<CallContext>,
     static_state: Arc<StaticState>,
@@ -241,7 +241,7 @@ pub fn dispatch_next_reduce(
 }
 
 pub fn handle_reduce_op(
-    fn_op: &FuncOpV2,
+    fn_op: &FuncOp,
     inputs: Vec<PointerLive>,
     context: Arc<CallContext>,
     static_state: Arc<StaticState>,

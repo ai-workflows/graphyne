@@ -1,7 +1,7 @@
-use crate::runtime::data::live::{FloatLive, IntLive, StringLive, ListLive, PointerLive, DictLive, FuncLive, FuncValLive, FuncOpLive};
+use crate::runtime::data::live::{FloatLive, IntLive, StringLive, ListLive, PointerLive, DictLive,};
 use crate::runtime::data::live::live_data::{BoolLive, ObjectLive, StaticRefLive, TypeLive};
 use crate::runtime::{ExecResult, Type};
-use crate::runtime::data::functions::v2::FuncV2;
+use crate::runtime::data::functions::func::FuncLive;
 
 /// Represents data that is currently being stored in memory.
 /// This data must be converted to its live counterpart before it can be used.
@@ -15,13 +15,10 @@ pub enum StoredData {
     PointerStored(PointerLive),
     ListStored(ListLive),
     DictStored(DictLive),
-    FuncStored(FuncLive),
-    FuncValStored(FuncValLive),
-    FuncOpStored(FuncOpLive),
     TypeStored(TypeLive),
     ObjectStored(ObjectLive),
     StaticRefStored(StaticRefLive),
-    FuncV2Stored(FuncV2),
+    FuncStored(FuncLive),
 }
 
 impl StoredData {
@@ -35,9 +32,6 @@ impl StoredData {
             StoredData::PointerStored(_) => Ok(Type::Pointer),
             StoredData::ListStored(_) => Ok(Type::List),
             StoredData::DictStored(_) => Ok(Type::Dictionary),
-            StoredData::FuncStored(_) => Ok(Type::Function),
-            StoredData::FuncValStored(_) => Ok(Type::FunctionVal),
-            StoredData::FuncOpStored(_) => Ok(Type::FunctionOp),
             StoredData::TypeStored(_) => Ok(Type::Type),
             StoredData::ObjectStored(obj) => match obj.type_ptr.as_ref() {
                 StoredData::TypeStored(t) => Ok(t.clone()),
@@ -47,7 +41,7 @@ impl StoredData {
                 Some(data) => data.type_of(),
                 None => Err("Static Reference is not initialized.".to_string())
             },
-            StoredData::FuncV2Stored(_) => Ok(Type::Function),
+            StoredData::FuncStored(_) => Ok(Type::Function),
         }
     }
 
@@ -120,31 +114,10 @@ impl StoredData {
         }
     }
 
-    pub fn stored_as_func(&self) -> ExecResult<&FuncLive> {
+    pub fn stored_as_funcv2(&self) -> ExecResult<&FuncLive> {
         match self {
             StoredData::FuncStored(value) => Ok(value),
-            _ => self.match_stored_data(|data| data.stored_as_func()),
-        }
-    }
-
-    pub fn stored_as_funcv2(&self) -> ExecResult<&FuncV2> {
-        match self {
-            StoredData::FuncV2Stored(value) => Ok(value),
             _ => self.match_stored_data(|data| data.stored_as_funcv2()),
-        }
-    }
-
-    pub fn stored_as_func_val(&self) -> ExecResult<&FuncValLive> {
-        match self {
-            StoredData::FuncValStored(value) => Ok(value),
-            _ => self.match_stored_data(|data| data.stored_as_func_val()),
-        }
-    }
-
-    pub fn stored_as_func_op(&self) -> ExecResult<&FuncOpLive> {
-        match self {
-            StoredData::FuncOpStored(value) => Ok(value),
-            _ => self.match_stored_data(|data| data.stored_as_func_op()),
         }
     }
 
@@ -216,18 +189,6 @@ impl From<DictLive> for StoredData {
 impl From<FuncLive> for StoredData {
     fn from(value: FuncLive) -> Self {
         StoredData::FuncStored(value)
-    }
-}
-
-impl From<FuncValLive> for StoredData {
-    fn from(value: FuncValLive) -> Self {
-        StoredData::FuncValStored(value)
-    }
-}
-
-impl From<FuncOpLive> for StoredData {
-    fn from(value: FuncOpLive) -> Self {
-        StoredData::FuncOpStored(value)
     }
 }
 

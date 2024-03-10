@@ -1,6 +1,7 @@
 use std::sync::Arc;
+use crate::runtime::data::functions::func::FuncLive;
 use crate::runtime::data::live::live_data::StaticRefLive;
-use crate::runtime::data::live::{BoolLive, DictLive, FloatLive, FuncLive, FuncOpLive, FuncValLive, IntLive, ListLive, LiveData, NullLive, ObjectLive, PointerLive, StringLive, TypeLive};
+use crate::runtime::data::live::{BoolLive, DictLive, FloatLive, IntLive, ListLive, LiveData, NullLive, ObjectLive, PointerLive, StringLive, TypeLive};
 use crate::runtime::data::stored::StoredData;
 use crate::runtime::ExecResult;
 use crate::runtime::static_state::state::StaticState;
@@ -63,8 +64,6 @@ impl LiveData for StaticRefLive {
     no_arg_op!(as_list, ListLive);
     no_arg_op!(as_dict, DictLive);
     no_arg_op!(as_func, FuncLive);
-    no_arg_op!(as_func_val, FuncValLive);
-    no_arg_op!(as_func_op, FuncOpLive);
     no_arg_op!(as_null, NullLive);
     no_arg_op!(as_type, TypeLive);
     no_arg_op!(as_object, ObjectLive);

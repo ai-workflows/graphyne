@@ -36,47 +36,9 @@ pub fn jsonify(val: &StoredData,
 
             serde_json::to_string(&map).unwrap_or_else(|_| "null".to_string())
         }
-        StoredData::FuncV2Stored(val) => {
+        StoredData::FuncStored(val) => {
             let symbol_path = val.symbol_path.clone().join(".");
             symbol_path
-        }
-        StoredData::FuncStored(val) => {
-            let mut map = HashMap::new();
-
-            map.insert("input_vals".to_string(), jsonify(
-                &StoredData::ListStored(val.input_vals.clone())));
-            map.insert("output_vals".to_string(), jsonify(
-                &StoredData::ListStored(val.output_vals.clone())));
-
-            serde_json::to_string(&map).unwrap_or_else(|_| "null".to_string())
-        }
-        StoredData::FuncValStored(val) => {
-            let mut map = HashMap::new();
-
-            map.insert("guid".to_string(), val.guid.clone());
-            map.insert("dependents".to_string(), jsonify(
-                &StoredData::ListStored(val.dependents.clone())));
-            if let Some(constant) = &val.constant {
-                map.insert("constant".to_string(), jsonify(
-                    &StoredData::PointerStored(constant.clone())));
-            }
-            map.insert("is_self".to_string(), jsonify(
-                &StoredData::BoolStored(val.is_self)));
-
-            serde_json::to_string(&map).unwrap_or_else(|_| "null".to_string())
-        }
-        StoredData::FuncOpStored(val) => {
-            let mut map = HashMap::new();
-
-            map.insert("guid".to_string(), val.guid.clone());
-            map.insert("opcode".to_string(), jsonify(
-                &StoredData::IntStored(val.opcode as i64)));
-            map.insert("input_vals".to_string(), jsonify(
-                &StoredData::ListStored(val.input_vals.clone())));
-            map.insert("output_vals".to_string(), jsonify(
-                &StoredData::ListStored(val.output_vals.clone())));
-
-            serde_json::to_string(&map).unwrap_or_else(|_| "null".to_string())
         }
         StoredData::TypeStored(val) => {
             return match val {

@@ -1,6 +1,6 @@
 use clap::{Parser};
 use std::sync::Arc;
-use crate::api::{await_call_v2, bind, load_intermediate, log_async, log_error, stream_call_v2};
+use crate::api::{await_call, bind, load_intermediate, log_async, log_error, stream_call};
 use crate::binder::intermediate::collection::Collection;
 use crate::binder::json::jsonify;
 use crate::runtime::data::live::PointerLive;
@@ -66,7 +66,7 @@ fn main() {
                 .map_err(|e| log_error(format!("Error binding program: {}", e)))
                 .unwrap();
 
-            let (num_outputs, outputs_receiver) = stream_call_v2(
+            let (num_outputs, outputs_receiver) = stream_call(
                 vec![main_collection_symbol, "main".to_string()],
                 vec![],
                 static_state.clone(),
@@ -94,7 +94,7 @@ fn main() {
                 .map_err(|e| log_error(format!("Error binding program: {}", e)))
                 .unwrap();
 
-            let res: Vec<PointerLive> = await_call_v2(
+            let res: Vec<PointerLive> = await_call(
                 vec![main_collection_symbol, "main".to_string()],
                 vec![],
                 static_state.clone(),
