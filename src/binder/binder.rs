@@ -1,13 +1,14 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 use uuid::Uuid;
 use crate::binder::intermediate::collection::Collection;
-use crate::binder::intermediate::func::{CFnValueNode, CollectionFunc};
+use crate::binder::intermediate::func::{CollectionFunc};
 use crate::binder::intermediate::r#const::{CCData, CollectionConst};
 use crate::binder::intermediate::r#type::{CollectionType, CustomTypeDef};
 use crate::runtime::static_state::state::StaticState;
 use crate::runtime::{ExecResult, Symbol, SymbolPath};
 use crate::runtime::data::functions::op::FuncOpId;
 use crate::runtime::data::functions::OpCode;
+use crate::runtime::data::functions::v2::{FuncOpV2, FuncV2, FuncValV2};
 use crate::runtime::data::live::{DictLive, FuncLive, FuncOpLive, FuncValLive, PointerLive, StaticRefLive, TypeLive};
 use crate::runtime::data::stored::StoredData;
 
@@ -141,6 +142,159 @@ fn type_def_to_live_type(
 }
 
 
+fn cl_func_to_live_func_v2(
+    func: &CollectionFunc,
+    func_symbol_path: &SymbolPath,
+    static_state: &mut StaticState
+) -> ExecResult<FuncV2> {
+    let mut symbol_idxs: HashMap<Symbol, usize> = HashMap::new();
+
+    for (i, val) in func.graph.values.iter().enumerate() {
+        symbol_idxs.insert(val.symbol.clone(), i);
+    }
+
+    let mut val_deps: HashMap<Symbol, Vec<usize>> = HashMap::new();
+    let mut ops: Vec<FuncOpV2> = Vec::with_capacity(func.graph.ops.len());
+
+    let mut static_val_constants: HashMap<Symbol, PointerLive> = HashMap::new();
+
+    for (i, op_node) in func.graph.ops.iter().enumerate() {
+        if op_node.opcode == OpCode::Static {
+            // if the op is static, get the static ref and store it in the static state
+            let mut static_path: SymbolPath = func_symbol_path.iter()
+                .take(func_symbol_path.len() - 1).cloned().collect();
+            static_path.extend(op_node.input_vals.iter().map(|s| s.clone()));
+
+            let static_ref: StaticRefLive = static_state.get_ref(&static_path)?;
+
+            let output_symbol: Symbol = op_node.output_vals.get(0).cloned()
+                .expect("Static op must have an output value");
+
+            let mut static_val_path: SymbolPath = func_symbol_path.clone();
+            static_val_path.push(output_symbol.clone());
+
+            let mut static_val_const_path: SymbolPath = static_val_path.clone();
+            static_val_const_path.push("constant".to_string());
+
+            let static_val_const_ptr = static_state.buffer(&static_val_const_path)?;
+            static_state.set(&static_val_const_path, StoredData::StaticRefStored(static_ref))?;
+
+            static_val_constants.insert(output_symbol.clone(), static_val_const_ptr);
+
+            continue;
+        }
+
+        let input_vals: Vec<usize> = op_node.input_vals.iter()
+            .map(|input_symbol| {
+                val_deps.entry(input_symbol.clone()).or_insert(Vec::new()).push(i - static_val_constants.len());
+                match symbol_idxs.get(input_symbol).cloned() {
+                    Some(idx) => Ok(idx),
+                    None => Err(format!("Input value not found for op {}: {}", i, input_symbol))
+                }
+            })
+            .collect::<ExecResult<Vec<usize>>>().map_err(|e| format!("Error getting input indices for op {}: {}", i, e))?;
+
+        let output_vals: Vec<usize> = op_node.output_vals.iter()
+            .map(|output_symbol| {
+                match symbol_idxs.get(output_symbol).cloned() {
+                    Some(idx) => Ok(idx),
+                    None => Err(format!("Output value not found for op {}: {}", i, output_symbol))
+                }
+            })
+            .collect::<ExecResult<Vec<usize>>>().map_err(|e| format!("Error getting output indices for op {}: {}", i, e))?;
+
+        let func_op = FuncOpV2 {
+            index: i - static_val_constants.len(),
+            opcode: op_node.opcode.clone(),
+            input_vals,
+            output_vals,
+        };
+
+        ops.push(func_op);
+    }
+
+    // get the input/output indices
+    let mut output_idxs: HashMap<Symbol, usize> = HashMap::new();
+    for (i, output_symbol) in func.graph.output_vals.iter().enumerate() {
+        output_idxs.insert(output_symbol.clone(), i);
+    }
+
+    let mut output_vals: Vec<usize> = Vec::with_capacity(func.graph.output_vals.len());
+    for _ in 0..func.graph.output_vals.len() {
+        output_vals.push(0);
+    }
+
+    let mut input_idxs: HashMap<Symbol, usize> = HashMap::new();
+    for (i, input_symbol) in func.graph.input_vals.iter().enumerate() {
+        input_idxs.insert(input_symbol.clone(), i);
+    }
+
+    let mut input_vals: Vec<usize> = Vec::with_capacity(func.graph.input_vals.len());
+    for _ in 0..func.graph.input_vals.len() {
+        input_vals.push(0);
+    }
+
+    let mut constant_vals: Vec<usize> = Vec::new();
+
+    // get the function values
+    let mut values: Vec<FuncValV2> = Vec::with_capacity(func.graph.values.len());
+
+    for (i, val) in func.graph.values.iter().enumerate() {
+        let dependents: Vec<usize> = val_deps.get(&val.symbol).cloned().unwrap_or_default();
+
+        let mut constant: Option<PointerLive> = match &val.constant {
+            Some(constant_cc_data) => {
+                let mut const_path = func_symbol_path.clone();
+                const_path.push(val.symbol.clone());
+                const_path.push("constant".to_string());
+                let constant_stored_data: StoredData = cc_data_to_stored(constant_cc_data, static_state)?;
+                let constant_ptr: PointerLive = static_state.buffer(&const_path)?;
+                static_state.set(&const_path, constant_stored_data)?;
+
+                Some(constant_ptr)
+            },
+            None => None
+        };
+
+        if let Some(static_val_const_ptr) = static_val_constants.get(&val.symbol) {
+            constant = Some(static_val_const_ptr.clone());
+        }
+
+        if let Some(_) = constant {
+            constant_vals.push(i);
+        }
+
+        let func_val = FuncValV2 {
+            symbol: val.symbol.clone(),
+            index: i,
+            dependents,
+            constant,
+            output_idx: output_idxs.get(&val.symbol).cloned()
+        };
+
+        values.push(func_val);
+
+        if let Some(input_idx) = input_idxs.get(&val.symbol) {
+            input_vals[*input_idx] = i;
+        }
+
+        if let Some(output_idx) = output_idxs.get(&val.symbol) {
+            output_vals[*output_idx] = i;
+        }
+    }
+
+    let res = FuncV2 {
+        symbol_path: func_symbol_path.clone(),
+        values,
+        ops,
+        input_vals,
+        output_vals,
+        constant_vals
+    };
+
+    Ok(res)
+}
+
 
 fn cl_func_to_live_func(
     func: &CollectionFunc,
@@ -180,18 +334,6 @@ fn cl_func_to_live_func(
             static_state.set(&static_val_const_path, StoredData::StaticRefStored(static_ref))?;
 
             static_val_constants.insert(output_symbol.clone(), static_val_const_ptr);
-
-            // let static_val_ptr = static_state.get_ptr_to_ref(&static_val_path)?;
-            // static_state.set(&static_val_path, StoredData::FuncValStored(FuncValLive {
-            //     symbol: Some(output_symbol.clone()),
-            //     guid: Uuid::new_v4().to_string(),
-            //     dependents: Vec::new(),
-            //     constant: Some(static_val_const_ptr),
-            //     is_self: false
-            // }))?;
-            //
-            // static_vals.insert(output_symbol);
-            // constant_vals.push(static_val_ptr);
 
             continue;
         }
@@ -359,8 +501,8 @@ pub fn fill_collection(
             path.push(name.clone());
 
             let static_ref: StaticRefLive = static_state.get_ref(&path)?;
-            let live_func: FuncLive = cl_func_to_live_func(func, &path, static_state)?;
-            static_ref.set(StoredData::FuncStored(live_func))
+            let live_func: FuncV2 = cl_func_to_live_func_v2(func, &path, static_state)?;
+            static_ref.set(StoredData::FuncV2Stored(live_func))
                 .map_err(|_| format!("Error setting function at path {:?}", path))?;
         }
     }

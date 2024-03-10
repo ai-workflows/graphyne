@@ -247,7 +247,7 @@ impl<'de> Deserialize<'de> for CFnValueNode {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use crate::api::{await_call, bind};
+    use crate::api::{await_call_v2, bind};
     use crate::binder::intermediate::collection::Collection;
     use crate::runtime::data::live::{IntLive, LiveData, PointerLive};
 
@@ -261,16 +261,17 @@ mod tests {
 
         let main_ref: PointerLive = static_state.get_ptr_to_ref(&vec!["my_collection".to_string(), "main".to_string()]).unwrap();
 
-        let res = await_call(
-            main_ref,
+        let res = await_call_v2(
+            vec!["my_collection".to_string(), "main".to_string()],
             vec![],
             static_state.clone(),
-            true,
-            Some(1),
-        ).unwrap();
+            Some(1)
+        );
 
-        let double: IntLive = res.get("double").unwrap().as_live().as_int().unwrap().unwrap();
-        let triple: IntLive = res.get("triple").unwrap().as_live().as_int().unwrap().unwrap();
+        assert_eq!(res.len(), 2);
+
+        let double: IntLive = res.get(0).unwrap().as_live().as_int().unwrap().unwrap();
+        let triple: IntLive = res.get(1).unwrap().as_live().as_int().unwrap().unwrap();
 
         assert_eq!(double, 10);
         assert_eq!(triple, 15);

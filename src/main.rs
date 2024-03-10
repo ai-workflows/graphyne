@@ -1,14 +1,10 @@
-use std::collections::HashMap;
 use clap::{Parser};
 use std::sync::Arc;
-use std::thread;
-use crate::api::{await_call, bind, load_intermediate, log_async, log_error, stream_call};
+use crate::api::{await_call_v2, bind, load_intermediate, log_async, log_error, stream_call_v2};
 use crate::binder::intermediate::collection::Collection;
 use crate::binder::json::jsonify;
-use crate::runtime::{ExecResult, Symbol};
 use crate::runtime::data::live::PointerLive;
 use crate::runtime::static_state::state::StaticState;
-use crate::runtime::vm::manager::StreamResult;
 
 
 mod runtime;
@@ -70,46 +66,16 @@ fn main() {
                 .map_err(|e| log_error(format!("Error binding program: {}", e)))
                 .unwrap();
 
-            let main_func_ptr: PointerLive = static_state.get_ptr_to_ref(&vec![main_collection_symbol, "main".to_string()])
-                .map_err(|e| log_error(format!("Error getting main function: {}", e)))
-                .unwrap();
+            let (num_outputs, outputs_receiver) = stream_call_v2(
+                vec![main_collection_symbol, "main".to_string()],
+                vec![],
+                static_state.clone(),
+                workers,
+            );
 
-            let (outputs_sender, outputs_receiver) = std::sync::mpsc::channel::<StreamResult>();
-
-            thread::spawn(move || {
-                let _ = stream_call(
-                    main_func_ptr,
-                    vec![],
-                    static_state.clone(),
-                    verbose,
-                    workers,
-                    outputs_sender
-                );
-            });
-
-            let mut output_count = 0;
-            let mut expected_output_count: Option<usize> = None;
-
-            loop {
+            for _ in 0..num_outputs {
                 let res = outputs_receiver.recv().unwrap();
-                match res {
-                    StreamResult::NumOutputs(num) => {
-                        expected_output_count = Some(num);
-                    },
-                    StreamResult::Output(fn_val, val_ref) => {
-                        log_async(format!("out | {}: {}", fn_val.symbol.unwrap_or(fn_val.guid), jsonify(val_ref.as_ref())));
-                        output_count += 1;
-                        if let Some(expected) = expected_output_count {
-                            if output_count >= expected {
-                                break;
-                            }
-                        }
-                    },
-                    StreamResult::Error(e) => {
-                        log_error(format!("result | error: {}", e));
-                        return;
-                    }
-                }
+                log_async(format!("out | {}: {}", res.0, jsonify(res.1.as_ref())));
             }
         },
 
@@ -128,50 +94,16 @@ fn main() {
                 .map_err(|e| log_error(format!("Error binding program: {}", e)))
                 .unwrap();
 
-            let main_func: PointerLive = static_state.get_ptr_to_ref(&vec![main_collection_symbol, "main".to_string()])
-                .map_err(|e| log_error(format!("Error getting main function: {}", e)))
-                .unwrap();
-
-            let res: ExecResult<HashMap<Symbol, PointerLive>> = await_call(
-                main_func.clone(),
+            let res: Vec<PointerLive> = await_call_v2(
+                vec![main_collection_symbol, "main".to_string()],
                 vec![],
                 static_state.clone(),
-                verbose,
                 workers,
             );
 
-            let res: HashMap<Symbol, PointerLive> = match res {
-                Ok(v) => v,
-                Err(e) => {
-                    log_error(format!("result | error: {}", e));
-                    return;
-                }
-            };
-
-            log_async("result | success".to_string());
-
-            for (k, v) in res.iter() {
-                log_async(format!("out | {}: {}", k, jsonify(v.as_ref())));
+            for (i, v) in res.iter().enumerate() {
+                log_async(format!("out | {}: {}", i, jsonify(v.as_ref())));
             }
-
-
-            // let main_func_stored = mmu.get_ref_value(&main_func).unwrap();
-            // let main_func = match main_func_stored.as_ref() {
-            //     StoredData::FuncStored(f) => f,
-            //     _ => panic!("main function is not a function")
-            // };
-            //
-            // for i in 0..res.len() {
-            //     let output_fn_val_ptr = main_func.output_vals.get(i).unwrap();
-            //     let output_fn_val = mmu.get_ptr_value(output_fn_val_ptr).unwrap();
-            //     match output_fn_val.as_ref() {
-            //         StoredData::FuncValStored(k) => {
-            //             let k_symbol = k.symbol.clone().unwrap_or(k.guid.clone());
-            //             log_async(format!("out | {}: {}", k_symbol, jsonify(mmu.clone(), &mmu.get_ref_value(&res[i]).unwrap())));
-            //         },
-            //         _ => panic!("output value is not a function value")
-            //     }
-            // }
         }
     }
 }

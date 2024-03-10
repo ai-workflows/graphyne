@@ -10,6 +10,7 @@ mod null;
 pub mod types;
 mod object;
 mod r#static;
+mod func_v2;
 
 
 pub(crate) use live_data::{BoolLive, DictLive, FloatLive, FuncLive, FuncOpLive, FuncValLive, IntLive, ListLive, LiveData, NullLive, PointerLive, StringLive, TypeLive, ObjectLive, StaticRefLive};

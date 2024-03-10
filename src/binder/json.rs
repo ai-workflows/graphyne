@@ -36,6 +36,10 @@ pub fn jsonify(val: &StoredData,
 
             serde_json::to_string(&map).unwrap_or_else(|_| "null".to_string())
         }
+        StoredData::FuncV2Stored(val) => {
+            let symbol_path = val.symbol_path.clone().join(".");
+            symbol_path
+        }
         StoredData::FuncStored(val) => {
             let mut map = HashMap::new();
 

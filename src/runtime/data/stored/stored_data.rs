@@ -1,6 +1,7 @@
 use crate::runtime::data::live::{FloatLive, IntLive, StringLive, ListLive, PointerLive, DictLive, FuncLive, FuncValLive, FuncOpLive};
 use crate::runtime::data::live::live_data::{BoolLive, ObjectLive, StaticRefLive, TypeLive};
 use crate::runtime::{ExecResult, Type};
+use crate::runtime::data::functions::v2::FuncV2;
 
 /// Represents data that is currently being stored in memory.
 /// This data must be converted to its live counterpart before it can be used.
@@ -19,7 +20,8 @@ pub enum StoredData {
     FuncOpStored(FuncOpLive),
     TypeStored(TypeLive),
     ObjectStored(ObjectLive),
-    StaticRefStored(StaticRefLive)
+    StaticRefStored(StaticRefLive),
+    FuncV2Stored(FuncV2),
 }
 
 impl StoredData {
@@ -44,7 +46,8 @@ impl StoredData {
             StoredData::StaticRefStored(val) => match val.get() {
                 Some(data) => data.type_of(),
                 None => Err("Static Reference is not initialized.".to_string())
-            }
+            },
+            StoredData::FuncV2Stored(_) => Ok(Type::Function),
         }
     }
 
@@ -121,6 +124,13 @@ impl StoredData {
         match self {
             StoredData::FuncStored(value) => Ok(value),
             _ => self.match_stored_data(|data| data.stored_as_func()),
+        }
+    }
+
+    pub fn stored_as_funcv2(&self) -> ExecResult<&FuncV2> {
+        match self {
+            StoredData::FuncV2Stored(value) => Ok(value),
+            _ => self.match_stored_data(|data| data.stored_as_funcv2()),
         }
     }
 

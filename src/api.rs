@@ -1,55 +1,46 @@
-use std::collections::HashMap;
 use std::{fs, io};
 use std::io::Write;
-use std::sync::{Arc, Mutex};
-use std::sync::mpsc::Sender;
+use std::sync::{Arc};
+use std::sync::mpsc::{Receiver};
 use crate::binder::binder;
 use crate::binder::intermediate::collection::Collection;
 use crate::binder::json::jsonify;
 use crate::runtime::data::live::{FuncValLive, PointerLive};
-use crate::runtime::{ExecResult, Symbol};
+use crate::runtime::{Symbol, SymbolPath};
 use crate::runtime::static_state::state::StaticState;
-use crate::runtime::vm::manager::{manage_await_call, manage_start_call, StreamResult};
+use crate::runtime::vm::manager_v2::{init_await_call_v2, init_stream_call_v2};
 
-pub fn await_call(
-    func: PointerLive,
-    args: Vec<PointerLive>,
+pub fn await_call_v2(
+    main_symbol_path: SymbolPath,
+    inputs: Vec<PointerLive>,
     static_state: Arc<StaticState>,
-    verbose: bool,
     workers: Option<usize>,
-) -> ExecResult<HashMap<Symbol, PointerLive>> {
+) -> Vec<PointerLive> {
     let worker_count = get_worker_counts(workers);
     let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(worker_count).build().unwrap());
 
-    manage_await_call(
-        static_state.clone(),
-        worker_pool,
-        func,
-        args,
-        verbose,
+    init_await_call_v2(
+        main_symbol_path,
+        inputs,
+        static_state,
+        worker_pool
     )
 }
 
-pub fn stream_call(
-    func: PointerLive,
-    args: Vec<PointerLive>,
+pub fn stream_call_v2(
+    main_symbol_path: SymbolPath,
+    inputs: Vec<PointerLive>,
     static_state: Arc<StaticState>,
-    verbose: bool,
     workers: Option<usize>,
-    output_sender: Sender<StreamResult>,
-) -> ExecResult<()> {
+) -> (usize, Receiver<(usize, PointerLive)>) {
     let worker_count = get_worker_counts(workers);
     let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(worker_count).build().unwrap());
 
-    let output_sender = Arc::new(Mutex::new(output_sender));
-
-    manage_start_call(
-        static_state.clone(),
-        worker_pool,
-        func,
-        args,
-        output_sender,
-        verbose,
+    init_stream_call_v2(
+        main_symbol_path,
+        inputs,
+        static_state,
+        worker_pool
     )
 }
 
@@ -127,62 +118,42 @@ pub fn log_output(func_val: &FuncValLive, value: &PointerLive) {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use std::sync::Arc;
-    use std::thread;
-    use crate::api::{bind, load_intermediate, stream_call};
+    use crate::api::{bind, load_intermediate, stream_call_v2};
     use crate::binder::intermediate::collection::Collection;
     use crate::binder::json::jsonify;
     use crate::runtime::data::live::PointerLive;
-    use crate::runtime::vm::manager::StreamResult;
 
     #[test]
     fn test_stream_with_types() {
         let collection: Collection = load_intermediate("examples/intermediate/test_compiled.json").unwrap();
 
-        let static_state = bind(collection, Some("my_collection".to_string())).unwrap();
+        let static_state = bind(collection, Some("top_level".to_string())).unwrap();
 
-        let main_func_ptr: PointerLive = static_state.get_ptr_to_ref(&vec!["my_collection".to_string(), "main".to_string()]).unwrap();
+        let main_func_ptr: PointerLive = static_state.get_ptr_to_ref(&vec!["top_level".to_string(), "main".to_string()]).unwrap();
 
-        let (output_sender, output_receiver) = std::sync::mpsc::channel();
+        let (output_count, output_receiver) = stream_call_v2(
+            vec!["top_level".to_string(), "main".to_string()],
+            vec![],
+            static_state.clone(),
+            Some(4)
+        );
 
-        thread::spawn(move || {
-            let _ = stream_call(
-                main_func_ptr,
-                vec![],
-                static_state.clone(),
-                true,
-                Some(4),
-                output_sender
-            );
-        });
+        let mut outputs: HashMap<usize, PointerLive> = HashMap::new();
 
-        let mut output_count = 0;
-        let mut expected_output_count: Option<usize> = None;
-        let mut outputs: HashMap<String, String> = HashMap::new();
-
-        loop {
-            let res = output_receiver.recv().unwrap();
-            match res {
-                StreamResult::NumOutputs(num) => {
-                    expected_output_count = Some(num);
-                },
-                StreamResult::Output(fn_val, val_ref) => {
-                    outputs.insert(fn_val.symbol.unwrap_or(fn_val.guid), jsonify(val_ref.as_ref()));
-                    output_count += 1;
-                    if let Some(expected) = expected_output_count {
-                        if output_count >= expected {
-                            break;
-                        }
-                    }
-                },
-                StreamResult::Error(e) => {
-                    panic!("Error: {}", e);
-                }
-            }
+        for i in 0..output_count {
+            let (idx, val) = output_receiver.recv().unwrap();
+            println!("output {}: {}", idx, jsonify(val.as_ref()));
+            outputs.insert(idx, val);
         }
 
-        assert_eq!(outputs.get("age").unwrap(), "60");
-        assert_eq!(outputs.get("val").unwrap(), "World");
-        assert_eq!(outputs.get("res").unwrap(), "[20, 40, 60]");
+        let res = outputs.get(&0).unwrap().stored_as_list().unwrap();
+        let res: Vec<i64> = res.iter().map(|v| *v.stored_as_int().unwrap()).collect();
+        assert_eq!(res, vec![20, 40, 60]);
+
+        let val = outputs.get(&1).unwrap().stored_as_string().unwrap();
+        assert_eq!(val, "World");
+
+        let age = outputs.get(&2).unwrap().stored_as_int().unwrap();
+        assert_eq!(*age, 60);
     }
 }

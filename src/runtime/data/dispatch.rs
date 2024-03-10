@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use crate::runtime::{ExecResult};
+use crate::runtime::data::functions::v2::FuncV2;
 use crate::runtime::data::live::{NullLive, IntLive, FloatLive, StringLive, PointerLive, ListLive, LiveData, DictLive, BoolLive, FuncLive, FuncValLive, FuncOpLive, StaticRefLive};
 use crate::runtime::data::live::live_data::{ObjectLive, TypeLive};
 use crate::runtime::data::stored::StoredData;
@@ -33,6 +34,7 @@ macro_rules! static_dispatch {
                 StoredData::TypeStored(value) => <TypeLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::ObjectStored(value) => <ObjectLive as LiveData>::$name(value, $( $arg ),* ),
                 StoredData::StaticRefStored(value) => <StaticRefLive as LiveData>::$name(value, $( $arg ),* ),
+                StoredData::FuncV2Stored(value) => <FuncV2 as LiveData>::$name(value, $( $arg ),* ),
             }
         }
     };

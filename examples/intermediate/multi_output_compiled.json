@@ -61,19 +61,14 @@
             5.0
           ],
           "c4e961e5-596a-426a-bb92-31380192d1a0",
-          [
-            "02f4eb84-3b3d-469f-899a-4ceb54e7094e",
-            "get_multiples"
-          ],
           "double",
           "triple"
         ],
         "ops": [
           [
-            "get",
+            "static",
             [
-              "outer",
-              "02f4eb84-3b3d-469f-899a-4ceb54e7094e"
+              "get_multiples"
             ],
             [
               "c4e961e5-596a-426a-bb92-31380192d1a0"

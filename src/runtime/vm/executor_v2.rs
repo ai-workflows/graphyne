@@ -1,0 +1,274 @@
+use std::sync::{Arc, OnceLock};
+use std::sync::atomic::AtomicUsize;
+use rayon::ThreadPool;
+use crate::runtime::data::functions::OpCode;
+use crate::runtime::data::functions::v2::{FuncOpV2, FuncV2};
+use crate::runtime::data::live::PointerLive;
+use crate::runtime::static_state::state::StaticState;
+use crate::runtime::vm::call_context::{CallContext, get_static_func};
+use crate::runtime::vm::operator::operator::execute_op;
+use crate::runtime::vm::operator::ops::Operation;
+use crate::runtime::vm::orchestrator_v2::{get_val, init_call, set_val};
+use crate::runtime::vm::outputs::{FilterLink, MapLink, OutputType, ReduceLink};
+
+
+pub fn dispatch_op(
+    context: Arc<CallContext>,
+    op_idx: usize,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) {
+    worker_pool.clone().spawn(move || {
+        let func: &FuncV2 = get_static_func(&context.func_ref);
+        let fn_op: &FuncOpV2 = match func.ops.get(op_idx) {
+            Some(o) => o,
+            None => panic!("dispatch_op: op_idx out of bounds")
+        };
+
+        let inputs: Vec<PointerLive> = fn_op.input_vals.iter().map(|input_idx| {
+            get_val(context.clone(), *input_idx)
+        }).collect();
+
+        let op: Operation = fn_op.opcode.to_operation(&inputs);
+
+        match fn_op.opcode {
+            OpCode::Call => handle_call_op(fn_op, inputs, context.clone(), static_state, worker_pool),
+            OpCode::Map => handle_map_op(fn_op, inputs, context.clone(), static_state, worker_pool),
+            OpCode::Filter => handle_filter_op(fn_op, inputs, context.clone(), static_state, worker_pool),
+            OpCode::Reduce => handle_reduce_op(fn_op, inputs, context.clone(), static_state, worker_pool),
+            _ => handle_normal_op(fn_op, op, context.clone(), static_state, worker_pool)
+        }
+    });
+}
+
+pub fn handle_normal_op(
+    fn_op: &FuncOpV2,
+    op: Operation,
+    context: Arc<CallContext>,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) {
+    let outputs: Vec<PointerLive> = match execute_op(op, static_state.clone()) {
+        Ok(v) => v,
+        Err(e) => panic!("dispatch_op: execute_op error: {}", e)
+    };
+
+    // set the result values
+    for (i, v) in outputs.iter().enumerate() {
+        set_val(context.clone(), fn_op.output_vals[i], v.clone(), static_state.clone(), worker_pool.clone());
+    }
+}
+
+pub fn handle_call_op(
+    fn_op: &FuncOpV2,
+    inputs: Vec<PointerLive>,
+    context: Arc<CallContext>,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) {
+    let called_func_pointer: &PointerLive = match inputs.get(0) {
+        Some(v) => v,
+        None => panic!("dispatch_op: call op has no inputs")
+    };
+
+    // link each output of the target function to the output of the call op
+    let output_types: Vec<OutputType> = fn_op.output_vals.iter().map(|output_val_idx| {
+        OutputType::CrossCallLink(context.clone(), *output_val_idx)
+    }).collect();
+
+    // create a new call context for the called function
+    let new_context: Arc<CallContext> = Arc::new(CallContext::new(
+        called_func_pointer.as_static_ref().unwrap().clone(),
+        output_types
+    ));
+
+    // initialize the call context with the input values
+    init_call(new_context, &inputs[1..], static_state.clone(), worker_pool.clone());
+}
+
+pub fn handle_map_op(
+    fn_op: &FuncOpV2,
+    inputs: Vec<PointerLive>,
+    context: Arc<CallContext>,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) {
+    let called_func_pointer: &PointerLive = match inputs.get(0) {
+        Some(v) => v,
+        None => panic!("dispatch_op: map op has no inputs")
+    };
+
+    let list_arg_ptr: &PointerLive = match inputs.get(1) {
+        Some(v) => v,
+        None => panic!("dispatch_op: map op has no list arg")
+    };
+
+    let list_arg: &Vec<PointerLive> = match list_arg_ptr.stored_as_list() {
+        Ok(v) => v,
+        Err(e) => panic!("dispatch_op: {}", e)
+    };
+
+    let result_val: usize = fn_op.output_vals[0];
+    let result_buffer: Arc<Vec<OnceLock<PointerLive>>> = Arc::new(list_arg.iter().map(|_| OnceLock::new()).collect());
+    let remaining_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(list_arg.len()));
+
+    for (i, item) in list_arg.iter().enumerate() {
+        // create a new map link
+        let map_link: MapLink = MapLink {
+            source_context: context.clone(),
+            source_result_val: result_val,
+            result_buffer: result_buffer.clone(),
+            result_idx: i,
+            remaining_count: remaining_count.clone()
+        };
+
+        let called_func_ref = match called_func_pointer.as_static_ref() {
+            Ok(v) => v,
+            Err(e) => panic!("dispatch_op: {}", e)
+        };
+
+        let output_types = vec![OutputType::MapLink(map_link)];
+
+        // create a new call context for the called function for the current item
+        let new_context: Arc<CallContext> = Arc::new(CallContext::new(
+            called_func_ref.clone(),
+            output_types
+        ));
+
+        // initialize the call context for the current item
+        init_call(new_context, &[item.clone()], static_state.clone(), worker_pool.clone());
+    }
+}
+
+pub fn handle_filter_op(
+    fn_op: &FuncOpV2,
+    inputs: Vec<PointerLive>,
+    context: Arc<CallContext>,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) {
+    let called_func_pointer: &PointerLive = match inputs.get(0) {
+        Some(v) => v,
+        None => panic!("dispatch_op: filter op has no inputs")
+    };
+
+    let list_arg_ptr: &PointerLive = match inputs.get(1) {
+        Some(v) => v,
+        None => panic!("dispatch_op: filter op has no list arg")
+    };
+
+    let list_arg: &Vec<PointerLive> = match list_arg_ptr.stored_as_list() {
+        Ok(v) => v,
+        Err(e) => panic!("dispatch_op: {}", e)
+    };
+
+    let result_val: usize = fn_op.output_vals[0];
+    let result_buffer: Arc<Vec<OnceLock<PointerLive>>> = Arc::new(list_arg.iter().map(|_| OnceLock::new()).collect());
+    let remaining_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(list_arg.len()));
+
+    for (i, item) in list_arg.iter().enumerate() {
+        // create a new filter link
+        let filter_link: FilterLink = FilterLink {
+            source_context: context.clone(),
+            source_result_val: result_val,
+            result_buffer: result_buffer.clone(),
+            result_idx: i,
+            remaining_count: remaining_count.clone(),
+            source_list: list_arg_ptr.clone()
+        };
+
+        let called_func_ref = match called_func_pointer.as_static_ref() {
+            Ok(v) => v,
+            Err(e) => panic!("dispatch_op: {}", e)
+        };
+
+        let output_types = vec![OutputType::FilterLink(filter_link)];
+
+        // create a new call context for the called function for the current item
+        let new_context: Arc<CallContext> = Arc::new(CallContext::new(
+            called_func_ref.clone(),
+            output_types
+        ));
+
+        // initialize the call context for the current item
+        init_call(new_context, &[item.clone()], static_state.clone(), worker_pool.clone());
+    }
+}
+
+pub fn dispatch_next_reduce(
+    source_context: Arc<CallContext>,
+    source_result_val: usize,
+    source_list: PointerLive,
+    next_idx: usize,
+    called_func: PointerLive,
+    last_val: PointerLive,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) {
+    let new_link: ReduceLink = ReduceLink {
+        source_context,
+        source_result_val,
+        source_list: source_list.clone(),
+        source_idx: next_idx,
+        called_func: called_func.clone()
+    };
+
+    let next_item: &PointerLive = match source_list.stored_as_list() {
+        Ok(v) => match v.get(next_idx) {
+            Some(v) => v,
+            None => return
+        },
+        Err(e) => panic!("dispatch_next_reduce: {}", e)
+    };
+
+    let output_types = vec![OutputType::ReduceLink(new_link)];
+
+    let called_func_ref = match called_func.as_static_ref() {
+        Ok(v) => v,
+        Err(e) => panic!("dispatch_next_reduce: {}", e)
+    };
+
+    // create a new call context for the called function for the next item
+    let new_context: Arc<CallContext> = Arc::new(CallContext::new(
+        called_func_ref.clone(),
+        output_types
+    ));
+
+    // initialize the call context for the next item
+    init_call(new_context,
+              &[last_val, next_item.clone()],
+              static_state.clone(), worker_pool.clone());
+}
+
+pub fn handle_reduce_op(
+    fn_op: &FuncOpV2,
+    inputs: Vec<PointerLive>,
+    context: Arc<CallContext>,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) {
+    let called_func_pointer: &PointerLive = match inputs.get(0) {
+        Some(v) => v,
+        None => panic!("dispatch_op: reduce op has no inputs")
+    };
+
+    let list_arg_ptr: &PointerLive = match inputs.get(1) {
+        Some(v) => v,
+        None => panic!("dispatch_op: reduce op has no list arg")
+    };
+
+    let initial_val: &PointerLive = match inputs.get(2) {
+        Some(v) => v,
+        None => panic!("dispatch_op: reduce op has no initial value")
+    };
+
+    let result_val: usize = fn_op.output_vals[0];
+    let source_context: Arc<CallContext> = context.clone();
+    let source_result_val: usize = result_val;
+    let source_list: PointerLive = list_arg_ptr.clone();
+    let called_func: PointerLive = called_func_pointer.clone();
+
+    dispatch_next_reduce(source_context, source_result_val,
+                         source_list, 0, called_func, initial_val.clone(),
+                         static_state, worker_pool);
+}
