@@ -128,8 +128,6 @@ mod tests {
 
         let static_state = bind(collection, Some("top_level".to_string())).unwrap();
 
-        let main_func_ptr: PointerLive = static_state.get_ptr_to_ref(&vec!["top_level".to_string(), "main".to_string()]).unwrap();
-
         let (output_count, output_receiver) = stream_call(
             vec!["top_level".to_string(), "main".to_string()],
             vec![],
@@ -139,7 +137,7 @@ mod tests {
 
         let mut outputs: HashMap<usize, PointerLive> = HashMap::new();
 
-        for i in 0..output_count {
+        for _ in 0..output_count {
             let (idx, val) = output_receiver.recv().unwrap();
             println!("output {}: {}", idx, jsonify(val.as_ref()));
             outputs.insert(idx, val);

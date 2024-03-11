@@ -249,7 +249,7 @@ mod tests {
     use std::fs;
     use crate::api::{await_call, bind};
     use crate::binder::intermediate::collection::Collection;
-    use crate::runtime::data::live::{IntLive, LiveData, PointerLive};
+    use crate::runtime::data::live::{IntLive, LiveData};
 
     #[test]
     fn test_deserialize_multi_output() {
@@ -258,8 +258,6 @@ mod tests {
         let program: Collection = serde_json::from_str(&contents).unwrap();
 
         let static_state = bind(program, Some("my_collection".to_string())).unwrap();
-
-        let main_ref: PointerLive = static_state.get_ptr_to_ref(&vec!["my_collection".to_string(), "main".to_string()]).unwrap();
 
         let res = await_call(
             vec!["my_collection".to_string(), "main".to_string()],

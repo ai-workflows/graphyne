@@ -7,7 +7,7 @@ use crate::runtime::data::stored::StoredData::ListStored;
 use crate::runtime::static_state::state::StaticState;
 use crate::runtime::vm::call_context::{CallContext, get_static_func};
 use crate::runtime::vm::executor;
-use crate::runtime::vm::outputs::{OutputType};
+use crate::runtime::vm::outputs::{FilterLink, MapLink, OutputType, ReduceLink};
 
 /// Initializes the call of a function with the given inputs.
 pub fn init_call(
@@ -75,71 +75,14 @@ pub fn set_val(
             OutputType::Final(output_idx, output_sender) => {
                 output_sender.send((*output_idx, val)).unwrap();
             },
-            OutputType::CrossCallLink(ctx, output_index) => {
-                set_val(ctx.clone(), *output_index, val, static_state.clone(), worker_pool.clone());
-            },
-            OutputType::MapLink(link) => {
-                link.result_buffer[link.result_idx].set(val).unwrap();
-                let prev_count = link.remaining_count.fetch_sub(1, Ordering::Relaxed);
-
-                // if this is the final value, convert the result buffer to a list and send it
-                if prev_count == 1 {
-                    let result: Vec<PointerLive> = link.result_buffer.iter()
-                        .map(|v| v.get().unwrap().clone())
-                        .collect();
-                    set_val(link.source_context.clone(),
-                            link.source_result_val,
-                            PointerLive::new(ListStored(result)),
-                            static_state.clone(),
-                            worker_pool.clone());
-                }
-            },
-            OutputType::FilterLink(link) => {
-                link.result_buffer[link.result_idx].set(val).unwrap();
-                let prev_count = link.remaining_count.fetch_sub(1, Ordering::Relaxed);
-
-                // if this is the final value, convert the result buffer to a list and send it
-                if prev_count == 1 {
-                    let bool_results: Vec<bool> = link.result_buffer.iter()
-                        .map(|v| *v.get().unwrap().clone().stored_as_bool().unwrap())
-                        .collect();
-
-                    let result: Vec<PointerLive> = link.source_list.stored_as_list().unwrap().iter()
-                        .zip(bool_results.iter())
-                        .filter(|(_, b)| **b)
-                        .map(|(v, _)| v.clone())
-                        .collect();
-
-                    set_val(link.source_context.clone(),
-                            link.source_result_val,
-                            PointerLive::new(ListStored(result)),
-                            static_state.clone(),
-                            worker_pool.clone());
-                }
-            },
-            OutputType::ReduceLink(link) => {
-                // if this is the final value, set it in the source context
-                if link.source_idx + 1 == link.source_list.stored_as_list().unwrap().len() {
-                    set_val(link.source_context.clone(),
-                            link.source_result_val,
-                            val,
-                            static_state.clone(),
-                            worker_pool.clone());
-                }
-                else {
-                    executor::dispatch_next_reduce(
-                        link.source_context.clone(),
-                        link.source_result_val,
-                        link.source_list.clone(),
-                        link.source_idx + 1,
-                        link.called_func.clone(),
-                        val,
-                        static_state.clone(),
-                        worker_pool.clone()
-                    );
-                }
-
-            }
+            OutputType::CrossCallLink(ctx, output_index) =>
+                set_val(ctx.clone(), *output_index, val, static_state.clone(), worker_pool.clone()),
+            OutputType::MapLink(link) =>
+                handle_map_link(link, val, static_state.clone(), worker_pool.clone()),
+            OutputType::FilterLink(link) =>
+                handle_filter_link(link, val, static_state.clone(), worker_pool.clone()),
+            OutputType::ReduceLink(link) =>
+                handle_reduce_link(link, val, static_state.clone(), worker_pool.clone()),
         }
     }
 
@@ -153,3 +96,81 @@ pub fn set_val(
     }
 }
 
+fn handle_map_link(
+    link: &MapLink,
+    val: PointerLive,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) {
+    link.result_buffer[link.result_idx].set(val).unwrap();
+    let prev_count = link.remaining_count.fetch_sub(1, Ordering::Relaxed);
+
+    // if this is the final value, convert the result buffer to a list and send it
+    if prev_count == 1 {
+        let result: Vec<PointerLive> = link.result_buffer.iter()
+            .map(|v| v.get().unwrap().clone())
+            .collect();
+        set_val(link.source_context.clone(),
+                link.source_result_val,
+                PointerLive::new(ListStored(result)),
+                static_state.clone(),
+                worker_pool.clone());
+    }
+}
+
+fn handle_filter_link(
+    link: &FilterLink,
+    val: PointerLive,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) {
+    link.result_buffer[link.result_idx].set(val).unwrap();
+    let prev_count = link.remaining_count.fetch_sub(1, Ordering::Relaxed);
+
+    // if this is the final value, convert the result buffer to a list and send it
+    if prev_count == 1 {
+        let bool_results: Vec<bool> = link.result_buffer.iter()
+            .map(|v| *v.get().unwrap().clone().stored_as_bool().unwrap())
+            .collect();
+
+        let result: Vec<PointerLive> = link.source_list.stored_as_list().unwrap().iter()
+            .zip(bool_results.iter())
+            .filter(|(_, b)| **b)
+            .map(|(v, _)| v.clone())
+            .collect();
+
+        set_val(link.source_context.clone(),
+                link.source_result_val,
+                PointerLive::new(ListStored(result)),
+                static_state.clone(),
+                worker_pool.clone());
+    }
+}
+
+fn handle_reduce_link(
+    link: &ReduceLink,
+    val: PointerLive,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) {
+    // if this is the final value, set it in the source context
+    if link.source_idx + 1 == link.source_list.stored_as_list().unwrap().len() {
+        set_val(link.source_context.clone(),
+                link.source_result_val,
+                val,
+                static_state.clone(),
+                worker_pool.clone());
+    }
+    else {
+        executor::dispatch_next_reduce(
+            link.source_context.clone(),
+            link.source_result_val,
+            link.source_list.clone(),
+            link.source_idx + 1,
+            link.called_func.clone(),
+            val,
+            static_state.clone(),
+            worker_pool.clone()
+        );
+    }
+}

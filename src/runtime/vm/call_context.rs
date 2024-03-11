@@ -23,24 +23,14 @@ impl CallContext {
         func_ref: StaticRefLive,
         output_types: Vec<OutputType>,
     ) -> CallContext {
-        let mut res = CallContext {
-            func_ref: func_ref.clone(),
-            val_buffer: Vec::new(),
-            unknown_arg_counts: Vec::new(),
-            output_types,
-        };
-
         let func = get_static_func(&func_ref);
 
-        // generate val_buffer with the same length as the function's values
-        res.val_buffer = func.values.iter().map(|_| OnceLock::new()).collect();
-
-        // initialize the unknown arg counts
-        for op in func.ops.iter() {
-            res.unknown_arg_counts.push(op.input_vals.len().into());
+        CallContext {
+            func_ref: func_ref.clone(),
+            val_buffer: func.values.iter().map(|_| OnceLock::new()).collect(),
+            unknown_arg_counts: func.ops.iter().map(|op| op.input_vals.len().into()).collect(),
+            output_types,
         }
-
-        res
     }
 }
 

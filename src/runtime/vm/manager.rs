@@ -347,8 +347,6 @@ mod tests {
 
         let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
 
-        let main_ref: PointerLive = static_state.get_ptr_to_ref(&vec!["my_collection".to_string(), "double_list".to_string()]).unwrap();
-
         let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap());
 
         let start_time = std::time::Instant::now();
