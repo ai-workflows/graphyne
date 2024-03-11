@@ -4,7 +4,6 @@ use crate::runtime::data::functions::func::FuncLive;
 use crate::runtime::data::live::{PointerLive};
 use crate::runtime::static_state::state::StaticState;
 use crate::runtime::SymbolPath;
-use crate::runtime::vm::call_context::{CallContext};
 use crate::runtime::vm::orchestrator;
 use crate::runtime::vm::outputs::OutputType;
 
@@ -20,7 +19,7 @@ pub fn init_stream_call(
         Err(e) => panic!("start_call_v2: {}", e)
     };
 
-    let func: &FuncLive = match func_ref.stored_as_funcv2() {
+    let func: &FuncLive = match func_ref.stored_as_func() {
         Ok(v) => v,
         Err(e) => panic!("start_call_v2: {}", e)
     };
@@ -33,11 +32,12 @@ pub fn init_stream_call(
         OutputType::Final(i, tx.clone())
     }).collect();
 
-    let context: Arc<CallContext> = Arc::new(CallContext::new(
-        func_ref.as_static_ref().unwrap().clone(),
-        output_types));
-
-    orchestrator::init_call(context.clone(), &inputs, static_state, worker_pool);
+    orchestrator::init_anonymous_call(
+        func_ref.as_static_ref().unwrap(),
+        &inputs,
+        output_types,
+        static_state,
+        worker_pool);
 
     (num_outputs, rx)
 }
@@ -61,7 +61,9 @@ pub fn init_await_call(
         outputs[i] = Some(v);
     }
 
-    outputs.into_iter().map(|v| v.unwrap()).collect()
+    outputs.into_iter().map(|v|
+        v.expect("init_await_call: function halted execution before all outputs were returned")
+    ).collect()
 }
 
 
@@ -107,7 +109,7 @@ mod tests {
         let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
 
         let start_time = std::time::Instant::now();
-        for _ in 0..10000 {
+        for _ in 0..100000 {
             let _ = init_await_call(
                 vec!["my_collection".to_string(), "main".to_string()],
                 vec![],
@@ -116,7 +118,7 @@ mod tests {
             );
         }
         let elapsed = start_time.elapsed();
-        println!("Average time: {:?}", elapsed / 10000);
+        println!("Average time: {:?}", elapsed / 100000);
 
         let res = init_await_call(
             vec!["my_collection".to_string(), "main".to_string()],
@@ -351,7 +353,7 @@ mod tests {
 
         let start_time = std::time::Instant::now();
 
-        for _ in 0..10000 {
+        for _ in 0..100000 {
             let _ = init_await_call(
                 vec!["my_collection".to_string(), "double_list".to_string()],
                 vec![],
@@ -361,7 +363,7 @@ mod tests {
         }
 
         let elapsed = start_time.elapsed();
-        println!("Average time: {:?}", elapsed / 10000);
+        println!("Average time: {:?}", elapsed / 100000);
 
         let res: Vec<PointerLive> = init_await_call(
             vec!["my_collection".to_string(), "double_list".to_string()],

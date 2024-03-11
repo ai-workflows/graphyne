@@ -8,7 +8,7 @@ use crate::runtime::static_state::state::StaticState;
 use crate::runtime::vm::call_context::{CallContext, get_static_func};
 use crate::runtime::vm::operator::operator::execute_op;
 use crate::runtime::vm::operator::ops::Operation;
-use crate::runtime::vm::orchestrator::{get_val, init_call, set_val};
+use crate::runtime::vm::orchestrator::{get_val, init_anonymous_call, set_val};
 use crate::runtime::vm::outputs::{FilterLink, MapLink, OutputType, ReduceLink};
 
 
@@ -26,13 +26,13 @@ pub fn dispatch_op(
         };
 
         let inputs: Vec<PointerLive> = fn_op.input_vals.iter().map(|input_idx| {
-            get_val(context.clone(), *input_idx)
+            get_val(context.clone(), *input_idx).clone()
         }).collect();
 
         let op: Operation = fn_op.opcode.to_operation(&inputs);
 
         match fn_op.opcode {
-            OpCode::Call => handle_call_op(fn_op, inputs, context.clone(), static_state, worker_pool),
+            OpCode::Call => (),
             OpCode::Map => handle_map_op(fn_op, inputs, context.clone(), static_state, worker_pool),
             OpCode::Filter => handle_filter_op(fn_op, inputs, context.clone(), static_state, worker_pool),
             OpCode::Reduce => handle_reduce_op(fn_op, inputs, context.clone(), static_state, worker_pool),
@@ -40,6 +40,8 @@ pub fn dispatch_op(
         }
     });
 }
+
+
 
 pub fn handle_normal_op(
     fn_op: &FuncOp,
@@ -57,33 +59,6 @@ pub fn handle_normal_op(
     for (i, v) in outputs.iter().enumerate() {
         set_val(context.clone(), fn_op.output_vals[i], v.clone(), static_state.clone(), worker_pool.clone());
     }
-}
-
-pub fn handle_call_op(
-    fn_op: &FuncOp,
-    inputs: Vec<PointerLive>,
-    context: Arc<CallContext>,
-    static_state: Arc<StaticState>,
-    worker_pool: Arc<ThreadPool>
-) {
-    let called_func_pointer: &PointerLive = match inputs.get(0) {
-        Some(v) => v,
-        None => panic!("dispatch_op: call op has no inputs")
-    };
-
-    // link each output of the target function to the output of the call op
-    let output_types: Vec<OutputType> = fn_op.output_vals.iter().map(|output_val_idx| {
-        OutputType::CrossCallLink(context.clone(), *output_val_idx)
-    }).collect();
-
-    // create a new call context for the called function
-    let new_context: Arc<CallContext> = Arc::new(CallContext::new(
-        called_func_pointer.as_static_ref().unwrap().clone(),
-        output_types
-    ));
-
-    // initialize the call context with the input values
-    init_call(new_context, &inputs[1..], static_state.clone(), worker_pool.clone());
 }
 
 pub fn handle_map_op(
@@ -127,16 +102,13 @@ pub fn handle_map_op(
             Err(e) => panic!("dispatch_op: {}", e)
         };
 
-        let output_types = vec![OutputType::MapLink(map_link)];
-
-        // create a new call context for the called function for the current item
-        let new_context: Arc<CallContext> = Arc::new(CallContext::new(
-            called_func_ref.clone(),
-            output_types
-        ));
-
-        // initialize the call context for the current item
-        init_call(new_context, &[item.clone()], static_state.clone(), worker_pool.clone());
+        // initialize a new call context for the called function and the current item
+        init_anonymous_call(
+            called_func_ref,
+            &[item.clone()],
+            vec![OutputType::MapLink(map_link)],
+            static_state.clone(),
+            worker_pool.clone());
     }
 }
 
@@ -182,16 +154,13 @@ pub fn handle_filter_op(
             Err(e) => panic!("dispatch_op: {}", e)
         };
 
-        let output_types = vec![OutputType::FilterLink(filter_link)];
-
-        // create a new call context for the called function for the current item
-        let new_context: Arc<CallContext> = Arc::new(CallContext::new(
-            called_func_ref.clone(),
-            output_types
-        ));
-
-        // initialize the call context for the current item
-        init_call(new_context, &[item.clone()], static_state.clone(), worker_pool.clone());
+        // initialize a new call context for the called function and the current item
+        init_anonymous_call(
+            called_func_ref,
+            &[item.clone()],
+            vec![OutputType::FilterLink(filter_link)],
+            static_state.clone(),
+            worker_pool.clone());
     }
 }
 
@@ -221,23 +190,18 @@ pub fn dispatch_next_reduce(
         Err(e) => panic!("dispatch_next_reduce: {}", e)
     };
 
-    let output_types = vec![OutputType::ReduceLink(new_link)];
-
     let called_func_ref = match called_func.as_static_ref() {
         Ok(v) => v,
         Err(e) => panic!("dispatch_next_reduce: {}", e)
     };
 
     // create a new call context for the called function for the next item
-    let new_context: Arc<CallContext> = Arc::new(CallContext::new(
-        called_func_ref.clone(),
-        output_types
-    ));
-
-    // initialize the call context for the next item
-    init_call(new_context,
-              &[last_val, next_item.clone()],
-              static_state.clone(), worker_pool.clone());
+    init_anonymous_call(
+        called_func_ref,
+        &[last_val, next_item.clone()],
+        vec![OutputType::ReduceLink(new_link)],
+        static_state.clone(),
+        worker_pool.clone());
 }
 
 pub fn handle_reduce_op(

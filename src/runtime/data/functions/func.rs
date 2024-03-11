@@ -18,6 +18,9 @@ pub struct FuncVal {
 
     // Flag to indicate that this value is an output of the function
     pub output_idx: Option<usize>,
+
+    // List of the child call context and input indices that this value is an argument for
+    pub arg_for: Vec<(usize, usize)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -54,4 +57,7 @@ pub struct FuncLive {
 
     /// A list of the indices of the func value nodes that have a constant value.
     pub constant_vals: Vec<usize>,
+
+    /// A list of indices for the func op nodes that are calls to other functions.
+    pub call_ops: Vec<usize>,
 }

@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicUsize};
-use std::sync::{OnceLock};
+use std::sync::{Arc, OnceLock};
 use crate::runtime::data::functions::func::FuncLive;
 use crate::runtime::data::live::{PointerLive, StaticRefLive};
 use crate::runtime::vm::outputs::OutputType;
@@ -16,6 +16,9 @@ pub struct CallContext {
 
     /// The types of the function's outputs, indicating how they should be handled.
     pub output_types: Vec<OutputType>,
+
+    /// A buffer for child call contexts spawned by this call context.
+    pub child_calls: Vec<OnceLock<Arc<CallContext>>>,
 }
 
 impl CallContext {
@@ -30,13 +33,14 @@ impl CallContext {
             val_buffer: func.values.iter().map(|_| OnceLock::new()).collect(),
             unknown_arg_counts: func.ops.iter().map(|op| op.input_vals.len().into()).collect(),
             output_types,
+            child_calls: func.call_ops.iter().map(|_| OnceLock::new()).collect(),
         }
     }
 }
 
 pub fn get_static_func(func_ref: &StaticRefLive) -> &FuncLive {
     match func_ref.as_ref().get() {
-        Some(v) => match v.stored_as_funcv2() {
+        Some(v) => match v.stored_as_func() {
             Ok(v) => v,
             Err(e) => panic!("CallContext::get_func: {}", e)
         },

@@ -153,7 +153,9 @@ fn cl_func_to_live_func(
     }
 
     let mut val_deps: HashMap<Symbol, Vec<usize>> = HashMap::new();
+    let mut val_as_args: HashMap<Symbol, Vec<(usize, usize)>> = HashMap::new();
     let mut ops: Vec<FuncOp> = Vec::with_capacity(func.graph.ops.len());
+    let mut call_ops: Vec<usize> = Vec::new();
 
     let mut static_val_constants: HashMap<Symbol, PointerLive> = HashMap::new();
 
@@ -209,6 +211,13 @@ fn cl_func_to_live_func(
             output_vals,
         };
 
+        if op_node.opcode == OpCode::Call {
+            for (arg_idx, arg_symbol) in op_node.input_vals.iter().enumerate() {
+                val_as_args.entry(arg_symbol.clone()).or_insert(Vec::new()).push((call_ops.len(), arg_idx));
+            }
+            call_ops.push(func_op.index);
+        }
+
         ops.push(func_op);
     }
 
@@ -263,12 +272,18 @@ fn cl_func_to_live_func(
             constant_vals.push(i);
         }
 
+        let mut arg_for: Vec<(usize, usize)> = Vec::new();
+        if let Some(arg_list) = val_as_args.get(&val.symbol) {
+            arg_for.extend(arg_list.iter().cloned());
+        }
+
         let func_val = FuncVal {
             symbol: val.symbol.clone(),
             index: i,
             dependents,
             constant,
-            output_idx: output_idxs.get(&val.symbol).cloned()
+            output_idx: output_idxs.get(&val.symbol).cloned(),
+            arg_for
         };
 
         values.push(func_val);
@@ -288,7 +303,8 @@ fn cl_func_to_live_func(
         ops,
         input_vals,
         output_vals,
-        constant_vals
+        constant_vals,
+        call_ops,
     };
 
     Ok(res)

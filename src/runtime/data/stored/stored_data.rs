@@ -114,10 +114,10 @@ impl StoredData {
         }
     }
 
-    pub fn stored_as_funcv2(&self) -> ExecResult<&FuncLive> {
+    pub fn stored_as_func(&self) -> ExecResult<&FuncLive> {
         match self {
             StoredData::FuncStored(value) => Ok(value),
-            _ => self.match_stored_data(|data| data.stored_as_funcv2()),
+            _ => self.match_stored_data(|data| data.stored_as_func()),
         }
     }
 
