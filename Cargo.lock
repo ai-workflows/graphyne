@@ -281,7 +281,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "graphite"
+name = "graphyne"
 version = "0.2.0"
 dependencies = [
  "clap",
