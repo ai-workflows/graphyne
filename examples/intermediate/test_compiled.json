@@ -24,19 +24,14 @@
             ],
             "values": [
               "e61ec115-b415-4acd-85f5-afcf57ffc369",
-              [
-                "ba277da7-fed8-4515-b022-e2d1bee96f83",
-                "two"
-              ],
               "doubled",
               "num"
             ],
             "ops": [
               [
-                "get",
+                "static",
                 [
-                  "outer",
-                  "ba277da7-fed8-4515-b022-e2d1bee96f83"
+                  "two"
                 ],
                 [
                   "e61ec115-b415-4acd-85f5-afcf57ffc369"
@@ -70,16 +65,8 @@
                 null
               ],
               "3be9cc74-1deb-463e-9316-4fbd0cfb0fa0",
-              [
-                "93553b45-4865-449f-9350-89054a24f718",
-                "my_list"
-              ],
               "list",
               "02efc231-6219-49dc-b7e6-d22a02a16656",
-              [
-                "a863072a-e4c1-4455-8ed3-70405cf0200b",
-                "double"
-              ],
               "doubled_list",
               "l"
             ],
@@ -95,10 +82,9 @@
                 ]
               ],
               [
-                "get",
+                "static",
                 [
-                  "outer",
-                  "93553b45-4865-449f-9350-89054a24f718"
+                  "my_list"
                 ],
                 [
                   "3be9cc74-1deb-463e-9316-4fbd0cfb0fa0"
@@ -116,10 +102,9 @@
                 ]
               ],
               [
-                "get",
+                "static",
                 [
-                  "outer",
-                  "a863072a-e4c1-4455-8ed3-70405cf0200b"
+                  "double"
                 ],
                 [
                   "02efc231-6219-49dc-b7e6-d22a02a16656"
@@ -148,19 +133,14 @@
             ],
             "values": [
               "fd63b8a1-67df-4b4c-9f83-1db978696c52",
-              [
-                "809a62dc-72b1-45fa-baa4-727cf51e6123",
-                "my_dict"
-              ],
               "value",
               "key"
             ],
             "ops": [
               [
-                "get",
+                "static",
                 [
-                  "outer",
-                  "809a62dc-72b1-45fa-baa4-727cf51e6123"
+                  "my_dict"
                 ],
                 [
                   "fd63b8a1-67df-4b4c-9f83-1db978696c52"
@@ -196,10 +176,6 @@
         ],
         "values": [
           "11c7f015-deff-4135-92aa-a6ad05b9f1a9",
-          [
-            "d2064761-b531-4141-bf39-889165148b5d",
-            "my_collection"
-          ],
           "41add331-24cd-4e63-a7db-124ffe294afb",
           [
             "081b7c5b-5841-47b1-83ad-400b966fd042",
@@ -211,10 +187,6 @@
           ],
           "res",
           "25c179e1-8f84-4873-8ddb-947ff48d6a70",
-          [
-            "cd83f4ae-e441-4671-80fe-134d53179c71",
-            "my_collection"
-          ],
           "c0df8fbe-fa1d-4ee3-ae91-908d6ef1d9b5",
           [
             "a814a549-b034-4da3-a6e7-0a9eec7f542a",
@@ -226,10 +198,6 @@
           ],
           "val",
           "395637d6-ffcc-4c96-8f79-5bcf9041a346",
-          [
-            "62a8abf2-ee48-4b5e-9483-55263a516e35",
-            "Person"
-          ],
           [
             "7c022dbc-2abb-47fe-8d74-4851960cd3f3",
             "John"
@@ -252,10 +220,9 @@
         ],
         "ops": [
           [
-            "get",
+            "static",
             [
-              "outer",
-              "d2064761-b531-4141-bf39-889165148b5d"
+              "my_collection"
             ],
             [
               "41add331-24cd-4e63-a7db-124ffe294afb"
@@ -282,10 +249,9 @@
             ]
           ],
           [
-            "get",
+            "static",
             [
-              "outer",
-              "cd83f4ae-e441-4671-80fe-134d53179c71"
+              "my_collection"
             ],
             [
               "c0df8fbe-fa1d-4ee3-ae91-908d6ef1d9b5"
@@ -312,10 +278,9 @@
             ]
           ],
           [
-            "get",
+            "static",
             [
-              "outer",
-              "62a8abf2-ee48-4b5e-9483-55263a516e35"
+              "Person"
             ],
             [
               "395637d6-ffcc-4c96-8f79-5bcf9041a346"

@@ -1,19 +1,20 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 use crate::runtime::data::live::{BoolLive, DictLive, IntLive, LiveData, PointerLive};
-use crate::runtime::data::live::live_data::{ObjectLive, TypeLive};
+use crate::runtime::data::live::live_data::{ObjectLive};
 use crate::runtime::data::stored::StoredData;
-use crate::runtime::gc::GCPointer;
 use crate::runtime::{ExecResult, Symbol};
+use crate::runtime::static_state::state::StaticState;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Object {
     pub type_ptr: PointerLive,
-    pub fields: HashMap<Symbol, GCPointer<StoredData>>
+    pub fields: HashMap<Symbol, PointerLive>
 }
 
 impl LiveData for ObjectLive {
     /// Returns a pointer to the type of this data.
-    fn type_of(&self, _type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
+    fn type_of(&self, _type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {
         Some(Ok(self.type_ptr.clone()))
     }
 

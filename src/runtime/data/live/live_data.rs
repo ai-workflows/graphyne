@@ -1,9 +1,10 @@
 use std::collections::HashMap;
+use std::sync::{Arc, OnceLock};
 use crate::runtime::{ExecResult, Type};
-use crate::runtime::data::functions::{FuncOp, FuncSig, FuncVal};
+use crate::runtime::data::functions::func::FuncLive;
 use crate::runtime::data::live::object::Object;
 use crate::runtime::data::stored::StoredData;
-use crate::runtime::gc::GCPointer;
+use crate::runtime::static_state::state::StaticState;
 
 /// Live data types. These are interoperable with rust types and can be used to perform operations.
 pub type NullLive = ();
@@ -11,16 +12,14 @@ pub type IntLive = i64;
 pub type FloatLive = f64;
 pub type StringLive = String;
 pub type BoolLive = bool;
-pub type PointerLive = GCPointer<StoredData>;
-pub type ListLive = Vec<GCPointer<StoredData>>;
-pub type DictLive = HashMap<StringLive, GCPointer<StoredData>>;
+pub type PointerLive = Arc<StoredData>;
+pub type ListLive = Vec<PointerLive>;
+pub type DictLive = HashMap<StringLive, PointerLive>;
 pub type TypeLive = Type;
 pub type ObjectLive = Object;
 
-// Live function types
-pub type FuncLive = FuncSig;
-pub type FuncValLive = FuncVal;
-pub type FuncOpLive = FuncOp;
+// static_state ref
+pub type StaticRefLive = Arc<OnceLock<StoredData>>;
 
 
 /// Represents data that is currently usable for performing operations.
@@ -29,7 +28,7 @@ pub trait LiveData {
     /// Operations return None if they are not Implemented
 
     /// Returns a pointer to the type of this data. Requires passing a type map.
-    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {None}
+    fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {None}
 
     /// Type conversions for this data. Converts this to another live data type.
     fn as_int(&self) -> Option<ExecResult<IntLive>> {None}
@@ -40,8 +39,6 @@ pub trait LiveData {
     fn as_list(&self) -> Option<ExecResult<ListLive>> {None}
     fn as_dict(&self) -> Option<ExecResult<DictLive>> {None}
     fn as_func(&self) -> Option<ExecResult<FuncLive>> {None}
-    fn as_func_val(&self) -> Option<ExecResult<FuncValLive>> {None}
-    fn as_func_op(&self) -> Option<ExecResult<FuncOpLive>> {None}
     fn as_null(&self) -> Option<ExecResult<NullLive>> {None}
     fn as_type(&self) -> Option<ExecResult<TypeLive>> {None}
     fn as_object(&self) -> Option<ExecResult<ObjectLive>> {None}

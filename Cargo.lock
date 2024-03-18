@@ -281,8 +281,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "graphite"
-version = "0.1.0"
+name = "graphyne"
+version = "0.2.0"
 dependencies = [
  "clap",
  "crossbeam",

@@ -1,13 +1,13 @@
-use std::collections::HashMap;
+use std::sync::Arc;
 use crate::runtime::data::live::live_data::{DictLive, TypeLive};
 use crate::runtime::data::live::{BoolLive, IntLive, LiveData, PointerLive, StringLive};
 use crate::runtime::{ExecResult};
-use crate::runtime::data::live::helpers::type_of_helper;
 use crate::runtime::data::stored::StoredData;
+use crate::runtime::static_state::state::StaticState;
 
 impl LiveData for DictLive {
-    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
-        type_of_helper(&TypeLive::Dictionary, &type_map)
+    fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {
+        type_map.get_primitive_type(&TypeLive::Dictionary).map(|r| Ok(r))
     }
 
     fn as_dict(&self) -> Option<ExecResult<DictLive>> {

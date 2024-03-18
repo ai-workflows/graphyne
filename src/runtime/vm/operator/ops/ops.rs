@@ -1,113 +1,110 @@
+use std::sync::Arc;
 use crate::runtime::data::stored::StoredData;
-use crate::runtime::mmu::value_ref::ValueReference;
 
 
 /// Represents an operation that can be performed on data.
 /// Each operation contains a pointer to the data for its operands.
 #[derive(Debug)]
-pub enum Operation<'a> {
-    /// Sets the value of a buffer
-    SetBuffer(&'a ValueReference, StoredData),
-
+pub enum Operation {
     /// Get the type of a value
-    TypeOf(&'a ValueReference),
+    TypeOf(Arc<StoredData>),
     
     /// Converts a value to an integer.
-    AsInt(&'a ValueReference),
+    AsInt(Arc<StoredData>),
 
     /// Converts a value to a float.
-    AsFloat(&'a ValueReference),
+    AsFloat(Arc<StoredData>),
 
     /// Converts a value to a string.
-    AsString(&'a ValueReference),
+    AsString(Arc<StoredData>),
 
     /// Converts a value to a boolean.
-    AsBool(&'a ValueReference),
+    AsBool(Arc<StoredData>),
 
     /// Converts a value to a pointer.
-    AsPointer(&'a ValueReference),
+    AsPointer(Arc<StoredData>),
 
     /// Converts a value to a list.
-    AsList(&'a ValueReference),
+    AsList(Arc<StoredData>),
 
     /// Converts a value to a dictionary.
-    AsDictionary(&'a ValueReference),
+    AsDictionary(Arc<StoredData>),
 
     /// Converts a value to a type.
-    AsType(&'a ValueReference),
+    AsType(Arc<StoredData>),
 
     /// Returns the second value if the first value is true, otherwise returns the third value.
-    If(&'a ValueReference, &'a ValueReference, &'a ValueReference),
+    If(Arc<StoredData>, Arc<StoredData>, Arc<StoredData>),
 
     /// Inverts a boolean value.
-    Not(&'a ValueReference),
+    Not(Arc<StoredData>),
 
     /// Returns a bool indicating whether both values are true.
-    And(&'a ValueReference, &'a ValueReference),
+    And(Arc<StoredData>, Arc<StoredData>),
 
     /// Returns a bool indicating whether either value is true.
-    Or(&'a ValueReference, &'a ValueReference),
+    Or(Arc<StoredData>, Arc<StoredData>),
 
     /// Returns a bool indicating whether two values are equal.
-    Equal(&'a ValueReference, &'a ValueReference),
+    Equal(Arc<StoredData>, Arc<StoredData>),
 
     /// Returns true if the first value is less than the second value.
-    LessThan(&'a ValueReference, &'a ValueReference),
+    LessThan(Arc<StoredData>, Arc<StoredData>),
 
     /// Returns true if the first value is greater than the second value.
-    GreaterThan(&'a ValueReference, &'a ValueReference),
+    GreaterThan(Arc<StoredData>, Arc<StoredData>),
 
     /// Returns true if the value is null.
-    IsNull(&'a ValueReference),
+    IsNull(Arc<StoredData>),
 
     /// Gets the length of a collection.
-    Length(&'a ValueReference),
+    Length(Arc<StoredData>),
 
     /// Gets the value at a given index
-    GetItem(&'a ValueReference, &'a ValueReference),
+    GetItem(Arc<StoredData>, Arc<StoredData>),
 
     /// Sets the value at a given index
-    SetItem(&'a ValueReference, &'a ValueReference, &'a ValueReference),
+    SetItem(Arc<StoredData>, Arc<StoredData>, Arc<StoredData>),
 
     /// Pushes a value onto a list
-    Push(&'a ValueReference, &'a ValueReference),
+    Push(Arc<StoredData>, Arc<StoredData>),
 
     /// Removes a value from a list at a given index
-    Remove(&'a ValueReference, &'a ValueReference),
+    Remove(Arc<StoredData>, Arc<StoredData>),
 
     /// Adds two values together.
-    Add(&'a ValueReference, &'a ValueReference),
+    Add(Arc<StoredData>, Arc<StoredData>),
 
     /// Subtracts two values.
-    Sub(&'a ValueReference, &'a ValueReference),
+    Sub(Arc<StoredData>, Arc<StoredData>),
 
     /// Multiplies two values.
-    Mul(&'a ValueReference, &'a ValueReference),
+    Mul(Arc<StoredData>, Arc<StoredData>),
 
     /// Divides two values.
-    Div(&'a ValueReference, &'a ValueReference),
+    Div(Arc<StoredData>, Arc<StoredData>),
 
     /// Gets the remainder of two values.
-    Mod(&'a ValueReference, &'a ValueReference),
+    Mod(Arc<StoredData>, Arc<StoredData>),
 
     /// Raises a value to a power.
-    Pow(&'a ValueReference, &'a ValueReference),
+    Pow(Arc<StoredData>, Arc<StoredData>),
 
     /// Calls a function.
-    Call(&'a ValueReference, Vec<&'a ValueReference>),
+    Call(Arc<StoredData>, Vec<Arc<StoredData>>),
 
     /// Applies a function to each element of a list.
-    Map(&'a ValueReference, &'a ValueReference),
+    Map(Arc<StoredData>, Arc<StoredData>),
 
     /// Applies a combining function to each element of a list, returning a single value.
-    Reduce(&'a ValueReference, &'a ValueReference, &'a ValueReference),
+    Reduce(Arc<StoredData>, Arc<StoredData>, Arc<StoredData>),
 
     /// Gets the items in a list that match a given predicate.
-    Filter(&'a ValueReference, &'a ValueReference),
+    Filter(Arc<StoredData>, Arc<StoredData>),
 
     /// Initializes an object of the given custom type using the given data.
-    Init(&'a ValueReference, Vec<&'a ValueReference>),
+    Init(Arc<StoredData>, Vec<Arc<StoredData>>),
     //
     // /// Casts an object to a different type.
-    // Cast(&'a ValueReference, &'a ValueReference),
+    // Cast(Arc<StoredData>, Arc<StoredData>),
 }

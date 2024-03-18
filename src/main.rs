@@ -3,9 +3,8 @@ use std::sync::Arc;
 use crate::api::{await_call, bind, load_intermediate, log_async, log_error, stream_call};
 use crate::binder::intermediate::collection::Collection;
 use crate::binder::json::jsonify;
-use crate::runtime::mmu::mmu::MMU;
-use crate::runtime::mmu::value_ref::ValueReference;
-use crate::runtime::vm::manager::StreamResult;
+use crate::runtime::data::live::PointerLive;
+use crate::runtime::static_state::state::StaticState;
 
 
 mod runtime;
@@ -31,11 +30,8 @@ enum Commands {
         #[arg(short = 'v', long = "verbose", default_value = "false")]
         verbose: bool,
 
-        #[arg(short = 'e', long = "ex-workers")]
-        execution_workers: Option<usize>,
-
-        #[arg(short = 'o', long = "or-workers")]
-        orchestration_workers: Option<usize>,
+        #[arg(short = 'w', long = "workers")]
+        workers: Option<usize>,
     },
 
     #[command(about = "Runs a program and waits for all results to be available before outputting them")]
@@ -47,11 +43,8 @@ enum Commands {
         #[arg(short = 'v', long = "verbose", default_value = "false")]
         verbose: bool,
 
-        #[arg(short = 'e', long = "ex-workers")]
-        execution_workers: Option<usize>,
-
-        #[arg(short = 'o', long = "or-workers")]
-        orchestration_workers: Option<usize>,
+        #[arg(short = 'w', long = "workers")]
+        workers: Option<usize>,
     },
 }
 
@@ -59,7 +52,7 @@ fn main() {
     let args = Cli::parse();
 
     match args.command {
-        Commands::Stream { intermediate, verbose, execution_workers, orchestration_workers } => {
+        Commands::Stream { intermediate, verbose, workers } => {
             let program: Collection = match load_intermediate(&intermediate) {
                 Ok(v) => v,
                 Err(e) => {
@@ -68,51 +61,25 @@ fn main() {
                 }
             };
             let main_collection_symbol = uuid::Uuid::new_v4().to_string();
-            let mmu: Arc<MMU> = Arc::new(MMU::new());
-            let binder = match bind(program, mmu.clone(), Some(main_collection_symbol.clone())) {
-                Ok(v) => v,
-                Err(e) => {
-                    log_error(format!("Error binding program: {}", e));
-                    return;
-                },
-            };
 
-            let main_func: ValueReference = binder.get_path(vec![main_collection_symbol, "main".to_string()]).unwrap();
+            let static_state: Arc<StaticState> = bind(program, Some(main_collection_symbol.clone()))
+                .map_err(|e| log_error(format!("Error binding program: {}", e)))
+                .unwrap();
 
-            let (outputs_sender, outputs_receiver) = std::sync::mpsc::channel::<StreamResult>();
-
-            let start_res = stream_call(
-                main_func,
+            let (num_outputs, outputs_receiver) = stream_call(
+                vec![main_collection_symbol, "main".to_string()],
                 vec![],
-                mmu.clone(),
-                outputs_sender.clone(),
-                verbose,
-                execution_workers,
-                orchestration_workers,
+                static_state.clone(),
+                workers,
             );
 
-            let num_expected_outputs = match start_res {
-                Ok(v) => v,
-                Err(e) => {
-                    log_error(format!("Error starting program: {}", e));
-                    return;
-                }
-            };
-
-            for _ in 0..num_expected_outputs {
+            for _ in 0..num_outputs {
                 let res = outputs_receiver.recv().unwrap();
-                match res {
-                    StreamResult::Output(fn_val, val_ref) => {
-                        log_async(format!("out | {}: {}", fn_val.symbol.unwrap_or(fn_val.guid), jsonify(mmu.clone(), &mmu.get_ref_value(&val_ref).unwrap())));
-                    },
-                    StreamResult::Error(e) => {
-                        log_error(format!("result | error: {}", e));
-                    }
-                }
+                log_async(format!("out | {}: {}", res.0, jsonify(res.1.as_ref())));
             }
         },
 
-        Commands::Await { intermediate, verbose, execution_workers, orchestration_workers } => {
+        Commands::Await { intermediate, verbose, workers } => {
             let program: Collection = match load_intermediate(&intermediate) {
                 Ok(v) => v,
                 Err(e) => {
@@ -122,39 +89,20 @@ fn main() {
             };
 
             let main_collection_symbol = uuid::Uuid::new_v4().to_string();
-            let mmu: Arc<MMU> = Arc::new(MMU::new());
-            let binder = match bind(program, mmu.clone(), Some(main_collection_symbol.clone())) {
-                Ok(v) => v,
-                Err(e) => {
-                    log_error(format!("Error binding program: {}", e));
-                    return;
-                },
-            };
 
-            let main_func: ValueReference = binder.get_path(vec![main_collection_symbol, "main".to_string()]).unwrap();
+            let static_state: Arc<StaticState> = bind(program, Some(main_collection_symbol.clone()))
+                .map_err(|e| log_error(format!("Error binding program: {}", e)))
+                .unwrap();
 
-            let res = await_call(
-                main_func,
+            let res: Vec<PointerLive> = await_call(
+                vec![main_collection_symbol, "main".to_string()],
                 vec![],
-                mmu.clone(),
-                verbose,
-                execution_workers,
-                orchestration_workers
+                static_state.clone(),
+                workers,
             );
 
-            let res = match res {
-                Ok(v) => v,
-                Err(e) => {
-                    log_error(format!("result | error: {}", e));
-                    return;
-                }
-            };
-
-            log_async("result | success".to_string());
-
-            for (k, v) in res {
-                let stored = mmu.get_ref_value(&v).unwrap();
-                log_async(format!("out | {}: {}", k, jsonify(mmu.clone(), &stored)));
+            for (i, v) in res.iter().enumerate() {
+                log_async(format!("out | {}: {}", i, jsonify(v.as_ref())));
             }
         }
     }

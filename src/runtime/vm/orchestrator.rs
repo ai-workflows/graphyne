@@ -1,298 +1,305 @@
 use std::sync::{Arc};
-use crate::runtime::data::functions::OpCode;
-use crate::runtime::data::live::{FuncLive, FuncOpLive, FuncValLive};
-use crate::runtime::ExecResult;
-use crate::runtime::vm::shared::{CallContextId, get_func_from_ptr, get_func_op_from_ptr, get_func_val_from_ptr, get_func_vals_from_ptrs, SharedCallState};
-use crate::runtime::mmu::value_ref::ValueReference;
+use std::sync::atomic::Ordering;
+use rayon::ThreadPool;
+use crate::runtime::data::functions::func::{FuncLive, FuncOp, FuncVal};
+use crate::runtime::data::live::{PointerLive, StaticRefLive};
+use crate::runtime::data::stored::StoredData::ListStored;
+use crate::runtime::static_state::state::StaticState;
+use crate::runtime::vm::call_context::{CallContext, get_static_func};
+use crate::runtime::vm::executor;
+use crate::runtime::vm::outputs::{FilterLink, MapLink, OutputType, ReduceLink};
 
-/// The orchestrator receives messages that new values are known, stores/links them, and determines which operations
-/// need to be executed next. It then sends messages to the executor to execute these operations.
 
-pub fn handle_new_value_v2(
-    shared_state: Arc<SharedCallState>,
-    call_context_id: &CallContextId,
-    func_val: &FuncValLive,
-    value: ValueReference
-) -> ExecResult<()> {
-    shared_state.log_async(call_context_id, &format!(
-        "Orchestrating ops for new value: {}",
-        func_val.symbol.clone().unwrap_or("(Unknown symbol)".to_string())
+/// Initializes a child function call, fills child_calls buffer in the parent context, and dispatches the constant values.
+/// Note: all inputs should be handled individually as they arrive.
+pub fn init_child_call(
+    func_ref: &StaticRefLive,
+    call_index: usize,
+    parent_context: Arc<CallContext>,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) {
+    // get the operation in the parent context that this call is represented by
+    let parent_func: &FuncLive = get_static_func(&parent_context.func_ref);
+    let call_op_index = match parent_func.call_ops.get(call_index) {
+        Some(v) => v,
+        None => panic!("CallContext::get_call_op: call_ops[{}] out of bounds", call_index)
+    };
+    let call_op = get_op(parent_func, *call_op_index);
+
+    // create output links for the call
+    let output_types: Vec<OutputType> = call_op.output_vals.iter().map(|output_val_idx| {
+        OutputType::CrossCallLink(parent_context.clone(), *output_val_idx)
+    }).collect();
+
+    // get the function that this call is to
+    let called_func: &FuncLive = get_static_func(&func_ref);
+
+    if output_types.len() != called_func.output_vals.len() {
+        panic!("CallContext::create_call: output_types length does not match called_func.output_vals length");
+    }
+
+    // create the child context
+    let child_context: Arc<CallContext> = Arc::new(CallContext::new(
+        func_ref.clone(),
+        output_types
     ));
 
-    // set the val in the state manager
-    shared_state.set_val(call_context_id.clone(), func_val.clone(), value.clone());
+    // dispatch the constant values
+    dispatch_call_constants(called_func, child_context.clone(), static_state.clone(), worker_pool.clone());
 
-    // get the dependent ops for the value
-    let dependent_ops: Vec<FuncOpLive> = match func_val.dependents.iter()
-        .map(|op_ptr| get_func_op_from_ptr(shared_state.mmu.clone(), op_ptr))
-        .collect() {
-        Ok(ops) => ops,
-        Err(e) => return Err(format!("Error getting dependent ops: {}", e))
+    // iterate over each arg (other than the first, the function) and dispatch it in the child context if it is known
+    // unknown args will be dispatched as they arrive
+    for (i, arg_val_index) in call_op.input_vals.iter().skip(1).enumerate() {
+        match parent_context.val_buffer[*arg_val_index].get() {
+            Some(v) => set_val(
+                child_context.clone(),
+                called_func.input_vals[i],
+                v.clone(),
+                static_state.clone(),
+                worker_pool.clone()),
+            None => ()
+        }
+    }
+
+    // set the child context in its buffer in the parent context
+    match parent_context.child_calls[call_index].set(child_context.clone()) {
+        Ok(_) => (),
+        Err(_) => panic!("CallContext::create_call: child_calls[{}] is already initialized", call_index)
     };
+}
 
-    for dependent_op in dependent_ops {
-        if dependent_op.opcode == OpCode::Call {
-            match handle_call_op(shared_state.clone(), &dependent_op, call_context_id, func_val, value.clone()) {
-                Ok(_) => {},
-                Err(e) => return Err(format!("Error handling dependent call op: {}", e))
+/// Initializes an anonymous function call with known inputs and dispatches inputs/constants.
+pub fn init_anonymous_call(
+    func_ref: &StaticRefLive,
+    inputs: &[PointerLive],
+    output_types: Vec<OutputType>,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) {
+    let func: &FuncLive = get_static_func(func_ref);
+
+    // create the call context
+    let context: Arc<CallContext> = Arc::new(CallContext::new(
+        func_ref.clone(),
+        output_types
+    ));
+
+    dispatch_call_constants(func, context.clone(), static_state.clone(), worker_pool.clone());
+
+    // set the input values
+    for (i, v) in inputs.iter().enumerate() {
+        set_val(context.clone(), func.input_vals[i], v.clone(), static_state.clone(), worker_pool.clone());
+    }
+}
+
+fn dispatch_call_constants(
+    func: &FuncLive,
+    context: Arc<CallContext>,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) {
+    for i in func.constant_vals.iter() {
+        let f_val = match func.values.get(*i) {
+            Some(v) => v,
+            None => panic!("CallContext::new: constant_vals[{}] out of bounds", i)
+        };
+        set_val(context.clone(), *i, f_val.constant.clone().unwrap(), static_state.clone(), worker_pool.clone());
+    }
+}
+
+/// If a value is an input to any child calls, sets it and initializes the child calls if necessary.
+pub fn dispatch_call_args(
+    fn_val: &FuncVal,
+    val: PointerLive,
+    context: Arc<CallContext>,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) {
+    for (child_call_idx, input_idx) in fn_val.arg_for.iter() {
+        match input_idx {
+            // if this is the called function (first arg), init a new call
+            0 => init_child_call(
+                    val.as_static_ref().expect("dispatch_call_args: called function is not a static ref"),
+                    *child_call_idx,
+                    context.clone(),
+                    static_state.clone(),
+                    worker_pool.clone()
+                ),
+            // dispatch the arg if the child call is initialized
+            _ => {
+                let child_context = match get_child_call_opt(context.clone(), *child_call_idx) {
+                    Some(v) => v,
+                    None => continue
+                };
+
+                // get the index of the corresponding value in the child call
+                let input_val_idx: usize = match get_static_func(&child_context.func_ref).input_vals.get(*input_idx - 1) {
+                    Some(v) => *v,
+                    None => panic!("dispatch_call_args: input_idx out of bounds")
+                };
+
+                // set the input's value in the child call context
+                set_val(child_context.clone(), input_val_idx, val.clone(), static_state.clone(), worker_pool.clone());
             }
         }
-        else {
-            match handle_normal_op(shared_state.clone(), &dependent_op, call_context_id) {
-                Ok(_) => {},
-                Err(e) => return Err(format!("Error handling dependent op: {}", e))
-            }
-        }
     }
-    // if the val is an output we need to link it to the func val in the parent context
-    // if it is the last output for this call context, we need to clean up
-    if shared_state.is_output(call_context_id, func_val) {
-        // get the output info
-        let (parent_call_context, parent_output_fn_val) =
-            shared_state.get_output_info(call_context_id, func_val)
-            .ok_or(format!("Output info not found for call context: {}", call_context_id))?;
-
-        // deregister the output
-        shared_state.remove_output(call_context_id, func_val);
-
-        // send the new value message to the parent context
-        shared_state.send_new_val(parent_call_context.clone(), &parent_output_fn_val, value);
-
-        // if this was the last output, the call context has been fully executed and can be cleaned up
-        if shared_state.num_remaining_outputs(call_context_id) == 0 {
-            shared_state.finalize_call_context(call_context_id);
-        }
-    }
-
-    Ok(())
 }
 
-fn handle_call_op(
-    shared_state: Arc<SharedCallState>,
-    op: &FuncOpLive,
-    call_context_id: &CallContextId,
-    fn_val: &FuncValLive,
-    value: ValueReference
-) -> ExecResult<()> {
-    // check if the value is the first arg (the function being called)
-    let first_arg_fn_val = match op.input_vals.get(0) {
-        Some(ptr) => match get_func_val_from_ptr(shared_state.mmu.clone(), ptr) {
-            Ok(val) => val,
-            Err(e) => return Err(format!("Error getting first arg val: {}", e))
-        }
-        None => return Err("Call op does not a first arg val (function being called)".to_string())
-    };
-
-    // if it is, handle the call
-    if first_arg_fn_val.guid == fn_val.guid {
-        return handle_func_call(shared_state, op, call_context_id, value);
+pub fn get_child_call_opt(context: Arc<CallContext>, call_index: usize) -> Option<Arc<CallContext>> {
+    match context.child_calls.get(call_index) {
+        Some(v) => match v.get() {
+            Some(v) => Some(v.clone()),
+            None => None
+        },
+        None => panic!("CallContext::get_child_call_opt: call_index out of bounds")
     }
-
-    // otherwise, this is an arg of the called function
-    handle_call_arg(shared_state, op, call_context_id, &first_arg_fn_val)
 }
 
-fn handle_func_call<'a>(
-    shared_state: Arc<SharedCallState>,
-    op: &FuncOpLive,
-    parent_call_context_id: &CallContextId,
-    value: ValueReference
-) -> ExecResult<()> {
-    // get the value for the called function
-    let called_fn = match get_func_from_ptr(shared_state.mmu.clone(), &value.pointer) {
-        Ok(val) => val,
-        Err(e) => return Err(format!("Error getting called function: {}", e))
-    };
-
-    // generate a random call context id
-    let call_context_id = uuid::Uuid::new_v4().to_string();
-
-    // add the call to the call cache
-    shared_state.register_call(&parent_call_context_id, &op.guid, &call_context_id);
-
-    // register the function outputs in the output lookup
-    for (i, output_ptr) in op.output_vals.iter().enumerate() {
-        let parent_output_fn_val = match get_func_val_from_ptr(shared_state.mmu.clone(), output_ptr) {
-            Ok(val) => val,
-            Err(e) => return Err(format!("Error getting output val: {}", e))
-        };
-
-        // get the matching output fn val in the called function's context
-        let called_fn_output_ptr = called_fn.output_vals.get(i)
-            .ok_or(format!("Could not find matching output for output index: {}", i))?;
-        let output_fn_val = get_func_val_from_ptr(shared_state.mmu.clone(), called_fn_output_ptr)?;
-
-        shared_state.register_output(&call_context_id, &output_fn_val, parent_call_context_id, &parent_output_fn_val);
+pub fn get_op(func: &FuncLive, index: usize) -> &FuncOp {
+    match func.ops.get(index) {
+        Some(v) => v,
+        None => panic!("CallContext::get_op: index out of bounds")
     }
-
-    // loop over the arg values. If any are known, send a new value message for the matching input val in the called function's context
-    for (i, arg_ptr) in op.input_vals.iter().enumerate() {
-        // Skip the first element (the function being called)
-        if i == 0 {
-            continue;
-        }
-
-        // get the fn val for the arg in the parent context
-        let arg_fn_val = match get_func_val_from_ptr(shared_state.mmu.clone(), arg_ptr) {
-            Ok(val) => val,
-            Err(e) => return Err(format!("Error getting arg val: {}", e))
-        };
-
-        // if the value is not known, we will handle this arg later
-        if !shared_state.contains_val(parent_call_context_id, &arg_fn_val) {
-            continue;
-        }
-
-        // get the value for the arg in the parent context
-        let arg_val: ValueReference = match shared_state.get_val(parent_call_context_id, &arg_fn_val) {
-            Some(val) => val,
-            None => return Err(format!("Arg val not found in parent call context: {}", parent_call_context_id))
-        };
-
-        // get the to matching input fn val in the called function's context
-        let called_fn_input_ptr = called_fn.input_vals.get(i - 1)
-            .ok_or(format!("Could not find matching input for arg index: {}", i - 1))?;
-
-        let call_input_fn_val = get_func_val_from_ptr(shared_state.mmu.clone(), called_fn_input_ptr)?;
-
-        // send a new value message for the matching input val
-        shared_state.send_new_val(call_context_id.clone(), &call_input_fn_val, arg_val);
-    }
-
-    // handle the constants
-    handle_called_fn_constants(shared_state, &call_context_id, &called_fn)?;
-
-    Ok(())
 }
 
-// /// Handles an anonymous function call, such as for the main invocation of a program.
-// pub fn handle_anonymous_fn_call(
-//     shared_state: Arc<SharedCallState>,
-//     call_context_id: &CallContextId,
-//     called_fn: &FuncLive,
-//     args: Vec<ValueReference>,
-// ) -> ExecResult<()> {
-//     // no need to register call or outputs, as this is an anonymous function
-//     // send new value messages for the args
-//     for (arg_ptr, arg_val) in called_fn.input_vals.iter().zip(args) {
-//         let arg_fn_val = match get_func_val_from_ptr(shared_state.mmu.clone(), arg_ptr) {
-//             Ok(val) => val,
-//             Err(e) => {
-//                 shared_state.handle_error(call_context_id, format!("Error getting arg val: {}", e));
-//                 continue;
-//             }
-//         };
-//         shared_state.send_new_val(call_context_id.clone(), arg_fn_val, arg_val);
-//     }
-//
-//     // handle the constants
-//     handle_called_fn_constants(shared_state, call_context_id, called_fn)?;
-//
-//     Ok(())
-// }
-
-pub fn handle_called_fn_constants(
-    shared_state: Arc<SharedCallState>,
-    call_context_id: &CallContextId,
-    called_fn: &FuncLive
-) -> ExecResult<()> {
-    // loop over the constant values. Send a new value message for each
-    for constant_ptr in called_fn.constant_vals.iter() {
-        let constant_fn_val = match get_func_val_from_ptr(shared_state.mmu.clone(), constant_ptr) {
-            Ok(val) => val,
-            Err(e) => return Err(format!("Error getting constant val: {}", e))
-        };
-
-        let constant_ptr = match &constant_fn_val.constant {
-            Some(ptr) => ptr,
-            None => return Err(format!("Constant ptr not found for constant func val: {}", constant_fn_val.guid))
-        };
-        let constant_val = shared_state.value_ref_from_ptr(constant_ptr.clone())?;
-
-        shared_state.send_new_val(call_context_id.clone(), &constant_fn_val, constant_val);
+/// Gets a pointer to the assigned value for the given function variable.
+pub fn get_val(context: Arc<CallContext>, index: usize) -> PointerLive {
+    match context.val_buffer[index].get() {
+        Some(v) => v.clone(),
+        None => panic!("CallContext::get_val: val_buffer[{}] is not initialized", index)
     }
-
-    Ok(())
 }
 
-fn handle_call_arg(
-    shared_state: Arc<SharedCallState>,
-    op: &FuncOpLive,
-    call_context_id: &CallContextId,
-    first_arg_fn_val: &FuncValLive
-) -> ExecResult<()> {
-    // check if the value of the first arg to the call op is known (the function being called)
-    let first_arg_val = match shared_state.get_val(call_context_id, &first_arg_fn_val) {
-        Some(val) => val,
-        None => return Ok(()) // if it is not known, we will handle this arg later when the function is known
+/// Assigns a value to the given function variable.
+pub fn set_val(
+    context: Arc<CallContext>,
+    index: usize,
+    val: PointerLive,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) {
+    match context.val_buffer[index].set(val.clone()) {
+        Ok(_) => (),
+        Err(_) => panic!("CallContext::set_val: val_buffer[{}] is already initialized", index)
     };
 
-    // get the function being called
-    let called_fn = match get_func_from_ptr(shared_state.mmu.clone(), &first_arg_val.pointer) {
-        Ok(val) => val,
-        Err(e) => return Err(format!("Error getting called function: {}", e))
+    let f_val: &FuncVal = match get_static_func(&context.func_ref).values.get(index) {
+        Some(v) => v,
+        None => panic!("CallContext::set_val: index out of bounds")
     };
 
-    // get the call context id for the called function from the call cache
-    let called_fn_context_id = match shared_state.get_child_call_context_id(call_context_id, &op.guid) {
-        Some(id) => id.clone(),
-        None => return Err("Could not find call context id for already called function. \
-                Do you have an unused arg? The function may have already been garbage collected.".to_string())
-    };
+    // if this value is an argument for any child calls, dispatch the value
+    dispatch_call_args(f_val, val.clone(), context.clone(), static_state.clone(), worker_pool.clone());
 
-    // get the index of this val in the args of the dependent call op
-    let mut arg_index = 0;
-    for op_input_ptr in op.input_vals.iter() {
-        let input_fn_val = get_func_val_from_ptr(shared_state.mmu.clone(), op_input_ptr)?;
-        if input_fn_val.guid == first_arg_fn_val.guid {
-            break;
+    // if this is an output value, handle it
+    if let Some(output_idx) = f_val.output_idx {
+        let output_type = match context.output_types.get(output_idx) {
+            Some(v) => v,
+            None => panic!("CallContext::set_val: output_types[{}] out of bounds", output_idx)
+        };
+
+        match output_type {
+            OutputType::Final(output_idx, output_sender) => {
+                output_sender.send((*output_idx, val)).unwrap();
+            },
+            OutputType::CrossCallLink(ctx, output_index) =>
+                set_val(ctx.clone(), *output_index, val, static_state.clone(), worker_pool.clone()),
+            OutputType::MapLink(link) =>
+                handle_map_link(link, val, static_state.clone(), worker_pool.clone()),
+            OutputType::FilterLink(link) =>
+                handle_filter_link(link, val, static_state.clone(), worker_pool.clone()),
+            OutputType::ReduceLink(link) =>
+                handle_reduce_link(link, val, static_state.clone(), worker_pool.clone()),
         }
-        arg_index += 1;
     }
 
-    if arg_index == op.input_vals.len() {
-        return Err("Could not find matching input for first arg".to_string());
+    // decrement the unknown arg count for each op that uses this value
+    for op_index in f_val.dependents.iter() {
+        context.unknown_arg_counts[*op_index].fetch_sub(1, Ordering::Relaxed);
+
+        // dispatch the op if all of its arguments are known
+        if context.unknown_arg_counts[*op_index].load(Ordering::Relaxed) == 0 {
+            executor::dispatch_op(context.clone(), *op_index, static_state.clone(), worker_pool.clone());
+        }
     }
-
-    // match to the input func val in the called function's context
-    let matching_input_ptr = called_fn.input_vals.get(arg_index)
-        .ok_or(format!("Could not find matching input for arg index: {}", arg_index))?;
-    let matching_input_val: FuncValLive = get_func_val_from_ptr(shared_state.mmu.clone(), matching_input_ptr)?;
-
-    // send a new value message for the matching input val
-    shared_state.send_new_val(called_fn_context_id.clone(), &matching_input_val, first_arg_val.clone());
-
-    Ok(())
 }
 
-fn handle_normal_op(
-    shared_state: Arc<SharedCallState>,
-    op: &FuncOpLive,
-    call_context_id: &CallContextId,
-) -> ExecResult<()> {
-    // check if the op has already been executed (output vals are known)
-    for output_fn_val in get_func_vals_from_ptrs(shared_state.mmu.clone(), &op.output_vals)? {
-        if shared_state.contains_val(call_context_id, &output_fn_val) {
-            return Err(format!("Operation {} has already been executed.", op.opcode));
-        }
+fn handle_map_link(
+    link: &MapLink,
+    val: PointerLive,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) {
+    link.result_buffer[link.result_idx].set(val).unwrap();
+    let prev_count = link.remaining_count.fetch_sub(1, Ordering::Relaxed);
+
+    // if this is the final value, convert the result buffer to a list and send it
+    if prev_count == 1 {
+        let result: Vec<PointerLive> = link.result_buffer.iter()
+            .map(|v| v.get().unwrap().clone())
+            .collect();
+        set_val(link.source_context.clone(),
+                link.source_result_val,
+                PointerLive::new(ListStored(result)),
+                static_state.clone(),
+                worker_pool.clone());
     }
+}
 
-    // check if all input vals are known
-    let input_fn_vals = get_func_vals_from_ptrs(shared_state.mmu.clone(), &op.input_vals)?;
-    for input_fn_val in input_fn_vals {
-        if !shared_state.contains_val(call_context_id, &input_fn_val) {
-            // The operation will be executed later, when the last input value is known
-            return Ok(());
-        }
+fn handle_filter_link(
+    link: &FilterLink,
+    val: PointerLive,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) {
+    link.result_buffer[link.result_idx].set(val).unwrap();
+    let prev_count = link.remaining_count.fetch_sub(1, Ordering::Relaxed);
+
+    // if this is the final value, convert the result buffer to a list and send it
+    if prev_count == 1 {
+        let bool_results: Vec<bool> = link.result_buffer.iter()
+            .map(|v| *v.get().unwrap().clone().stored_as_bool().unwrap())
+            .collect();
+
+        let result: Vec<PointerLive> = link.source_list.stored_as_list().unwrap().iter()
+            .zip(bool_results.iter())
+            .filter(|(_, b)| **b)
+            .map(|(v, _)| v.clone())
+            .collect();
+
+        set_val(link.source_context.clone(),
+                link.source_result_val,
+                PointerLive::new(ListStored(result)),
+                static_state.clone(),
+                worker_pool.clone());
     }
+}
 
-    // // if this is a map op, handle it differently
-    // if op.opcode == OpCode::Map {
-    //     return handle_map_op(shared_state, op, call_context_id, input_fn_vals);
-    // }
-
-    // send a new op message to the executor
-    shared_state.send_new_op(call_context_id.clone(), op.clone());
-
-    Ok(())
+fn handle_reduce_link(
+    link: &ReduceLink,
+    val: PointerLive,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) {
+    // if this is the final value, set it in the source context
+    if link.source_idx + 1 == link.source_list.stored_as_list().unwrap().len() {
+        set_val(link.source_context.clone(),
+                link.source_result_val,
+                val,
+                static_state.clone(),
+                worker_pool.clone());
+    }
+    else {
+        executor::dispatch_next_reduce(
+            link.source_context.clone(),
+            link.source_result_val,
+            link.source_list.clone(),
+            link.source_idx + 1,
+            link.called_func.clone(),
+            val,
+            static_state.clone(),
+            worker_pool.clone()
+        );
+    }
 }

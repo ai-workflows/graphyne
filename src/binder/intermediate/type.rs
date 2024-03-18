@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use serde::de::{SeqAccess};
 use crate::runtime::data::live::TypeLive;
-use crate::runtime::{Symbol};
+use crate::runtime::{Symbol, SymbolPath};
 
 #[derive(Debug, Clone, Serialize)]
 pub enum CollectionType {
@@ -14,7 +14,7 @@ pub enum CollectionType {
     List,
     Dict,
     Type,
-    Custom(Symbol)
+    Custom(SymbolPath)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -69,7 +69,12 @@ impl<'de> Deserialize<'de> for CollectionTypeConst {
                     "list" => Ok(CollectionTypeConst(CollectionType::List)),
                     "dict" => Ok(CollectionTypeConst(CollectionType::Dict)),
                     "type" => Ok(CollectionTypeConst(CollectionType::Type)),
-                    _ => Ok(CollectionTypeConst(CollectionType::Custom(value.into())))
+                    _ => {
+                        let parts: Vec<Symbol> = value.split('.')
+                            .map(|s| s.to_string())
+                            .collect();
+                        Ok(CollectionTypeConst(CollectionType::Custom(parts)))
+                    }
                 }
             }
         }

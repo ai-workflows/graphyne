@@ -1,22 +1,17 @@
-use std::collections::HashMap;
+use std::sync::Arc;
 use crate::runtime::data::live::live_data::{ListLive, TypeLive};
 use crate::runtime::data::live::{BoolLive, IntLive, LiveData, PointerLive};
 use crate::runtime::{ExecResult};
-use crate::runtime::data::live::helpers::type_of_helper;
 use crate::runtime::data::stored::StoredData;
-use crate::runtime::gc::{GCPointer};
+use crate::runtime::static_state::state::StaticState;
 
 impl LiveData for ListLive {
-    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
-        type_of_helper(&TypeLive::List, &type_map)
+    fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {
+        type_map.get_primitive_type(&TypeLive::List).map(|r| Ok(r))
     }
 
     fn as_list(&self) -> Option<ExecResult<ListLive>> {
         Some(Ok(self.clone()))
-    }
-
-    fn is_null(&self) -> Option<ExecResult<BoolLive>> {
-        Some(Ok(BoolLive::from(false)))
     }
 
     fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
@@ -24,6 +19,10 @@ impl LiveData for ListLive {
             StoredData::NullStored => self.is_null().map(|r| Ok(StoredData::BoolStored(r?))),
             _ => None,
         }
+    }
+
+    fn is_null(&self) -> Option<ExecResult<BoolLive>> {
+        Some(Ok(BoolLive::from(false)))
     }
 
     fn op_len(&self) -> Option<ExecResult<IntLive>> {
@@ -68,7 +67,7 @@ impl LiveData for ListLive {
         Some(Ok(StoredData::ListStored(list)))
     }
 
-    fn op_push(&self, value: GCPointer<StoredData>) -> Option<ExecResult<StoredData>> {
+    fn op_push(&self, value: PointerLive) -> Option<ExecResult<StoredData>> {
         let mut list = self.clone();
         list.push(value);
         Some(Ok(StoredData::ListStored(list)))

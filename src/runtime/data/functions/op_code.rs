@@ -1,6 +1,7 @@
 use std::fmt;
+use std::sync::Arc;
 use serde::{Deserialize, Serialize};
-use crate::runtime::mmu::value_ref::ValueReference;
+use crate::runtime::data::stored::StoredData;
 use crate::runtime::vm::operator::ops::Operation;
 
 #[allow(dead_code)]
@@ -71,46 +72,49 @@ pub enum OpCode {
     #[serde(alias="filter", alias="Filter", alias="FILTER")]
     Filter,
     #[serde(alias="init", alias="Init", alias="INIT")]
-    Init
+    Init,
+    #[serde(alias="static", alias="Static", alias="STATIC")]
+    Static,
 }
 
 impl OpCode {
     /// Converts a list of arguments to an operation based on the opcode.
-    pub fn to_operation<'a>(&self, args: &Vec<&'a ValueReference>) -> Operation<'a> {
+    pub fn to_operation(&self, args: &Vec<Arc<StoredData>>) -> Operation {
         match self {
-            OpCode::TypeOf => Operation::TypeOf(args[0]),
-            OpCode::AsInt => Operation::AsInt(args[0]),
-            OpCode::AsFloat => Operation::AsFloat(args[0]),
-            OpCode::AsString => Operation::AsString(args[0]),
-            OpCode::AsBool => Operation::AsBool(args[0]),
-            OpCode::AsPointer => Operation::AsPointer(args[0]),
-            OpCode::AsList => Operation::AsList(args[0]),
-            OpCode::AsDictionary => Operation::AsDictionary(args[0]),
-            OpCode::AsType => Operation::AsType(args[0]),
-            OpCode::If => Operation::If(args[0], args[1], args[2]),
-            OpCode::Not => Operation::Not(args[0]),
-            OpCode::And => Operation::And(args[0], args[1]),
-            OpCode::Or => Operation::Or(args[0], args[1]),
-            OpCode::Equal => Operation::Equal(args[0], args[1]),
-            OpCode::LessThan => Operation::LessThan(args[0], args[1]),
-            OpCode::GreaterThan => Operation::GreaterThan(args[0], args[1]),
-            OpCode::IsNull => Operation::IsNull(args[0]),
-            OpCode::Length => Operation::Length(args[0]),
-            OpCode::Get => Operation::GetItem(args[0], args[1]),
-            OpCode::Set => Operation::SetItem(args[0], args[1], args[2]),
-            OpCode::Push => Operation::Push(args[0], args[1]),
-            OpCode::Remove => Operation::Remove(args[0], args[1]),
-            OpCode::Add => Operation::Add(args[0], args[1]),
-            OpCode::Sub => Operation::Sub(args[0], args[1]),
-            OpCode::Mul => Operation::Mul(args[0], args[1]),
-            OpCode::Div => Operation::Div(args[0], args[1]),
-            OpCode::Mod => Operation::Mod(args[0], args[1]),
-            OpCode::Pow => Operation::Pow(args[0], args[1]),
-            OpCode::Call => Operation::Call(args[0], args[1..].to_vec()),
-            OpCode::Map => Operation::Map(args[0], args[1]),
-            OpCode::Reduce => Operation::Reduce(args[0], args[1], args[2]),
-            OpCode::Filter => Operation::Filter(args[0], args[1]),
-            OpCode::Init => Operation::Init(args[0], args[1..].to_vec()),
+            OpCode::TypeOf => Operation::TypeOf(args[0].clone()),
+            OpCode::AsInt => Operation::AsInt(args[0].clone()),
+            OpCode::AsFloat => Operation::AsFloat(args[0].clone()),
+            OpCode::AsString => Operation::AsString(args[0].clone()),
+            OpCode::AsBool => Operation::AsBool(args[0].clone()),
+            OpCode::AsPointer => Operation::AsPointer(args[0].clone()),
+            OpCode::AsList => Operation::AsList(args[0].clone()),
+            OpCode::AsDictionary => Operation::AsDictionary(args[0].clone()),
+            OpCode::AsType => Operation::AsType(args[0].clone()),
+            OpCode::If => Operation::If(args[0].clone(), args[1].clone(), args[2].clone()),
+            OpCode::Not => Operation::Not(args[0].clone()),
+            OpCode::And => Operation::And(args[0].clone(), args[1].clone()),
+            OpCode::Or => Operation::Or(args[0].clone(), args[1].clone()),
+            OpCode::Equal => Operation::Equal(args[0].clone(), args[1].clone()),
+            OpCode::LessThan => Operation::LessThan(args[0].clone(), args[1].clone()),
+            OpCode::GreaterThan => Operation::GreaterThan(args[0].clone(), args[1].clone()),
+            OpCode::IsNull => Operation::IsNull(args[0].clone()),
+            OpCode::Length => Operation::Length(args[0].clone()),
+            OpCode::Get => Operation::GetItem(args[0].clone(), args[1].clone()),
+            OpCode::Set => Operation::SetItem(args[0].clone(), args[1].clone(), args[2].clone()),
+            OpCode::Push => Operation::Push(args[0].clone(), args[1].clone()),
+            OpCode::Remove => Operation::Remove(args[0].clone(), args[1].clone()),
+            OpCode::Add => Operation::Add(args[0].clone(), args[1].clone()),
+            OpCode::Sub => Operation::Sub(args[0].clone(), args[1].clone()),
+            OpCode::Mul => Operation::Mul(args[0].clone(), args[1].clone()),
+            OpCode::Div => Operation::Div(args[0].clone(), args[1].clone()),
+            OpCode::Mod => Operation::Mod(args[0].clone(), args[1].clone()),
+            OpCode::Pow => Operation::Pow(args[0].clone(), args[1].clone()),
+            OpCode::Call => Operation::Call(args[0].clone(), args[1..].to_vec()),
+            OpCode::Map => Operation::Map(args[0].clone(), args[1].clone()),
+            OpCode::Reduce => Operation::Reduce(args[0].clone(), args[1].clone(), args[2].clone()),
+            OpCode::Filter => Operation::Filter(args[0].clone(), args[1].clone()),
+            OpCode::Init => Operation::Init(args[0].clone(), args[1..].to_vec()),
+            OpCode::Static => panic!("Cannot convert OpCode::Static to Operation"),
         }
     }
 }
@@ -151,6 +155,7 @@ impl fmt::Display for OpCode {
             OpCode::Reduce => write!(f, "reduce"),
             OpCode::Filter => write!(f, "filter"),
             OpCode::Init => write!(f, "init"),
+            OpCode::Static => write!(f, "static"),
         }
     }
 }

@@ -1,13 +1,13 @@
-use std::collections::HashMap;
+use std::sync::Arc;
 use crate::runtime::data::live::live_data::{BoolLive, TypeLive};
 use crate::runtime::data::live::{LiveData, PointerLive};
 use crate::runtime::{ExecResult};
-use crate::runtime::data::live::helpers::type_of_helper;
 use crate::runtime::data::stored::StoredData;
+use crate::runtime::static_state::state::StaticState;
 
 impl LiveData for BoolLive {
-    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
-        type_of_helper(&TypeLive::Boolean, &type_map)
+    fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {
+        type_map.get_primitive_type(&TypeLive::Boolean).map(|r| Ok(r))
     }
 
     fn as_bool(&self) -> Option<ExecResult<BoolLive>> {

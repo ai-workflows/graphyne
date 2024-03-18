@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::sync::Arc;
 use crate::runtime::data::live::{BoolLive, FloatLive, IntLive, LiveData, PointerLive};
 use crate::runtime::{ExecResult};
-use crate::runtime::data::live::helpers::type_of_helper;
 use crate::runtime::data::live::live_data::TypeLive;
 use crate::runtime::data::stored::StoredData;
+use crate::runtime::static_state::state::StaticState;
 macro_rules! checked_arithmetic_int_op {
     ($self:ident, $rhs:ident, $op:tt, $op_name:ident) => {
         match $rhs {
@@ -26,8 +26,8 @@ macro_rules! checked_arithmetic_int_op {
 }
 
 impl LiveData for IntLive {
-    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
-        type_of_helper(&TypeLive::Integer, &type_map)
+    fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {
+        type_map.get_primitive_type(&TypeLive::Integer).map(|r| Ok(r))
     }
 
     fn as_int(&self) -> Option<ExecResult<IntLive>> {
@@ -129,8 +129,8 @@ macro_rules! checked_arithmetic_float_op {
 }
 
 impl LiveData for FloatLive {
-    fn type_of(&self, type_map: &HashMap<TypeLive, PointerLive>) -> Option<ExecResult<PointerLive>> {
-        type_of_helper(&TypeLive::Float, &type_map)
+    fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {
+        type_map.get_primitive_type(&TypeLive::Float).map(|r| Ok(r))
     }
 
     fn as_int(&self) -> Option<ExecResult<IntLive>> {
