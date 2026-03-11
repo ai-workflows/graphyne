@@ -202,6 +202,72 @@ fn stream_runtime_operator_error_reports_cleanly_without_hanging() {
     assert!(!stderr.contains("panicked at"));
 }
 
+#[test]
+fn negative_integer_pow_reports_clean_runtime_error() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-negative-int-pow.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [["base", 2], ["exp", -1], "out"],
+        "ops": [["Pow", ["base", "exp"], ["out"]]],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with negative integer pow");
+
+    assert!(!output.status.success(), "expected non-zero exit status for runtime error");
+    assert!(output.stdout.is_empty(), "unexpected stdout: {}", String::from_utf8_lossy(&output.stdout));
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Negative integer exponent not supported"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn overflowing_integer_pow_reports_clean_runtime_error() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-overflowing-int-pow.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [["base", 2], ["exp", 63], "out"],
+        "ops": [["Pow", ["base", "exp"], ["out"]]],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with overflowing integer pow");
+
+    assert!(!output.status.success(), "expected non-zero exit status for runtime error");
+    assert!(output.stdout.is_empty(), "unexpected stdout: {}", String::from_utf8_lossy(&output.stdout));
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Overflow Error"));
+    assert!(!stderr.contains("panicked at"));
+}
+
 fn write_import_program(import_path: &str, file_name: &str) -> std::path::PathBuf {
     let import_program_path = std::env::temp_dir().join(file_name);
     std::fs::write(
