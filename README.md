@@ -56,6 +56,14 @@ Optionally control the Rayon worker pool size:
 cargo run -- await -i examples/intermediate/test_compiled.json --workers 4
 ```
 
+### Verbose mode
+
+Use `--verbose` to print execution metadata such as mode, input file, and worker count before results are emitted:
+
+```bash
+cargo run -- stream -i examples/intermediate/test_compiled.json --verbose
+```
+
 ## Intermediate format overview
 
 At a high level, a program is a `Collection` containing:

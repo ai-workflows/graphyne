@@ -1,6 +1,6 @@
 use clap::Parser;
 use std::sync::Arc;
-use crate::api::{await_call, bind, load_intermediate, log_async, log_error, stream_call};
+use crate::api::{await_call, bind, get_worker_counts, load_intermediate, log_async, log_error, stream_call};
 use crate::binder::intermediate::collection::Collection;
 use crate::binder::json::jsonify;
 use crate::runtime::data::live::PointerLive;
@@ -27,7 +27,7 @@ enum Commands {
         intermediate: String,
 
         #[arg(short = 'v', long = "verbose", default_value = "false")]
-        _verbose: bool,
+        verbose: bool,
 
         #[arg(short = 'w', long = "workers")]
         workers: Option<usize>,
@@ -40,18 +40,27 @@ enum Commands {
         intermediate: String,
 
         #[arg(short = 'v', long = "verbose", default_value = "false")]
-        _verbose: bool,
+        verbose: bool,
 
         #[arg(short = 'w', long = "workers")]
         workers: Option<usize>,
     },
 }
 
+fn log_verbose(enabled: bool, message: impl Into<String>) {
+    if enabled {
+        log_error(format!("info: {}", message.into()));
+    }
+}
+
 fn main() {
     let args = Cli::parse();
 
     match args.command {
-        Commands::Stream { intermediate, _verbose: _, workers } => {
+        Commands::Stream { intermediate, verbose, workers } => {
+            let worker_count = get_worker_counts(workers);
+            log_verbose(verbose, format!("mode=stream intermediate={} workers={}", intermediate, worker_count));
+
             let program: Collection = match load_intermediate(&intermediate) {
                 Ok(v) => v,
                 Err(e) => {
@@ -69,8 +78,10 @@ fn main() {
                 vec![main_collection_symbol, "main".to_string()],
                 vec![],
                 static_state.clone(),
-                workers,
+                Some(worker_count),
             );
+
+            log_verbose(verbose, format!("waiting for {} outputs", num_outputs));
 
             for _ in 0..num_outputs {
                 let res = outputs_receiver.recv().unwrap();
@@ -78,7 +89,10 @@ fn main() {
             }
         },
 
-        Commands::Await { intermediate, _verbose: _, workers } => {
+        Commands::Await { intermediate, verbose, workers } => {
+            let worker_count = get_worker_counts(workers);
+            log_verbose(verbose, format!("mode=await intermediate={} workers={}", intermediate, worker_count));
+
             let program: Collection = match load_intermediate(&intermediate) {
                 Ok(v) => v,
                 Err(e) => {
@@ -97,8 +111,10 @@ fn main() {
                 vec![main_collection_symbol, "main".to_string()],
                 vec![],
                 static_state.clone(),
-                workers,
+                Some(worker_count),
             );
+
+            log_verbose(verbose, format!("received {} outputs", res.len()));
 
             for (i, v) in res.iter().enumerate() {
                 log_async(format!("out | {}: {}", i, jsonify(v.as_ref())));
@@ -109,8 +125,8 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::Cli;
-    use clap::CommandFactory;
+    use super::{Cli, Commands};
+    use clap::{CommandFactory, Parser};
 
     #[test]
     fn help_uses_graphyne_binary_name() {
@@ -120,5 +136,33 @@ mod tests {
 
         assert!(help.contains("graphyne"));
         assert!(!help.contains("graphite"));
+    }
+
+    #[test]
+    fn parses_verbose_flag_for_stream() {
+        let cli = Cli::parse_from(["graphyne", "stream", "-i", "program.json", "--verbose"]);
+
+        match cli.command {
+            Commands::Stream { intermediate, verbose, workers } => {
+                assert_eq!(intermediate, "program.json");
+                assert!(verbose);
+                assert_eq!(workers, None);
+            }
+            _ => panic!("expected stream command"),
+        }
+    }
+
+    #[test]
+    fn parses_verbose_flag_for_await() {
+        let cli = Cli::parse_from(["graphyne", "await", "-i", "program.json", "-v", "-w", "3"]);
+
+        match cli.command {
+            Commands::Await { intermediate, verbose, workers } => {
+                assert_eq!(intermediate, "program.json");
+                assert!(verbose);
+                assert_eq!(workers, Some(3));
+            }
+            _ => panic!("expected await command"),
+        }
     }
 }
