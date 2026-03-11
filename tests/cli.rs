@@ -203,6 +203,62 @@ fn stream_runtime_operator_error_reports_cleanly_without_hanging() {
 }
 
 #[test]
+fn imports_example_using_root_relative_paths_runs_successfully() {
+    let import_program_path = std::env::temp_dir().join("graphyne-imports-root-relative.json");
+    std::fs::write(
+        &import_program_path,
+        r#"{
+  "collections": {
+    "lib": {
+      "constants": {
+        "two": 2
+      },
+      "functions": {
+        "double": {
+          "graph": {
+            "values": ["two", "num", "result"],
+            "ops": [
+              ["Static", ["two"], ["two"]],
+              ["Mul", ["num", "two"], ["result"]]
+            ],
+            "input_vals": ["num"],
+            "output_vals": ["result"]
+          }
+        }
+      }
+    }
+  },
+  "imports": {
+    "double": ["lib", "double"]
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["double", ["value", 21], "result"],
+        "ops": [
+          ["Static", ["double"], ["double"]],
+          ["Call", ["double", "value"], ["result"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["result"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", import_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with imports program");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("out | 0: 42"));
+}
+
+#[test]
 fn invalid_input_path_exits_non_zero() {
     let output = Command::new(binary_path())
         .args(["await", "-i", "examples/intermediate/does_not_exist.json"])

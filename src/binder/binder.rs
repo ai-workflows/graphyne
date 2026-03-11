@@ -305,8 +305,19 @@ fn cl_func_to_live_func(
     Ok(res)
 }
 
+fn resolve_import_path(root_symbol_path: &SymbolPath, import_path: &SymbolPath) -> SymbolPath {
+    if import_path.first() == root_symbol_path.first() {
+        import_path.clone()
+    } else {
+        let mut resolved = root_symbol_path.clone();
+        resolved.extend(import_path.iter().cloned());
+        resolved
+    }
+}
+
 pub fn fill_collection(
     static_state: &mut StaticState,
+    root_symbol_path: &SymbolPath,
     symbol_path: &SymbolPath,
     value: &Collection
 ) -> ExecResult<()> {
@@ -329,7 +340,8 @@ pub fn fill_collection(
             path.push(name.clone());
 
             let static_ref: StaticRefLive = static_state.get_ref(&path)?;
-            let import_static_ref: StaticRefLive = static_state.get_ref(import_path)?;
+            let resolved_import_path = resolve_import_path(root_symbol_path, import_path);
+            let import_static_ref: StaticRefLive = static_state.get_ref(&resolved_import_path)?;
 
             static_ref.set(StoredData::StaticRefStored(import_static_ref))
                 .map_err(|_| format!("Error setting import at path {:?}", path))?;
@@ -368,7 +380,7 @@ pub fn fill_collection(
             let mut path: SymbolPath = symbol_path.clone();
             path.push(name.clone());
 
-            fill_collection(static_state, &path, sub_collection)?;
+            fill_collection(static_state, root_symbol_path, &path, sub_collection)?;
         }
     }
 
@@ -388,7 +400,7 @@ pub fn bind_program(
         Err(e) => return Err(format!("Error buffering main collection: {}", e)),
     };
 
-    match fill_collection(static_state, &main_path, &program) {
+    match fill_collection(static_state, &main_path, &main_path, &program) {
         Ok(_) => {},
         Err(e) => return Err(format!("Error filling main collection buffers: {}", e)),
     }
