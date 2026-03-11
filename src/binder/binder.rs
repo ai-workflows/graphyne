@@ -673,15 +673,16 @@ fn cl_func_to_live_func(
                     root_symbol_path,
                 );
 
+                let local_signature = get_local_function_signature(callee_symbol, sibling_functions);
+                let imported_signature = match imported_target {
+                    Some(ImportedTarget::Function(func)) => {
+                        Some((func.graph.input_vals.len(), func.graph.output_vals.len()))
+                    }
+                    _ => None,
+                };
+
                 if op_node.opcode == OpCode::Call {
-                    if let Some((callee_inputs, callee_outputs)) = get_local_function_signature(callee_symbol, sibling_functions)
-                        .or(match imported_target {
-                            Some(ImportedTarget::Function(func)) => {
-                                Some((func.graph.input_vals.len(), func.graph.output_vals.len()))
-                            }
-                            _ => None,
-                        })
-                    {
+                    if let Some((callee_inputs, callee_outputs)) = local_signature.or(imported_signature) {
                         let expected_inputs = callee_inputs + 1;
                         if op_node.input_vals.len() != expected_inputs {
                             return Err(format!(
@@ -702,6 +703,16 @@ fn cl_func_to_live_func(
                                 op_node.output_vals.len()
                             ));
                         }
+                    }
+                } else if let Some((_callee_inputs, callee_outputs)) = local_signature.or(imported_signature) {
+                    if callee_outputs != 1 {
+                        return Err(format!(
+                            "{} target '{}' in function {:?} must produce exactly 1 output but produces {}",
+                            target_kind,
+                            callee_symbol,
+                            func_symbol_path,
+                            callee_outputs
+                        ));
                     }
                 }
 

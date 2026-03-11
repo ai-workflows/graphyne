@@ -1000,6 +1000,111 @@ mod tests {
     }
 
     #[test]
+    fn bind_rejects_map_target_with_multiple_outputs() {
+        let json_collection = r#"{
+            "functions": {
+                "pair": {
+                    "graph": {
+                        "values": ["x", ["one", 1], ["two", 2], "a", "b"],
+                        "ops": [
+                            ["Add", ["x", "one"], ["a"]],
+                            ["Add", ["x", "two"], ["b"]]
+                        ],
+                        "input_vals": ["x"],
+                        "output_vals": ["a", "b"]
+                    }
+                },
+                "main": {
+                    "graph": {
+                        "values": ["pair", ["items", [1, 2]], "out"],
+                        "ops": [
+                            ["Static", ["pair"], ["pair"]],
+                            ["Map", ["pair", "items"], ["out"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Map target 'pair'"));
+        assert!(err.contains("must produce exactly 1 output but produces 2"));
+    }
+
+    #[test]
+    fn bind_rejects_filter_target_with_multiple_outputs() {
+        let json_collection = r#"{
+            "functions": {
+                "pair": {
+                    "graph": {
+                        "values": ["x", ["one", 1], ["two", 2], "a", "b"],
+                        "ops": [
+                            ["Add", ["x", "one"], ["a"]],
+                            ["Add", ["x", "two"], ["b"]]
+                        ],
+                        "input_vals": ["x"],
+                        "output_vals": ["a", "b"]
+                    }
+                },
+                "main": {
+                    "graph": {
+                        "values": ["pair", ["items", [1, 2]], "out"],
+                        "ops": [
+                            ["Static", ["pair"], ["pair"]],
+                            ["Filter", ["pair", "items"], ["out"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Filter target 'pair'"));
+        assert!(err.contains("must produce exactly 1 output but produces 2"));
+    }
+
+    #[test]
+    fn bind_rejects_reduce_target_with_multiple_outputs() {
+        let json_collection = r#"{
+            "functions": {
+                "pair": {
+                    "graph": {
+                        "values": ["acc", "x", ["one", 1], "a", "b"],
+                        "ops": [
+                            ["Add", ["acc", "x"], ["a"]],
+                            ["Add", ["a", "one"], ["b"]]
+                        ],
+                        "input_vals": ["acc", "x"],
+                        "output_vals": ["a", "b"]
+                    }
+                },
+                "main": {
+                    "graph": {
+                        "values": ["pair", ["items", [1, 2]], ["init", 0], "out"],
+                        "ops": [
+                            ["Static", ["pair"], ["pair"]],
+                            ["Reduce", ["pair", "items", "init"], ["out"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Reduce target 'pair'"));
+        assert!(err.contains("must produce exactly 1 output but produces 2"));
+    }
+
+    #[test]
     fn bind_rejects_map_target_that_is_known_non_function() {
         let json_collection = r#"{
             "functions": {

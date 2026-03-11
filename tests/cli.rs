@@ -1402,6 +1402,144 @@ fn mutual_recursive_call_cycle_reports_bind_error_cleanly() {
 }
 
 #[test]
+fn map_target_with_multiple_outputs_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-map-multi-output-callback.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "pair": {
+      "graph": {
+        "values": ["x", ["one", 1], ["two", 2], "a", "b"],
+        "ops": [
+          ["Add", ["x", "one"], ["a"]],
+          ["Add", ["x", "two"], ["b"]]
+        ],
+        "input_vals": ["x"],
+        "output_vals": ["a", "b"]
+      }
+    },
+    "main": {
+      "graph": {
+        "values": ["pair", ["items", [1, 2]], "out"],
+        "ops": [
+          ["Static", ["pair"], ["pair"]],
+          ["Map", ["pair", "items"], ["out"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with multi-output map callback");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Map target 'pair'"));
+    assert!(stderr.contains("must produce exactly 1 output but produces 2"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn filter_target_with_multiple_outputs_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-filter-multi-output-callback.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "pair": {
+      "graph": {
+        "values": ["x", ["one", 1], ["two", 2], "a", "b"],
+        "ops": [
+          ["Add", ["x", "one"], ["a"]],
+          ["Add", ["x", "two"], ["b"]]
+        ],
+        "input_vals": ["x"],
+        "output_vals": ["a", "b"]
+      }
+    },
+    "main": {
+      "graph": {
+        "values": ["pair", ["items", [1, 2]], "out"],
+        "ops": [
+          ["Static", ["pair"], ["pair"]],
+          ["Filter", ["pair", "items"], ["out"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with multi-output filter callback");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Filter target 'pair'"));
+    assert!(stderr.contains("must produce exactly 1 output but produces 2"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn reduce_target_with_multiple_outputs_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-reduce-multi-output-callback.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "pair": {
+      "graph": {
+        "values": ["acc", "x", ["one", 1], "a", "b"],
+        "ops": [
+          ["Add", ["acc", "x"], ["a"]],
+          ["Add", ["a", "one"], ["b"]]
+        ],
+        "input_vals": ["acc", "x"],
+        "output_vals": ["a", "b"]
+      }
+    },
+    "main": {
+      "graph": {
+        "values": ["pair", ["items", [1, 2]], ["init", 0], "out"],
+        "ops": [
+          ["Static", ["pair"], ["pair"]],
+          ["Reduce", ["pair", "items", "init"], ["out"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with multi-output reduce callback");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Reduce target 'pair'"));
+    assert!(stderr.contains("must produce exactly 1 output but produces 2"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn map_target_that_is_known_non_function_reports_bind_error_cleanly() {
     let invalid_program_path = std::env::temp_dir().join("graphyne-map-known-non-function.json");
     std::fs::write(
