@@ -1,4 +1,4 @@
-use clap::{Parser};
+use clap::Parser;
 use std::sync::Arc;
 use crate::api::{await_call, bind, load_intermediate, log_async, log_error, stream_call};
 use crate::binder::intermediate::collection::Collection;
@@ -6,14 +6,13 @@ use crate::binder::json::jsonify;
 use crate::runtime::data::live::PointerLive;
 use crate::runtime::static_state::state::StaticState;
 
-
 mod runtime;
 mod binder;
 mod api;
 
 #[derive(Debug, Parser)]
-#[command(name = "graphite")]
-#[command(about = "CLI tool for using the Graphite VM", long_about = "CLI tool for using the Graphite VM")]
+#[command(name = "graphyne")]
+#[command(about = "CLI tool for using the Graphyne VM", long_about = "CLI tool for using the Graphyne VM")]
 struct Cli {
     #[command(subcommand)]
     command: Commands
@@ -28,7 +27,7 @@ enum Commands {
         intermediate: String,
 
         #[arg(short = 'v', long = "verbose", default_value = "false")]
-        verbose: bool,
+        _verbose: bool,
 
         #[arg(short = 'w', long = "workers")]
         workers: Option<usize>,
@@ -41,7 +40,7 @@ enum Commands {
         intermediate: String,
 
         #[arg(short = 'v', long = "verbose", default_value = "false")]
-        verbose: bool,
+        _verbose: bool,
 
         #[arg(short = 'w', long = "workers")]
         workers: Option<usize>,
@@ -52,7 +51,7 @@ fn main() {
     let args = Cli::parse();
 
     match args.command {
-        Commands::Stream { intermediate, verbose, workers } => {
+        Commands::Stream { intermediate, _verbose: _, workers } => {
             let program: Collection = match load_intermediate(&intermediate) {
                 Ok(v) => v,
                 Err(e) => {
@@ -79,7 +78,7 @@ fn main() {
             }
         },
 
-        Commands::Await { intermediate, verbose, workers } => {
+        Commands::Await { intermediate, _verbose: _, workers } => {
             let program: Collection = match load_intermediate(&intermediate) {
                 Ok(v) => v,
                 Err(e) => {
@@ -105,5 +104,21 @@ fn main() {
                 log_async(format!("out | {}: {}", i, jsonify(v.as_ref())));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Cli;
+    use clap::CommandFactory;
+
+    #[test]
+    fn help_uses_graphyne_binary_name() {
+        let mut help = Vec::new();
+        Cli::command().write_long_help(&mut help).unwrap();
+        let help = String::from_utf8(help).unwrap();
+
+        assert!(help.contains("graphyne"));
+        assert!(!help.contains("graphite"));
     }
 }
