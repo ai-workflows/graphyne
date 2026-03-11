@@ -193,7 +193,7 @@ fn validate_op_arity(op_node: &crate::binder::intermediate::func::FunctionOpNode
         OpCode::If
         | OpCode::Set
         | OpCode::Reduce => (Some(3), Some(1)),
-        OpCode::Static => (None, Some(1)),
+        OpCode::Static => (Some(1), Some(1)),
         OpCode::Call | OpCode::Init => (None, None),
     };
 
@@ -204,6 +204,21 @@ fn validate_op_arity(op_node: &crate::binder::intermediate::func::FunctionOpNode
                 op_node.opcode,
                 func_symbol_path,
                 expected_inputs,
+                op_node.input_vals.len()
+            ));
+        }
+    } else {
+        let min_inputs = match op_node.opcode {
+            OpCode::Call | OpCode::Init => 1,
+            _ => 0,
+        };
+
+        if op_node.input_vals.len() < min_inputs {
+            return Err(format!(
+                "Opcode {} in function {:?} requires at least {} inputs but received {}",
+                op_node.opcode,
+                func_symbol_path,
+                min_inputs,
                 op_node.input_vals.len()
             ));
         }

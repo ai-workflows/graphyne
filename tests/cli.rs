@@ -590,6 +590,38 @@ fn missing_op_input_declarations_report_bind_error_cleanly() {
 }
 
 #[test]
+fn zero_input_call_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-zero-input-call.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["result"],
+        "ops": [["Call", [], ["result"]]],
+        "input_vals": [],
+        "output_vals": ["result"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with zero-input call");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Opcode call"));
+    assert!(stderr.contains("requires at least 1 inputs but received 0"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn invalid_input_path_exits_non_zero() {
     let output = Command::new(binary_path())
         .args(["await", "-i", "examples/intermediate/does_not_exist.json"])
