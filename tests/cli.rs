@@ -280,6 +280,72 @@ fn imports_example_accepts_user_visible_root_symbol_in_import_path() {
 }
 
 #[test]
+fn object_person_example_runs_successfully() {
+    let output = Command::new(binary_path())
+        .args(["await", "-i", "examples/intermediate/object_person.json"])
+        .output()
+        .expect("failed to run graphyne await for object_person example");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("\"name\":\"Ada\""));
+    assert!(stdout.contains("\"age\":37"));
+    assert!(stdout.contains("out | 1: 37"));
+}
+
+#[test]
+fn object_set_missing_field_reports_clean_runtime_error() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-object-missing-field.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "types": {
+    "Person": [
+      ["name", "str"],
+      ["age", "int"]
+    ]
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [
+          "Person",
+          ["name", "Ada"],
+          ["age", 36],
+          "person",
+          ["height_key", "height"],
+          ["new_height", 170],
+          "updated_person"
+        ],
+        "ops": [
+          ["Static", ["Person"], ["Person"]],
+          ["Init", ["Person", "name", "age"], ["person"]],
+          ["Set", ["person", "height_key", "new_height"], ["updated_person"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["updated_person"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with missing object field");
+
+    assert!(!output.status.success(), "expected non-zero exit status for runtime error");
+    assert!(output.stdout.is_empty(), "unexpected stdout: {}", String::from_utf8_lossy(&output.stdout));
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Key height not found"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn invalid_input_path_exits_non_zero() {
     let output = Command::new(binary_path())
         .args(["await", "-i", "examples/intermediate/does_not_exist.json"])
