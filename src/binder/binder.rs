@@ -261,6 +261,18 @@ fn validate_graph_value_declarations(
     }
 
     for op_node in &func.graph.ops {
+        if op_node.opcode != OpCode::Static {
+            for input_symbol in &op_node.input_vals {
+                if !symbol_idxs.contains_key(input_symbol) {
+                    return Err(format!(
+                        "Op input symbol '{}' is not declared in values for function {:?}",
+                        input_symbol,
+                        func_symbol_path
+                    ));
+                }
+            }
+        }
+
         for output_symbol in &op_node.output_vals {
             if !symbol_idxs.contains_key(output_symbol) {
                 return Err(format!(

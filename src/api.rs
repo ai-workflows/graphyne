@@ -355,4 +355,24 @@ mod tests {
         let err = bind(collection, Some("root".to_string())).err().unwrap();
         assert!(err.contains("Output symbol 'sum' is not declared in values"));
     }
+
+    #[test]
+    fn bind_rejects_missing_input_value_declarations() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": [["lhs", 2], "sum"],
+                        "ops": [["Add", ["lhs", "rhs"], ["sum"]]],
+                        "input_vals": [],
+                        "output_vals": ["sum"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Op input symbol 'rhs' is not declared in values"));
+    }
 }
