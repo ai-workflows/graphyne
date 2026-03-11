@@ -1,0 +1,49 @@
+{
+  "types": {
+    "Person": {
+      "name": "str",
+      "age": "int"
+    }
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [
+          "Person",
+          ["name1", "Ada"],
+          ["age1", 36],
+          ["name2", "Grace"],
+          ["age2", 37],
+          "person1",
+          "person2",
+          ["people", []],
+          "people_with_person1",
+          "people_with_person2",
+          ["index1", 1],
+          ["name_key", "name"],
+          ["dict_key", "user"],
+          ["empty_dict", {}],
+          "second_person",
+          "dict_with_person",
+          "person_from_dict",
+          "second_person_name",
+          "dict_person_name"
+        ],
+        "ops": [
+          ["Static", ["Person"], ["Person"]],
+          ["Init", ["Person", "name1", "age1"], ["person1"]],
+          ["Init", ["Person", "name2", "age2"], ["person2"]],
+          ["Push", ["people", "person1"], ["people_with_person1"]],
+          ["Push", ["people_with_person1", "person2"], ["people_with_person2"]],
+          ["Get", ["people_with_person2", "index1"], ["second_person"]],
+          ["Get", ["second_person", "name_key"], ["second_person_name"]],
+          ["Set", ["empty_dict", "dict_key", "person1"], ["dict_with_person"]],
+          ["Get", ["dict_with_person", "dict_key"], ["person_from_dict"]],
+          ["Get", ["person_from_dict", "name_key"], ["dict_person_name"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["second_person_name", "dict_person_name"]
+      }
+    }
+  }
+}
