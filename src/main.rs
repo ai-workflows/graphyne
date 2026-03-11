@@ -1,4 +1,5 @@
 use clap::Parser;
+use std::process::ExitCode;
 use std::sync::{Arc, mpsc};
 use crate::api::{bind, get_worker_counts, load_intermediate, log_async, log_error, try_await_call, try_stream_call};
 use crate::binder::intermediate::collection::Collection;
@@ -53,7 +54,7 @@ fn log_verbose(enabled: bool, message: impl Into<String>) {
     }
 }
 
-fn main() {
+fn main() -> ExitCode {
     let args = Cli::parse();
 
     match args.command {
@@ -65,7 +66,7 @@ fn main() {
                 Ok(v) => v,
                 Err(e) => {
                     log_error(format!("Error loading intermediate program: {}", e));
-                    return;
+                    return ExitCode::FAILURE;
                 }
             };
             let main_collection_symbol = uuid::Uuid::new_v4().to_string();
@@ -74,7 +75,7 @@ fn main() {
                 Ok(state) => state,
                 Err(e) => {
                     log_error(format!("Error binding program: {}", e));
-                    return;
+                    return ExitCode::FAILURE;
                 }
             };
 
@@ -87,7 +88,7 @@ fn main() {
                 Ok(v) => v,
                 Err(e) => {
                     log_error(format!("Error starting program: {}", e));
-                    return;
+                    return ExitCode::FAILURE;
                 }
             };
 
@@ -97,7 +98,7 @@ fn main() {
             while received_outputs < num_outputs {
                 if let Ok(err) = error_receiver.try_recv() {
                     log_error(format!("Runtime error: {}", err));
-                    return;
+                    return ExitCode::FAILURE;
                 }
 
                 match outputs_receiver.recv_timeout(std::time::Duration::from_millis(10)) {
@@ -109,8 +110,9 @@ fn main() {
                     Err(mpsc::RecvTimeoutError::Disconnected) => {
                         if let Ok(err) = error_receiver.try_recv() {
                             log_error(format!("Runtime error: {}", err));
+                            return ExitCode::FAILURE;
                         }
-                        return;
+                        return ExitCode::FAILURE;
                     }
                 }
             }
@@ -124,7 +126,7 @@ fn main() {
                 Ok(v) => v,
                 Err(e) => {
                     log_error(format!("Error loading intermediate program: {}", e));
-                    return;
+                    return ExitCode::FAILURE;
                 }
             };
 
@@ -134,7 +136,7 @@ fn main() {
                 Ok(state) => state,
                 Err(e) => {
                     log_error(format!("Error binding program: {}", e));
-                    return;
+                    return ExitCode::FAILURE;
                 }
             };
 
@@ -147,7 +149,7 @@ fn main() {
                 Ok(v) => v,
                 Err(e) => {
                     log_error(format!("Error starting program: {}", e));
-                    return;
+                    return ExitCode::FAILURE;
                 }
             };
 
@@ -158,6 +160,8 @@ fn main() {
             }
         }
     }
+
+    ExitCode::SUCCESS
 }
 
 #[cfg(test)]
