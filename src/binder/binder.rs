@@ -560,7 +560,15 @@ fn cl_func_to_live_func(
             output_vals,
         };
 
-        if op_node.opcode == OpCode::Call {
+        if matches!(op_node.opcode, OpCode::Call | OpCode::Map | OpCode::Filter | OpCode::Reduce) {
+            let target_kind = match op_node.opcode {
+                OpCode::Call => "Call",
+                OpCode::Map => "Map",
+                OpCode::Filter => "Filter",
+                OpCode::Reduce => "Reduce",
+                _ => unreachable!(),
+            };
+
             if let Some(callee_symbol) = op_node.input_vals.first() {
                 let imported_target = resolve_imported_target(
                     callee_symbol,
@@ -569,33 +577,35 @@ fn cl_func_to_live_func(
                     root_symbol_path,
                 );
 
-                if let Some((callee_inputs, callee_outputs)) = get_local_function_signature(callee_symbol, sibling_functions)
-                    .or(match imported_target {
-                        Some(ImportedTarget::Function(func)) => {
-                            Some((func.graph.input_vals.len(), func.graph.output_vals.len()))
+                if op_node.opcode == OpCode::Call {
+                    if let Some((callee_inputs, callee_outputs)) = get_local_function_signature(callee_symbol, sibling_functions)
+                        .or(match imported_target {
+                            Some(ImportedTarget::Function(func)) => {
+                                Some((func.graph.input_vals.len(), func.graph.output_vals.len()))
+                            }
+                            _ => None,
+                        })
+                    {
+                        let expected_inputs = callee_inputs + 1;
+                        if op_node.input_vals.len() != expected_inputs {
+                            return Err(format!(
+                                "Call to '{}' in function {:?} expects {} inputs but received {}",
+                                callee_symbol,
+                                func_symbol_path,
+                                expected_inputs,
+                                op_node.input_vals.len()
+                            ));
                         }
-                        _ => None,
-                    })
-                {
-                    let expected_inputs = callee_inputs + 1;
-                    if op_node.input_vals.len() != expected_inputs {
-                        return Err(format!(
-                            "Call to '{}' in function {:?} expects {} inputs but received {}",
-                            callee_symbol,
-                            func_symbol_path,
-                            expected_inputs,
-                            op_node.input_vals.len()
-                        ));
-                    }
 
-                    if op_node.output_vals.len() != callee_outputs {
-                        return Err(format!(
-                            "Call to '{}' in function {:?} expects {} outputs but received {}",
-                            callee_symbol,
-                            func_symbol_path,
-                            callee_outputs,
-                            op_node.output_vals.len()
-                        ));
+                        if op_node.output_vals.len() != callee_outputs {
+                            return Err(format!(
+                                "Call to '{}' in function {:?} expects {} outputs but received {}",
+                                callee_symbol,
+                                func_symbol_path,
+                                callee_outputs,
+                                op_node.output_vals.len()
+                            ));
+                        }
                     }
                 }
 
@@ -603,7 +613,8 @@ fn cl_func_to_live_func(
                     let callee_val = &func.graph.values[*callee_idx];
                     if callee_val.constant.is_some() {
                         return Err(format!(
-                            "Call target '{}' in function {:?} is not a function",
+                            "{} target '{}' in function {:?} is not a function",
+                            target_kind,
                             callee_symbol,
                             func_symbol_path
                         ));
@@ -612,13 +623,16 @@ fn cl_func_to_live_func(
 
                 if matches!(imported_target, Some(ImportedTarget::Other) | Some(ImportedTarget::Type(_))) {
                     return Err(format!(
-                        "Call target '{}' in function {:?} is not a function",
+                        "{} target '{}' in function {:?} is not a function",
+                        target_kind,
                         callee_symbol,
                         func_symbol_path
                     ));
                 }
             }
+        }
 
+        if op_node.opcode == OpCode::Call {
             for (arg_idx, arg_symbol) in op_node.input_vals.iter().enumerate() {
                 val_as_args.entry(arg_symbol.clone()).or_default().push((call_ops.len(), arg_idx));
             }

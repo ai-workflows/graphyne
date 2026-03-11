@@ -832,6 +832,103 @@ mod tests {
     }
 
     #[test]
+    fn bind_rejects_map_target_that_is_known_non_function() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": [["value", 42], ["items", [1, 2, 3]], "out"],
+                        "ops": [["Map", ["value", "items"], ["out"]]],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Map target 'value'"));
+        assert!(err.contains("is not a function"));
+    }
+
+    #[test]
+    fn bind_rejects_filter_target_that_is_known_non_function() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": [["value", 42], ["items", [1, 2, 3]], "out"],
+                        "ops": [["Filter", ["value", "items"], ["out"]]],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Filter target 'value'"));
+        assert!(err.contains("is not a function"));
+    }
+
+    #[test]
+    fn bind_rejects_reduce_target_that_is_known_non_function() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": [["value", 42], ["items", [1, 2, 3]], ["init", 0], "out"],
+                        "ops": [["Reduce", ["value", "items", "init"], ["out"]]],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Reduce target 'value'"));
+        assert!(err.contains("is not a function"));
+    }
+
+    #[test]
+    fn bind_rejects_imported_map_target_that_is_not_a_function() {
+        let json_collection = r#"{
+            "collections": {
+                "lib": {
+                    "constants": {
+                        "value": 42
+                    }
+                }
+            },
+            "imports": {
+                "value": ["lib", "value"]
+            },
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["value", ["items", [1, 2, 3]], "out"],
+                        "ops": [
+                            ["Static", ["value"], ["value"]],
+                            ["Map", ["value", "items"], ["out"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Map target 'value'"));
+        assert!(err.contains("is not a function"));
+    }
+
+    #[test]
     fn bind_rejects_local_init_arg_count_mismatch() {
         let json_collection = r#"{
             "types": {

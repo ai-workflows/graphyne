@@ -1176,6 +1176,153 @@ fn imported_init_target_that_is_not_a_type_reports_bind_error_cleanly() {
 }
 
 #[test]
+fn map_target_that_is_known_non_function_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-map-known-non-function.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [["value", 42], ["items", [1, 2, 3]], "out"],
+        "ops": [
+          ["Map", ["value", "items"], ["out"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with non-function map target");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Map target 'value'"));
+    assert!(stderr.contains("is not a function"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn filter_target_that_is_known_non_function_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-filter-known-non-function.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [["value", 42], ["items", [1, 2, 3]], "out"],
+        "ops": [
+          ["Filter", ["value", "items"], ["out"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with non-function filter target");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Filter target 'value'"));
+    assert!(stderr.contains("is not a function"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn reduce_target_that_is_known_non_function_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-reduce-known-non-function.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [["value", 42], ["items", [1, 2, 3]], ["init", 0], "out"],
+        "ops": [
+          ["Reduce", ["value", "items", "init"], ["out"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with non-function reduce target");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Reduce target 'value'"));
+    assert!(stderr.contains("is not a function"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn imported_map_target_that_is_not_a_function_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-imported-map-non-function.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "collections": {
+    "lib": {
+      "constants": {
+        "value": 42
+      }
+    }
+  },
+  "imports": {
+    "value": ["lib", "value"]
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["value", ["items", [1, 2, 3]], "out"],
+        "ops": [
+          ["Static", ["value"], ["value"]],
+          ["Map", ["value", "items"], ["out"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with imported non-function map target");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Map target 'value'"));
+    assert!(stderr.contains("is not a function"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn local_init_arg_count_mismatch_reports_bind_error_cleanly() {
     let invalid_program_path = std::env::temp_dir().join("graphyne-local-init-arg-mismatch.json");
     std::fs::write(
