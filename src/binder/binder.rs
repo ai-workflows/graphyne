@@ -409,6 +409,19 @@ fn get_local_function_signature(
     Some((callee.graph.input_vals.len(), callee.graph.output_vals.len()))
 }
 
+fn get_local_function_output_constant<'a>(
+    callee_symbol: &str,
+    sibling_functions: Option<&'a HashMap<Symbol, CollectionFunc>>,
+    output_idx: usize,
+) -> Option<&'a CCData> {
+    let sibling_functions = sibling_functions?;
+    let callee = sibling_functions.get(callee_symbol)?;
+    let output_symbol = callee.graph.output_vals.get(output_idx)?;
+    callee.graph.values.iter()
+        .find(|value| &value.symbol == output_symbol)
+        .and_then(|value| value.constant.as_ref())
+}
+
 fn validate_local_call_cycles(
     sibling_functions: Option<&HashMap<Symbol, CollectionFunc>>,
     collection_symbol_path: &SymbolPath,
@@ -713,6 +726,18 @@ fn cl_func_to_live_func(
                             func_symbol_path,
                             callee_outputs
                         ));
+                    }
+
+                    if op_node.opcode == OpCode::Filter {
+                        if let Some(output_constant) = get_local_function_output_constant(callee_symbol, sibling_functions, 0) {
+                            if !matches!(output_constant, CCData::Bool(_)) {
+                                return Err(format!(
+                                    "Filter target '{}' in function {:?} must produce a bool output",
+                                    callee_symbol,
+                                    func_symbol_path
+                                ));
+                            }
+                        }
                     }
                 }
 

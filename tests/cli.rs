@@ -1574,6 +1574,49 @@ fn map_target_that_is_known_non_function_reports_bind_error_cleanly() {
 }
 
 #[test]
+fn filter_target_with_non_bool_constant_output_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-filter-non-bool-callback.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "const_int": {
+      "graph": {
+        "values": [["value", 1]],
+        "ops": [],
+        "input_vals": [],
+        "output_vals": ["value"]
+      }
+    },
+    "main": {
+      "graph": {
+        "values": ["const_int", ["items", [1, 2]], "out"],
+        "ops": [
+          ["Static", ["const_int"], ["const_int"]],
+          ["Filter", ["const_int", "items"], ["out"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with non-bool filter callback");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Filter target 'const_int'"));
+    assert!(stderr.contains("must produce a bool output"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn filter_target_that_is_known_non_function_reports_bind_error_cleanly() {
     let invalid_program_path = std::env::temp_dir().join("graphyne-filter-known-non-function.json");
     std::fs::write(
