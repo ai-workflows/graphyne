@@ -1,4 +1,4 @@
-use std::collections::{HashMap};
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 use crate::binder::intermediate::collection::Collection;
 use crate::binder::intermediate::func::{CollectionFunc};
@@ -352,19 +352,84 @@ fn get_local_function_signature(
     Some((callee.graph.input_vals.len(), callee.graph.output_vals.len()))
 }
 
-fn get_imported_function_signature(
+enum CollectionTarget<'a> {
+    Function(&'a CollectionFunc),
+    Import(&'a SymbolPath),
+    Other,
+}
+
+enum ImportedCallTarget<'a> {
+    Function(&'a CollectionFunc),
+    NonFunction,
+}
+
+fn get_collection_target<'a>(
+    root_collection: &'a Collection,
+    root_symbol_path: &SymbolPath,
+    resolved_path: &SymbolPath,
+) -> Option<CollectionTarget<'a>> {
+    if !resolved_path.starts_with(root_symbol_path) {
+        return None;
+    }
+
+    let relative_path = &resolved_path[root_symbol_path.len()..];
+    if relative_path.is_empty() {
+        return Some(CollectionTarget::Other);
+    }
+
+    let (target_symbol, collection_path) = relative_path.split_last()?;
+    let mut collection = root_collection;
+
+    for segment in collection_path {
+        collection = collection.collections.as_ref()?.get(segment)?;
+    }
+
+    if let Some(functions) = &collection.functions {
+        if let Some(func) = functions.get(target_symbol) {
+            return Some(CollectionTarget::Function(func));
+        }
+    }
+
+    if let Some(imports) = &collection.imports {
+        if let Some(import_path) = imports.get(target_symbol) {
+            return Some(CollectionTarget::Import(import_path));
+        }
+    }
+
+    if collection.constants.as_ref().is_some_and(|constants| constants.contains_key(target_symbol))
+        || collection.types.as_ref().is_some_and(|types| types.contains_key(target_symbol))
+        || collection.collections.as_ref().is_some_and(|collections| collections.contains_key(target_symbol))
+    {
+        return Some(CollectionTarget::Other);
+    }
+
+    None
+}
+
+fn resolve_imported_call_target<'a>(
     callee_symbol: &str,
     sibling_imports: Option<&HashMap<Symbol, SymbolPath>>,
+    root_collection: &'a Collection,
     root_symbol_path: &SymbolPath,
-    static_state: &StaticState,
-) -> Option<(usize, usize)> {
+) -> Option<ImportedCallTarget<'a>> {
     let sibling_imports = sibling_imports?;
     let import_path = sibling_imports.get(callee_symbol)?;
-    let resolved_import_path = resolve_import_path(root_symbol_path, import_path);
-    let func_ref = static_state.get_ref(&resolved_import_path).ok()?;
-    let stored = func_ref.get()?;
-    let func = stored.stored_as_func().ok()?;
-    Some((func.input_vals.len(), func.output_vals.len()))
+    let mut resolved_path = resolve_import_path(root_symbol_path, import_path);
+    let mut visited: HashSet<SymbolPath> = HashSet::new();
+
+    loop {
+        if !visited.insert(resolved_path.clone()) {
+            return None;
+        }
+
+        match get_collection_target(root_collection, root_symbol_path, &resolved_path)? {
+            CollectionTarget::Function(func) => return Some(ImportedCallTarget::Function(func)),
+            CollectionTarget::Import(import_path) => {
+                resolved_path = resolve_import_path(root_symbol_path, import_path);
+            }
+            CollectionTarget::Other => return Some(ImportedCallTarget::NonFunction),
+        }
+    }
 }
 
 fn cl_func_to_live_func(
@@ -372,6 +437,7 @@ fn cl_func_to_live_func(
     func_symbol_path: &SymbolPath,
     sibling_functions: Option<&HashMap<Symbol, CollectionFunc>>,
     sibling_imports: Option<&HashMap<Symbol, SymbolPath>>,
+    root_collection: &Collection,
     root_symbol_path: &SymbolPath,
     static_state: &mut StaticState
 ) -> ExecResult<FuncLive> {
@@ -449,8 +515,20 @@ fn cl_func_to_live_func(
 
         if op_node.opcode == OpCode::Call {
             if let Some(callee_symbol) = op_node.input_vals.first() {
+                let imported_target = resolve_imported_call_target(
+                    callee_symbol,
+                    sibling_imports,
+                    root_collection,
+                    root_symbol_path,
+                );
+
                 if let Some((callee_inputs, callee_outputs)) = get_local_function_signature(callee_symbol, sibling_functions)
-                    .or_else(|| get_imported_function_signature(callee_symbol, sibling_imports, root_symbol_path, static_state))
+                    .or(match imported_target {
+                        Some(ImportedCallTarget::Function(func)) => {
+                            Some((func.graph.input_vals.len(), func.graph.output_vals.len()))
+                        }
+                        _ => None,
+                    })
                 {
                     let expected_inputs = callee_inputs + 1;
                     if op_node.input_vals.len() != expected_inputs {
@@ -472,7 +550,9 @@ fn cl_func_to_live_func(
                             op_node.output_vals.len()
                         ));
                     }
-                } else if let Some(callee_idx) = symbol_idxs.get(callee_symbol) {
+                }
+
+                if let Some(callee_idx) = symbol_idxs.get(callee_symbol) {
                     let callee_val = &func.graph.values[*callee_idx];
                     if callee_val.constant.is_some() {
                         return Err(format!(
@@ -481,6 +561,14 @@ fn cl_func_to_live_func(
                             func_symbol_path
                         ));
                     }
+                }
+
+                if matches!(imported_target, Some(ImportedCallTarget::NonFunction)) {
+                    return Err(format!(
+                        "Call target '{}' in function {:?} is not a function",
+                        callee_symbol,
+                        func_symbol_path
+                    ));
                 }
             }
 
@@ -592,6 +680,7 @@ fn resolve_import_path(root_symbol_path: &SymbolPath, import_path: &SymbolPath) 
 
 pub fn fill_collection(
     static_state: &mut StaticState,
+    root_collection: &Collection,
     root_symbol_path: &SymbolPath,
     symbol_path: &SymbolPath,
     value: &Collection
@@ -650,7 +739,7 @@ pub fn fill_collection(
             path.push(name.clone());
 
             let static_ref: StaticRefLive = static_state.get_ref(&path)?;
-            let live_func: FuncLive = cl_func_to_live_func(func, &path, value.functions.as_ref(), value.imports.as_ref(), root_symbol_path, static_state)?;
+            let live_func: FuncLive = cl_func_to_live_func(func, &path, value.functions.as_ref(), value.imports.as_ref(), root_collection, root_symbol_path, static_state)?;
             static_ref.set(StoredData::FuncStored(live_func))
                 .map_err(|_| format!("Error setting function at path {:?}", path))?;
         }
@@ -662,7 +751,7 @@ pub fn fill_collection(
             let mut path: SymbolPath = symbol_path.clone();
             path.push(name.clone());
 
-            fill_collection(static_state, root_symbol_path, &path, sub_collection)?;
+            fill_collection(static_state, root_collection, root_symbol_path, &path, sub_collection)?;
         }
     }
 
@@ -684,7 +773,7 @@ pub fn bind_program(
         Err(e) => return Err(format!("Error buffering main collection: {}", e)),
     };
 
-    match fill_collection(static_state, &main_path, &main_path, &program) {
+    match fill_collection(static_state, &program, &main_path, &main_path, &program) {
         Ok(_) => {},
         Err(e) => return Err(format!("Error filling main collection buffers: {}", e)),
     }
