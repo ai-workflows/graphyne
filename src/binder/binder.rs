@@ -19,7 +19,7 @@ fn buffer_collection_property_group<T>(
     collection_refs: &mut DictLive
 ) -> ExecResult<()> {
     if let Some(properties) = group {
-        for (name, _property) in properties {
+        for name in properties.keys() {
             let mut path = symbol_path.clone();
             path.push(name.clone());
             let ref_ptr = static_state.buffer(&path)?;
@@ -69,10 +69,10 @@ fn cc_data_to_stored(
     static_state: &mut StaticState
 ) -> ExecResult<StoredData> {
     match data {
-        CCData::Int(val) => Ok(StoredData::IntStored(val.clone())),
-        CCData::Float(val) => Ok(StoredData::FloatStored(val.clone())),
+        CCData::Int(val) => Ok(StoredData::IntStored(*val)),
+        CCData::Float(val) => Ok(StoredData::FloatStored(*val)),
         CCData::String(val) => Ok(StoredData::StringStored(val.clone())),
-        CCData::Bool(val) => Ok(StoredData::BoolStored(val.clone())),
+        CCData::Bool(val) => Ok(StoredData::BoolStored(*val)),
         CCData::List(val) => {
             let mut res: Vec<PointerLive> = Vec::new();
 
@@ -165,11 +165,11 @@ fn cl_func_to_live_func(
             // if the op is static, get the static ref and store it in the static state
             let mut static_path: SymbolPath = func_symbol_path.iter()
                 .take(func_symbol_path.len() - 1).cloned().collect();
-            static_path.extend(op_node.input_vals.iter().map(|s| s.clone()));
+            static_path.extend(op_node.input_vals.iter().cloned());
 
             let static_ref: StaticRefLive = static_state.get_ref(&static_path)?;
 
-            let output_symbol: Symbol = op_node.output_vals.get(0).cloned()
+            let output_symbol: Symbol = op_node.output_vals.first().cloned()
                 .expect("Static op must have an output value");
 
             let mut static_val_path: SymbolPath = func_symbol_path.clone();
@@ -188,7 +188,7 @@ fn cl_func_to_live_func(
 
         let input_vals: Vec<usize> = op_node.input_vals.iter()
             .map(|input_symbol| {
-                val_deps.entry(input_symbol.clone()).or_insert(Vec::new()).push(i - static_val_constants.len());
+                val_deps.entry(input_symbol.clone()).or_default().push(i - static_val_constants.len());
                 match symbol_idxs.get(input_symbol).cloned() {
                     Some(idx) => Ok(idx),
                     None => Err(format!("Input value not found for op {}: {}", i, input_symbol))
@@ -207,14 +207,14 @@ fn cl_func_to_live_func(
 
         let func_op = FuncOp {
             index: i - static_val_constants.len(),
-            opcode: op_node.opcode.clone(),
+            opcode: op_node.opcode,
             input_vals,
             output_vals,
         };
 
         if op_node.opcode == OpCode::Call {
             for (arg_idx, arg_symbol) in op_node.input_vals.iter().enumerate() {
-                val_as_args.entry(arg_symbol.clone()).or_insert(Vec::new()).push((call_ops.len(), arg_idx));
+                val_as_args.entry(arg_symbol.clone()).or_default().push((call_ops.len(), arg_idx));
             }
             call_ops.push(func_op.index);
         }
@@ -228,20 +228,14 @@ fn cl_func_to_live_func(
         output_idxs.insert(output_symbol.clone(), i);
     }
 
-    let mut output_vals: Vec<usize> = Vec::with_capacity(func.graph.output_vals.len());
-    for _ in 0..func.graph.output_vals.len() {
-        output_vals.push(0);
-    }
+    let mut output_vals: Vec<usize> = vec![0; func.graph.output_vals.len()];
 
     let mut input_idxs: HashMap<Symbol, usize> = HashMap::new();
     for (i, input_symbol) in func.graph.input_vals.iter().enumerate() {
         input_idxs.insert(input_symbol.clone(), i);
     }
 
-    let mut input_vals: Vec<usize> = Vec::with_capacity(func.graph.input_vals.len());
-    for _ in 0..func.graph.input_vals.len() {
-        input_vals.push(0);
-    }
+    let mut input_vals: Vec<usize> = vec![0; func.graph.input_vals.len()];
 
     let mut constant_vals: Vec<usize> = Vec::new();
 
@@ -269,7 +263,7 @@ fn cl_func_to_live_func(
             constant = Some(static_val_const_ptr.clone());
         }
 
-        if let Some(_) = constant {
+        if constant.is_some() {
             constant_vals.push(i);
         }
 
@@ -349,7 +343,7 @@ pub fn fill_collection(
             path.push(name.clone());
 
             let static_ref: StaticRefLive = static_state.get_ref(&path)?;
-            let live_type: TypeLive = type_def_to_live_type(type_def, static_state, &name)?;
+            let live_type: TypeLive = type_def_to_live_type(type_def, static_state, name)?;
             static_ref.set(StoredData::TypeStored(live_type))
                 .map_err(|_| format!("Error setting type at path {:?}", path))?;
         }

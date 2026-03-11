@@ -79,7 +79,8 @@ pub enum OpCode {
 
 impl OpCode {
     /// Converts a list of arguments to an operation based on the opcode.
-    pub fn to_operation(&self, args: &Vec<Arc<StoredData>>) -> Operation {
+    #[allow(clippy::wrong_self_convention)]
+    pub fn to_operation(&self, args: &[Arc<StoredData>]) -> Operation {
         match self {
             OpCode::TypeOf => Operation::TypeOf(args[0].clone()),
             OpCode::AsInt => Operation::AsInt(args[0].clone()),

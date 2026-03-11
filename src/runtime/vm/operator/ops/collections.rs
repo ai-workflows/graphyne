@@ -31,11 +31,11 @@ pub fn execute_set_item(collection: PointerLive, index: PointerLive, value: Poin
     let collection_val: &StoredData = collection.as_ref();
     let index_val: &StoredData = index.as_ref();
 
-    let res = collection_val.as_live().op_set_item(&index_val, value);
+    let res = collection_val.as_live().op_set_item(index_val, value);
 
     res.map_or_else(
         || handle_op_null_result(collection_val, "set_item"),
-        |result| handle_op_result(result)
+        handle_op_result
     )
 }
 
@@ -46,7 +46,7 @@ pub fn execute_push(list: PointerLive, value: PointerLive) -> ExecResult<Vec<Poi
 
     res.map_or_else(
         || handle_op_null_result(list_val, "op_push"),
-        |result| handle_op_result(result)
+        handle_op_result
     )
 }
 

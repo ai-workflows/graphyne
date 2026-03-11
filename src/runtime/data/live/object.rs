@@ -41,7 +41,7 @@ impl LiveData for ObjectLive {
             _ => return Some(Err("Index must be a string".to_string())),
         };
 
-        return Some(match self.fields.get(&key) {
+        Some(match self.fields.get(&key) {
             Some(ptr) => Ok(StoredData::PointerStored(ptr.clone())),
             None => Err(format!("Key {} not found", key)),
         })

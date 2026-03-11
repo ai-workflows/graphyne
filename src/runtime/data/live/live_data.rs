@@ -21,12 +21,10 @@ pub type ObjectLive = Object;
 // static_state ref
 pub type StaticRefLive = Arc<OnceLock<StoredData>>;
 
-
 /// Represents data that is currently usable for performing operations.
 #[allow(unused_variables)]
 pub trait LiveData {
-    /// Operations return None if they are not Implemented
-
+    /// Operations return `None` if they are not implemented.
     /// Returns a pointer to the type of this data. Requires passing a type map.
     fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {None}
 
@@ -38,9 +36,11 @@ pub trait LiveData {
     fn as_pointer(&self) -> Option<ExecResult<PointerLive>> {None}
     fn as_list(&self) -> Option<ExecResult<ListLive>> {None}
     fn as_dict(&self) -> Option<ExecResult<DictLive>> {None}
+    #[allow(dead_code)]
     fn as_func(&self) -> Option<ExecResult<FuncLive>> {None}
     fn as_null(&self) -> Option<ExecResult<NullLive>> {None}
     fn as_type(&self) -> Option<ExecResult<TypeLive>> {None}
+    #[allow(dead_code)]
     fn as_object(&self) -> Option<ExecResult<ObjectLive>> {None}
 
 

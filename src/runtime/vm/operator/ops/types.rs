@@ -9,13 +9,13 @@ use crate::runtime::vm::operator::ops::results::{handle_op_null_result, handle_o
 
 pub fn execute_is_null(arg: PointerLive) -> ExecResult<Vec<PointerLive>> {
     arg.as_live().is_null().map_or_else(
-        || handle_op_null_result(arg.as_ref(), stringify!($op)),
-        |result| handle_op_result(result.map(|value| StoredData::BoolStored(value))))
+        || handle_op_null_result(arg.as_ref(), "is_null"),
+        |result| handle_op_result(result.map(StoredData::BoolStored)))
 }
 
 /// Gets the type of the arg and returns a reference to it.
 pub fn execute_type_of(arg: PointerLive, static_state: Arc<StaticState>) -> ExecResult<Vec<PointerLive>> {
     arg.as_live().type_of(static_state).map_or_else(
-        || handle_op_null_result(arg.as_ref(), stringify!($op)),
-        |result| handle_op_result(result.map(|value| StoredData::PointerStored(value))))
+        || handle_op_null_result(arg.as_ref(), "type_of"),
+        |result| handle_op_result(result.map(StoredData::PointerStored)))
 }

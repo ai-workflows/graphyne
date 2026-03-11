@@ -6,6 +6,7 @@ use crate::runtime::data::functions::func::FuncLive;
 /// Represents data that is currently being stored in memory.
 /// This data must be converted to its live counterpart before it can be used.
 #[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::enum_variant_names)]
 pub enum StoredData {
     NullStored,
     IntStored(IntLive),
@@ -21,6 +22,7 @@ pub enum StoredData {
     FuncStored(FuncLive),
 }
 
+#[allow(dead_code)]
 impl StoredData {
     pub fn type_of(&self) -> ExecResult<TypeLive> {
         match self {

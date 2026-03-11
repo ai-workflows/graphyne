@@ -9,6 +9,7 @@ use crate::runtime::static_state::state::StaticState;
 /// Represents the "language" type of a piece of data.
 /// Note: there may not be a one-to-one correspondence between this, rust-types, and stored-types.
 #[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::enum_variant_names)]
 pub enum Type {
     Integer,
     Float,
@@ -72,7 +73,7 @@ fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 
 impl LiveData for TypeLive {
     fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {
-        type_map.get_primitive_type(&TypeLive::Type).map(|r| Ok(r))
+        type_map.get_primitive_type(&TypeLive::Type).map(Ok)
     }
 
     fn as_string(&self) -> Option<ExecResult<StringLive>> {

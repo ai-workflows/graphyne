@@ -98,11 +98,11 @@ impl<'de> Deserialize<'de> for CCData {
             }
 
             fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E> where E: serde::de::Error {
-                Ok(Some(CCData::Bool(value.into())))
+                Ok(Some(CCData::Bool(value)))
             }
 
             fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E> where E: serde::de::Error {
-                Ok(Some(CCData::Int(value.into())))
+                Ok(Some(CCData::Int(value)))
             }
 
             fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> where E: serde::de::Error {
@@ -114,7 +114,7 @@ impl<'de> Deserialize<'de> for CCData {
                 if value.fract() == 0.0 {
                     Ok(Some(CCData::Int(value as i64)))
                 } else {
-                    Ok(Some(CCData::Float(value.into())))
+                    Ok(Some(CCData::Float(value)))
                 }
             }
 
@@ -264,7 +264,7 @@ mod tests {
 
         assert_eq!(res.len(), 2);
 
-        let double: IntLive = res.get(0).unwrap().as_live().as_int().unwrap().unwrap();
+        let double: IntLive = res.first().unwrap().as_live().as_int().unwrap().unwrap();
         let triple: IntLive = res.get(1).unwrap().as_live().as_int().unwrap().unwrap();
 
         assert_eq!(double, 10);

@@ -1,3 +1,4 @@
+#[allow(clippy::module_inception)]
 pub(crate) mod ops;
 pub(crate) mod cast;
 pub(crate) mod general;

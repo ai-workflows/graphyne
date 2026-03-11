@@ -7,7 +7,7 @@ use crate::runtime::static_state::state::StaticState;
 
 impl LiveData for StringLive {
     fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {
-        type_map.get_primitive_type(&TypeLive::String).map(|r| Ok(r))
+        type_map.get_primitive_type(&TypeLive::String).map(Ok)
     }
     fn as_int(&self) -> Option<ExecResult<IntLive>> {
         Some(self.parse::<IntLive>().map_err(|_| "Error parsing int from string".to_string()))

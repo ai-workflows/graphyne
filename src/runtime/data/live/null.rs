@@ -7,7 +7,7 @@ use crate::runtime::static_state::state::StaticState;
 
 impl LiveData for NullLive {
     fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {
-        type_map.get_primitive_type(&TypeLive::Null).map(|r| Ok(r))
+        type_map.get_primitive_type(&TypeLive::Null).map(Ok)
     }
 
     fn as_null(&self) -> Option<ExecResult<NullLive>> {
