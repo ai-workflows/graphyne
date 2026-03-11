@@ -7,7 +7,22 @@ use crate::binder::intermediate::collection::Collection;
 use crate::runtime::data::live::PointerLive;
 use crate::runtime::{Symbol, SymbolPath};
 use crate::runtime::static_state::state::StaticState;
-use crate::runtime::vm::manager::{init_await_call, init_stream_call};
+use crate::runtime::vm::manager::{init_await_call, init_stream_call, try_init_await_call, try_init_stream_call};
+
+fn build_worker_pool(workers: Option<usize>) -> Arc<rayon::ThreadPool> {
+    let worker_count = get_worker_counts(workers);
+    Arc::new(rayon::ThreadPoolBuilder::new().num_threads(worker_count).build().unwrap())
+}
+
+pub fn try_await_call(
+    main_symbol_path: SymbolPath,
+    inputs: Vec<PointerLive>,
+    static_state: Arc<StaticState>,
+    workers: Option<usize>,
+) -> Result<Vec<PointerLive>, String> {
+    let worker_pool = build_worker_pool(workers);
+    try_init_await_call(main_symbol_path, inputs, static_state, worker_pool)
+}
 
 pub fn await_call(
     main_symbol_path: SymbolPath,
@@ -15,15 +30,18 @@ pub fn await_call(
     static_state: Arc<StaticState>,
     workers: Option<usize>,
 ) -> Vec<PointerLive> {
-    let worker_count = get_worker_counts(workers);
-    let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(worker_count).build().unwrap());
+    let worker_pool = build_worker_pool(workers);
+    init_await_call(main_symbol_path, inputs, static_state, worker_pool)
+}
 
-    init_await_call(
-        main_symbol_path,
-        inputs,
-        static_state,
-        worker_pool
-    )
+pub fn try_stream_call(
+    main_symbol_path: SymbolPath,
+    inputs: Vec<PointerLive>,
+    static_state: Arc<StaticState>,
+    workers: Option<usize>,
+) -> Result<(usize, Receiver<(usize, PointerLive)>), String> {
+    let worker_pool = build_worker_pool(workers);
+    try_init_stream_call(main_symbol_path, inputs, static_state, worker_pool)
 }
 
 pub fn stream_call(
@@ -32,15 +50,8 @@ pub fn stream_call(
     static_state: Arc<StaticState>,
     workers: Option<usize>,
 ) -> (usize, Receiver<(usize, PointerLive)>) {
-    let worker_count = get_worker_counts(workers);
-    let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(worker_count).build().unwrap());
-
-    init_stream_call(
-        main_symbol_path,
-        inputs,
-        static_state,
-        worker_pool
-    )
+    let worker_pool = build_worker_pool(workers);
+    init_stream_call(main_symbol_path, inputs, static_state, worker_pool)
 }
 
 /// Loads a Graphite JSON Intermediate Language (GJIL) file from the given path and binds to memory.
@@ -83,7 +94,7 @@ pub fn log_error(msg: String) {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use crate::api::{bind, get_worker_counts, load_intermediate, stream_call};
+    use crate::api::{bind, get_worker_counts, load_intermediate, stream_call, try_await_call};
     use crate::binder::intermediate::collection::Collection;
     use crate::binder::json::jsonify;
     use crate::runtime::data::live::PointerLive;
@@ -118,6 +129,21 @@ mod tests {
 
         let age = outputs.get(&2).unwrap().stored_as_int().unwrap();
         assert_eq!(*age, 60);
+    }
+
+    #[test]
+    fn try_await_call_returns_error_for_invalid_entrypoint() {
+        let collection: Collection = load_intermediate("examples/intermediate/test_compiled.json").unwrap();
+        let static_state = bind(collection, Some("top_level".to_string())).unwrap();
+
+        let err = try_await_call(
+            vec!["top_level".to_string(), "does_not_exist".to_string()],
+            vec![],
+            static_state,
+            Some(1),
+        ).unwrap_err();
+
+        assert!(err.contains("Error loading entry point"));
     }
 
     #[test]

@@ -1,56 +1,71 @@
 use std::sync::{Arc, mpsc};
 use rayon::ThreadPool;
-use crate::runtime::data::functions::func::FuncLive;
 use crate::runtime::data::live::PointerLive;
 use crate::runtime::static_state::state::StaticState;
-use crate::runtime::SymbolPath;
+use crate::runtime::{ExecResult, SymbolPath};
 use crate::runtime::vm::orchestrator;
 use crate::runtime::vm::outputs::OutputType;
 
+fn get_entry_func(main_symbol_path: &SymbolPath, static_state: &Arc<StaticState>) -> ExecResult<PointerLive> {
+    let func_ref = static_state.get_ptr_to_ref(main_symbol_path)
+        .map_err(|e| format!("Error loading entry point {:?}: {}", main_symbol_path, e))?;
+
+    func_ref.stored_as_func()
+        .map_err(|e| format!("Entry point {:?} is not a function: {}", main_symbol_path, e))?;
+
+    Ok(func_ref)
+}
+
 /// Initializes a stream call of a function with the given inputs.
-pub fn init_stream_call(
+pub fn try_init_stream_call(
     main_symbol_path: SymbolPath,
     inputs: Vec<PointerLive>,
     static_state: Arc<StaticState>,
     worker_pool: Arc<ThreadPool>
-) -> (usize, mpsc::Receiver<(usize, PointerLive)>) {
-    let func_ref: PointerLive = match static_state.get_ptr_to_ref(&main_symbol_path) {
-        Ok(v) => v,
-        Err(e) => panic!("start_call_v2: {}", e)
-    };
-
-    let func: &FuncLive = match func_ref.stored_as_func() {
-        Ok(v) => v,
-        Err(e) => panic!("start_call_v2: {}", e)
-    };
-
-    let num_outputs: usize = func.output_vals.len();
+) -> ExecResult<(usize, mpsc::Receiver<(usize, PointerLive)>)> {
+    let func_ref = get_entry_func(&main_symbol_path, &static_state)?;
+    let num_outputs = func_ref.stored_as_func()
+        .map_err(|e| format!("Entry point {:?} is not a function: {}", main_symbol_path, e))?
+        .output_vals.len();
 
     let (tx, rx) = mpsc::channel();
 
-    let output_types: Vec<OutputType> = func.output_vals.iter().enumerate().map(|(i, _)| {
-        OutputType::Final(i, tx.clone())
-    }).collect();
+    let output_types: Vec<OutputType> = (0..num_outputs)
+        .map(|i| OutputType::Final(i, tx.clone()))
+        .collect();
+
+    let func_static_ref = func_ref.as_static_ref()
+        .map_err(|e| format!("Entry point {:?} is not a static function reference: {}", main_symbol_path, e))?;
 
     orchestrator::init_anonymous_call(
-        func_ref.as_static_ref().unwrap(),
+        func_static_ref,
         &inputs,
         output_types,
         static_state,
         worker_pool,
     );
 
-    (num_outputs, rx)
+    Ok((num_outputs, rx))
 }
 
-/// Awaits the result of a function call with the given inputs.
-pub fn init_await_call(
+pub fn init_stream_call(
     main_symbol_path: SymbolPath,
     inputs: Vec<PointerLive>,
     static_state: Arc<StaticState>,
     worker_pool: Arc<ThreadPool>
-) -> Vec<PointerLive> {
-    let (num_outputs, rx) = init_stream_call(main_symbol_path, inputs, static_state, worker_pool);
+) -> (usize, mpsc::Receiver<(usize, PointerLive)>) {
+    try_init_stream_call(main_symbol_path, inputs, static_state, worker_pool)
+        .unwrap_or_else(|e| panic!("start_call_v2: {}", e))
+}
+
+/// Awaits the result of a function call with the given inputs.
+pub fn try_init_await_call(
+    main_symbol_path: SymbolPath,
+    inputs: Vec<PointerLive>,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) -> ExecResult<Vec<PointerLive>> {
+    let (num_outputs, rx) = try_init_stream_call(main_symbol_path, inputs, static_state, worker_pool)?;
 
     let mut outputs: Vec<Option<PointerLive>> = Vec::with_capacity(num_outputs);
     for _ in 0..num_outputs {
@@ -62,8 +77,18 @@ pub fn init_await_call(
     }
 
     outputs.into_iter().map(|v|
-        v.expect("init_await_call: function halted execution before all outputs were returned")
+        v.ok_or_else(|| "init_await_call: function halted execution before all outputs were returned".to_string())
     ).collect()
+}
+
+pub fn init_await_call(
+    main_symbol_path: SymbolPath,
+    inputs: Vec<PointerLive>,
+    static_state: Arc<StaticState>,
+    worker_pool: Arc<ThreadPool>
+) -> Vec<PointerLive> {
+    try_init_await_call(main_symbol_path, inputs, static_state, worker_pool)
+        .unwrap_or_else(|e| panic!("start_call_v2: {}", e))
 }
 
 #[cfg(test)]
@@ -74,9 +99,60 @@ mod tests {
     use crate::binder::json::jsonify;
     use crate::runtime::data::live::{IntLive, LiveData, PointerLive};
     use crate::runtime::static_state::state::StaticState;
-    use crate::runtime::vm::manager::init_await_call;
+    use crate::runtime::vm::manager::{init_await_call, try_init_await_call};
 
     const CORRECTNESS_REPEATS: usize = 10;
+
+    #[test]
+    fn try_init_await_call_returns_error_for_missing_entrypoint() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": [["value", 1]],
+                        "ops": [],
+                        "input_vals": [],
+                        "output_vals": ["value"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
+        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
+
+        let err = try_init_await_call(
+            vec!["my_collection".to_string(), "does_not_exist".to_string()],
+            vec![],
+            static_state,
+            worker_pool,
+        ).unwrap_err();
+
+        assert!(err.contains("Error loading entry point"));
+    }
+
+    #[test]
+    fn try_init_await_call_returns_error_for_non_function_entrypoint() {
+        let json_collection = r#"{
+            "constants": {
+                "main": 42
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
+        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
+
+        let err = try_init_await_call(
+            vec!["my_collection".to_string(), "main".to_string()],
+            vec![],
+            static_state,
+            worker_pool,
+        ).unwrap_err();
+
+        assert!(err.contains("is not a function"));
+    }
 
     #[test]
     fn test_start_call_simple() {
