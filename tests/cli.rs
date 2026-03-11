@@ -622,6 +622,40 @@ fn zero_input_call_reports_bind_error_cleanly() {
 }
 
 #[test]
+fn duplicate_collection_symbols_report_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-duplicate-collection-symbols.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "constants": {
+    "shared": 1
+  },
+  "functions": {
+    "shared": {
+      "graph": {
+        "values": [["value", 2]],
+        "ops": [],
+        "input_vals": [],
+        "output_vals": ["value"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with duplicate collection symbols");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Duplicate collection symbol 'shared'"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn invalid_input_path_exits_non_zero() {
     let output = Command::new(binary_path())
         .args(["await", "-i", "examples/intermediate/does_not_exist.json"])

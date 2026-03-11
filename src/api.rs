@@ -438,4 +438,27 @@ mod tests {
         assert!(err.contains("Opcode static"));
         assert!(err.contains("expects 1 inputs but received 0"));
     }
+
+    #[test]
+    fn bind_rejects_duplicate_collection_symbols() {
+        let json_collection = r#"{
+            "constants": {
+                "shared": 1
+            },
+            "functions": {
+                "shared": {
+                    "graph": {
+                        "values": [["value", 2]],
+                        "ops": [],
+                        "input_vals": [],
+                        "output_vals": ["value"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Duplicate collection symbol 'shared'"));
+    }
 }
