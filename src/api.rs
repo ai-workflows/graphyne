@@ -1,5 +1,5 @@
-use std::{fs, io};
-use std::io::Write;
+use std::fs;
+use std::io::{stderr, stdout, Write};
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 use crate::binder::binder;
@@ -71,18 +71,13 @@ pub fn get_worker_counts(workers: Option<usize>) -> usize {
 }
 
 pub fn log_async(message: String) {
-    let stdout = io::stdout();
-    let _ = writeln!(&mut stdout.lock(),
-                     "{}", message
-    );
+    let out = stdout();
+    let _ = writeln!(&mut out.lock(), "{}", message);
 }
 
 pub fn log_error(msg: String) {
-    let stdout = io::stdout();
-    let _ = writeln!(&mut stdout.lock(),
-                     "\x1B[31m{}\x1B[0m",
-                     msg
-    );
+    let err = stderr();
+    let _ = writeln!(&mut err.lock(), "\x1B[31m{}\x1B[0m", msg);
 }
 
 #[cfg(test)]
