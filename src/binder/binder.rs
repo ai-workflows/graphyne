@@ -172,6 +172,7 @@ fn validate_custom_type_fields(
 fn type_def_to_live_type(
     type_def: &CustomTypeDef,
     static_state: &mut StaticState,
+    root_symbol_path: &SymbolPath,
     type_symbol: &Symbol
 ) -> ExecResult<TypeLive> {
     let mut fields: Vec<(Symbol, PointerLive)> = Vec::new();
@@ -188,7 +189,8 @@ fn type_def_to_live_type(
             CollectionType::Dict => static_state.get_primitive_type(&TypeLive::Dictionary),
             CollectionType::Type => static_state.get_primitive_type(&TypeLive::Type),
             CollectionType::Custom(type_symbol_path) => {
-                let type_ref_ptr = static_state.get_ptr_to_ref(type_symbol_path)?;
+                let resolved_type_path = resolve_import_path(root_symbol_path, type_symbol_path);
+                let type_ref_ptr = static_state.get_ptr_to_ref(&resolved_type_path)?;
                 Some(type_ref_ptr)
             }
         };
@@ -1075,7 +1077,7 @@ pub fn fill_collection(
             validate_custom_type_fields(name, type_def, symbol_path)?;
 
             let static_ref: StaticRefLive = static_state.get_ref(&path)?;
-            let live_type: TypeLive = type_def_to_live_type(type_def, static_state, name)?;
+            let live_type: TypeLive = type_def_to_live_type(type_def, static_state, root_symbol_path, name)?;
             static_ref.set(StoredData::TypeStored(live_type))
                 .map_err(|_| format!("Error setting type at path {:?}", path))?;
         }
