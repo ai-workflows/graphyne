@@ -1,81 +1,62 @@
 {
-  "constants": {},
-  "imports": {},
   "collections": {
-    "my_collection": {
+    "math": {
       "constants": {
         "two": 2,
-        "my_list": [10, 20, 30],
-        "my_dict": {
-          "Hello": "World",
-          "Foo": "Bar"
-        }
+        "numbers": [10, 20, 30]
       },
       "functions": {
         "double": {
-          "name": "Double",
-          "description": "Doubles a number",
           "graph": {
             "values": [
-              ["_two", "two"],
               "two",
               "num",
               "doubled"
             ],
             "ops": [
-              ["Get", ["outer", "_two"], ["two"]],
+              ["Static", ["two"], ["two"]],
               ["Mul", ["num", "two"], ["doubled"]]
             ],
             "input_vals": ["num"],
             "output_vals": ["doubled"]
           }
         },
-        "double_list": {
-          "name": "Double List",
-          "description": "Doubles a list of numbers",
+        "double_numbers": {
           "graph": {
             "values": [
-              "double_func",
-              ["_double", "double"],
-              ["_my_list", "my_list"],
-              "my_list",
-              "double_list"
+              "double",
+              "numbers",
+              "result"
             ],
             "ops": [
-              ["Get", ["outer", "_double"], ["double_func"]],
-              ["Get", ["outer", "_my_list"], ["my_list"]],
-              ["Map", ["double_func", "my_list"], ["double_list"]]
+              ["Static", ["double"], ["double"]],
+              ["Static", ["numbers"], ["numbers"]],
+              ["Map", ["double", "numbers"], ["result"]]
             ],
             "input_vals": [],
-            "output_vals": ["double_list"]
+            "output_vals": ["result"]
           }
         }
-      },
-      "collections": {},
-      "imports": {}
+      }
     }
   },
   "functions": {
     "main": {
-      "name": "Main",
-      "description": "Main function",
       "graph": {
         "values": [
-          ["_my_collection", "my_collection"],
-          ["_double_list", "double_list"],
-          "my_collection",
-          "double_list_func",
-          "doubled_list"
+          "math",
+          ["double_numbers_key", "double_numbers"],
+          "double_numbers_func",
+          "result"
         ],
         "ops": [
-          ["Get", ["outer", "_my_collection"], ["my_collection"]],
-          ["Get", ["my_collection", "_double_list"], ["double_list_func"]],
-          ["Call", ["double_list_func"], ["doubled_list"]]
+          ["Static", ["math"], ["math"]],
+          ["Get", ["math", "double_numbers_key"], ["double_numbers_func"]],
+          ["Call", ["double_numbers_func"], ["result"]]
         ],
         "input_vals": [],
-        "output_vals": ["doubled_list"]
+        "output_vals": ["result"]
       }
     }
   }
 }
-

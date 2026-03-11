@@ -39,6 +39,12 @@ Wait for all outputs before printing them:
 cargo run -- await -i examples/intermediate/test_compiled.json
 ```
 
+You can also run the nested collection example:
+
+```bash
+cargo run -- await -i examples/intermediate/double_list.json
+```
+
 ### Stream mode
 
 Print each output as soon as it becomes available:

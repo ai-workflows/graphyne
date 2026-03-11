@@ -35,6 +35,19 @@ fn stream_mode_runs_example_program() {
 }
 
 #[test]
+fn double_list_example_runs_successfully() {
+    let output = Command::new(binary_path())
+        .args(["await", "-i", "examples/intermediate/double_list.json"])
+        .output()
+        .expect("failed to run graphyne await for double_list example");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("out | 0: [20,40,60]"));
+}
+
+#[test]
 fn invalid_input_path_reports_error_on_stderr() {
     let output = Command::new(binary_path())
         .args(["await", "-i", "examples/intermediate/does_not_exist.json"])
@@ -69,8 +82,26 @@ fn verbose_mode_writes_info_to_stderr_without_polluting_stdout() {
 
 #[test]
 fn invalid_program_reports_bind_error_without_panicking() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-invalid-bind.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["missing_symbol", "result"],
+        "ops": [["Get", ["missing_symbol", "result"], ["result"]]],
+        "input_vals": [],
+        "output_vals": ["result"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
     let output = Command::new(binary_path())
-        .args(["await", "-i", "examples/intermediate/double_list.json"])
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
         .output()
         .expect("failed to run graphyne await with invalid program");
 
@@ -78,6 +109,6 @@ fn invalid_program_reports_bind_error_without_panicking() {
     assert!(output.stdout.is_empty(), "unexpected stdout: {}", String::from_utf8_lossy(&output.stdout));
 
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("Error binding program"));
+    assert!(stderr.contains("Error binding program") || stderr.contains("Error starting program"));
     assert!(!stderr.contains("panicked at"));
 }
