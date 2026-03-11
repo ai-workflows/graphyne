@@ -142,11 +142,32 @@ fn type_def_to_live_type(
 }
 
 
+fn validate_unique_symbols(symbols: &[Symbol], group_name: &str, func_symbol_path: &SymbolPath) -> ExecResult<()> {
+    let mut seen: HashMap<&str, usize> = HashMap::new();
+    for symbol in symbols {
+        let count = seen.entry(symbol.as_str()).or_default();
+        *count += 1;
+        if *count > 1 {
+            return Err(format!(
+                "Duplicate {} symbol '{}' in function {:?}",
+                group_name,
+                symbol,
+                func_symbol_path
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 fn cl_func_to_live_func(
     func: &CollectionFunc,
     func_symbol_path: &SymbolPath,
     static_state: &mut StaticState
 ) -> ExecResult<FuncLive> {
+    validate_unique_symbols(&func.graph.input_vals, "input", func_symbol_path)?;
+    validate_unique_symbols(&func.graph.output_vals, "output", func_symbol_path)?;
+
     let mut symbol_idxs: HashMap<Symbol, usize> = HashMap::new();
 
     for (i, val) in func.graph.values.iter().enumerate() {

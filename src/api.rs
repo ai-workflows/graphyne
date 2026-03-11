@@ -233,4 +233,44 @@ mod tests {
     fn try_stream_call_supports_import_paths_with_user_visible_root_symbol() {
         assert_import_program_produces_42(r#"["root", "lib", "double"]"#);
     }
+
+    #[test]
+    fn bind_rejects_duplicate_input_symbols() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": [["lhs", 2], ["rhs", 3], "sum"],
+                        "ops": [["Add", ["lhs", "rhs"], ["sum"]]],
+                        "input_vals": ["lhs", "lhs"],
+                        "output_vals": ["sum"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Duplicate input symbol 'lhs'"));
+    }
+
+    #[test]
+    fn bind_rejects_duplicate_output_symbols() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": [["lhs", 2], ["rhs", 3], "sum"],
+                        "ops": [["Add", ["lhs", "rhs"], ["sum"]]],
+                        "input_vals": [],
+                        "output_vals": ["sum", "sum"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Duplicate output symbol 'sum'"));
+    }
 }
