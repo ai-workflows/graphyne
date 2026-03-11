@@ -409,6 +409,57 @@ fn object_set_missing_field_reports_clean_runtime_error() {
 }
 
 #[test]
+fn as_dictionary_on_object_drops_type_enforcement() {
+    let program_path = std::env::temp_dir().join("graphyne-object-as-dictionary-loses-type.json");
+    std::fs::write(
+        &program_path,
+        r#"{
+  "types": {
+    "Person": {
+      "name": "str",
+      "age": "int"
+    }
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [
+          "Person",
+          ["name", "Ada"],
+          ["age", 36],
+          "person",
+          "as_dict",
+          ["age_key", "age"],
+          ["bad_age", "thirty seven"],
+          "updated"
+        ],
+        "ops": [
+          ["Static", ["Person"], ["Person"]],
+          ["Init", ["Person", "name", "age"], ["person"]],
+          ["AsDictionary", ["person"], ["as_dict"]],
+          ["Set", ["as_dict", "age_key", "bad_age"], ["updated"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["updated"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await for object-as-dictionary semantics");
+
+    assert!(output.status.success(), "expected lossy object-to-dictionary conversion to succeed");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("\"age\":\"thirty seven\""));
+    assert!(!stdout.contains("\"type\":"));
+}
+
+#[test]
 fn imported_object_sum_example_runs_successfully() {
     let output = Command::new(binary_path())
         .args(["await", "-i", "examples/intermediate/imported_object_sum.json"])
