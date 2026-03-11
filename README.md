@@ -45,6 +45,12 @@ You can also run the nested collection example:
 cargo run -- await -i examples/intermediate/double_list.json
 ```
 
+And an object/custom-type example:
+
+```bash
+cargo run -- await -i examples/intermediate/object_person.json
+```
+
 ### Stream mode
 
 Print each output as soon as it becomes available:
