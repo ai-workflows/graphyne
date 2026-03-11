@@ -166,17 +166,16 @@ mod tests {
         assert_eq!(get_worker_counts(None), num_cpus::get());
     }
 
-    #[test]
-    fn try_stream_call_supports_root_relative_import_paths() {
-        let json_collection = r#"{
-            "collections": {
-                "lib": {
-                    "constants": {
+    fn imported_double_program(import_path: &str) -> String {
+        format!(r#"{{
+            "collections": {{
+                "lib": {{
+                    "constants": {{
                         "two": 2
-                    },
-                    "functions": {
-                        "double": {
-                            "graph": {
+                    }},
+                    "functions": {{
+                        "double": {{
+                            "graph": {{
                                 "values": ["two", "num", "result"],
                                 "ops": [
                                     ["Static", ["two"], ["two"]],
@@ -184,17 +183,17 @@ mod tests {
                                 ],
                                 "input_vals": ["num"],
                                 "output_vals": ["result"]
-                            }
-                        }
-                    }
-                }
-            },
-            "imports": {
-                "double": ["lib", "double"]
-            },
-            "functions": {
-                "main": {
-                    "graph": {
+                            }}
+                        }}
+                    }}
+                }}
+            }},
+            "imports": {{
+                "double": {import_path}
+            }},
+            "functions": {{
+                "main": {{
+                    "graph": {{
                         "values": ["double", ["value", 21], "result"],
                         "ops": [
                             ["Static", ["double"], ["double"]],
@@ -202,12 +201,14 @@ mod tests {
                         ],
                         "input_vals": [],
                         "output_vals": ["result"]
-                    }
-                }
-            }
-        }"#;
+                    }}
+                }}
+            }}
+        }}"#)
+    }
 
-        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+    fn assert_import_program_produces_42(import_path: &str) {
+        let collection: Collection = serde_json::from_str(&imported_double_program(import_path)).unwrap();
         let static_state = bind(collection, Some("root".to_string())).unwrap();
 
         let (count, rx, _context) = try_stream_call(
@@ -221,5 +222,15 @@ mod tests {
         assert_eq!(count, 1);
         let (_idx, value) = rx.recv().unwrap();
         assert_eq!(*value.stored_as_int().unwrap(), 42);
+    }
+
+    #[test]
+    fn try_stream_call_supports_root_relative_import_paths() {
+        assert_import_program_produces_42(r#"["lib", "double"]"#);
+    }
+
+    #[test]
+    fn try_stream_call_supports_import_paths_with_user_visible_root_symbol() {
+        assert_import_program_produces_42(r#"["root", "lib", "double"]"#);
     }
 }
