@@ -603,4 +603,120 @@ mod tests {
         assert!(err.contains("Import 'missing'"));
         assert!(err.contains("points to missing target"));
     }
+
+    #[test]
+    fn bind_rejects_imported_non_function_call_target() {
+        let json_collection = r#"{
+            "collections": {
+                "lib": {
+                    "constants": {
+                        "value": 42
+                    }
+                }
+            },
+            "imports": {
+                "value": ["lib", "value"]
+            },
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["value", "result"],
+                        "ops": [
+                            ["Static", ["value"], ["value"]],
+                            ["Call", ["value"], ["result"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["result"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Call target 'value'"));
+        assert!(err.contains("is not a function"));
+    }
+
+    #[test]
+    fn bind_rejects_imported_call_output_count_mismatch() {
+        let json_collection = r#"{
+            "collections": {
+                "lib": {
+                    "functions": {
+                        "double": {
+                            "graph": {
+                                "values": ["num", ["two", 2], "result"],
+                                "ops": [["Mul", ["num", "two"], ["result"]]],
+                                "input_vals": ["num"],
+                                "output_vals": ["result"]
+                            }
+                        }
+                    }
+                }
+            },
+            "imports": {
+                "double": ["lib", "double"]
+            },
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["double", ["value", 10], "out1", "out2"],
+                        "ops": [
+                            ["Static", ["double"], ["double"]],
+                            ["Call", ["double", "value"], ["out1", "out2"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["out1", "out2"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Call to 'double'"));
+        assert!(err.contains("expects 1 outputs but received 2"));
+    }
+
+    #[test]
+    fn bind_rejects_imported_call_input_count_mismatch() {
+        let json_collection = r#"{
+            "collections": {
+                "lib": {
+                    "functions": {
+                        "double": {
+                            "graph": {
+                                "values": ["num", ["two", 2], "result"],
+                                "ops": [["Mul", ["num", "two"], ["result"]]],
+                                "input_vals": ["num"],
+                                "output_vals": ["result"]
+                            }
+                        }
+                    }
+                }
+            },
+            "imports": {
+                "double": ["lib", "double"]
+            },
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["double", "out"],
+                        "ops": [
+                            ["Static", ["double"], ["double"]],
+                            ["Call", ["double"], ["out"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Call to 'double'"));
+        assert!(err.contains("expects 2 inputs but received 1"));
+    }
 }

@@ -774,6 +774,200 @@ fn missing_static_reference_reports_bind_error_cleanly() {
 }
 
 #[test]
+fn imported_non_function_call_target_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-imported-non-function-call.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "collections": {
+    "lib": {
+      "constants": {
+        "value": 42
+      }
+    }
+  },
+  "imports": {
+    "value": ["lib", "value"]
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["value", "result"],
+        "ops": [
+          ["Static", ["value"], ["value"]],
+          ["Call", ["value"], ["result"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["result"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with imported non-function call target");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Call target 'value'"));
+    assert!(stderr.contains("is not a function"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn missing_import_target_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-missing-import-target.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "collections": {
+    "lib": {
+      "constants": {
+        "value": 42
+      }
+    }
+  },
+  "imports": {
+    "missing": ["lib", "does_not_exist"]
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["missing", "result"],
+        "ops": [
+          ["Static", ["missing"], ["missing"]],
+          ["AsString", ["missing"], ["result"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["result"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with missing import target");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Import 'missing'"));
+    assert!(stderr.contains("points to missing target"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn imported_call_output_count_mismatch_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-imported-call-output-mismatch.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "collections": {
+    "lib": {
+      "functions": {
+        "double": {
+          "graph": {
+            "values": ["num", ["two", 2], "result"],
+            "ops": [["Mul", ["num", "two"], ["result"]]],
+            "input_vals": ["num"],
+            "output_vals": ["result"]
+          }
+        }
+      }
+    }
+  },
+  "imports": {
+    "double": ["lib", "double"]
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["double", ["value", 10], "out1", "out2"],
+        "ops": [
+          ["Static", ["double"], ["double"]],
+          ["Call", ["double", "value"], ["out1", "out2"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out1", "out2"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with imported call output mismatch");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Call to 'double'"));
+    assert!(stderr.contains("expects 1 outputs but received 2"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn imported_call_input_count_mismatch_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-imported-call-input-mismatch.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "collections": {
+    "lib": {
+      "functions": {
+        "double": {
+          "graph": {
+            "values": ["num", ["two", 2], "result"],
+            "ops": [["Mul", ["num", "two"], ["result"]]],
+            "input_vals": ["num"],
+            "output_vals": ["result"]
+          }
+        }
+      }
+    }
+  },
+  "imports": {
+    "double": ["lib", "double"]
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["double", "out"],
+        "ops": [
+          ["Static", ["double"], ["double"]],
+          ["Call", ["double"], ["out"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with imported call input mismatch");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Call to 'double'"));
+    assert!(stderr.contains("expects 2 inputs but received 1"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn invalid_input_path_exits_non_zero() {
     let output = Command::new(binary_path())
         .args(["await", "-i", "examples/intermediate/does_not_exist.json"])
