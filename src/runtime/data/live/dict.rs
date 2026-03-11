@@ -14,6 +14,10 @@ impl LiveData for DictLive {
         Some(Ok(self.clone()))
     }
 
+    fn as_object(&self) -> Option<ExecResult<crate::runtime::data::live::ObjectLive>> {
+        None
+    }
+
     fn is_null(&self) -> Option<ExecResult<BoolLive>> {
         Some(Ok(BoolLive::from(false)))
     }

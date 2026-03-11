@@ -9,9 +9,9 @@ impl LiveData for FuncLive {
         type_map.get_primitive_type(&TypeLive::Function).map(Ok)
     }
 
-    // fn as_func(&self) -> Option<ExecResult<FuncLive>> {
-    //     Some(Ok(self.clone()))
-    // }
+    fn as_func(&self) -> Option<ExecResult<FuncLive>> {
+        Some(Ok(self.clone()))
+    }
     //
     // fn is_null(&self) -> Option<ExecResult<BoolLive>> {
     //     Some(Ok(BoolLive::from(false)))
