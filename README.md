@@ -123,6 +123,58 @@ A minimal example:
 }
 ```
 
+A richer object/type example using the now-supported map-form type syntax:
+
+```json
+{
+  "types": {
+    "Person": {
+      "name": "str",
+      "age": "int"
+    }
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [
+          "Person",
+          ["name", "Ada"],
+          ["age", 36],
+          "person",
+          ["age_key", "age"],
+          ["new_age", 37],
+          "updated_person",
+          "updated_person_dict",
+          "updated_age"
+        ],
+        "ops": [
+          ["Static", ["Person"], ["Person"]],
+          ["Init", ["Person", "name", "age"], ["person"]],
+          ["Set", ["person", "age_key", "new_age"], ["updated_person"]],
+          ["AsDictionary", ["updated_person"], ["updated_person_dict"]],
+          ["Get", ["updated_person_dict", "age_key"], ["updated_age"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["updated_person", "updated_age"]
+      }
+    }
+  }
+}
+```
+
+You can run the shipped version directly:
+
+```bash
+cargo run -- await -i examples/intermediate/object_person.json
+```
+
+Import paths may be written in either of these forms:
+
+- root-relative: `["lib", "double"]`
+- root-symbol-prefixed: `["root", "lib", "double"]`
+
+Both are accepted when the bound program symbol is `root`.
+
 ## Execution model
 
 1. The CLI or API loads a JSON collection.
