@@ -125,6 +125,13 @@ A minimal example:
 4. Operations run when their input values become available.
 5. Outputs are either streamed through a channel or collected and returned in order.
 
+## Data model notes
+
+- `Object` values are typed records backed by a custom type plus named fields.
+- `Object` can be viewed as a dictionary with `as_dict`.
+- Plain dictionaries are **not** implicitly convertible into objects because they do not carry custom type information.
+- Attempting to coerce a dictionary into an object should fail with an explicit runtime error rather than silently inventing a type.
+
 ## Notes for contributors
 
 - `cargo test` is currently the best quick validation target.
