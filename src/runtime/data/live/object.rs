@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use crate::runtime::data::live::{BoolLive, DictLive, IntLive, LiveData, PointerLive};
-use crate::runtime::data::live::live_data::{ObjectLive};
+use crate::runtime::data::live::{BoolLive, DictLive, IntLive, LiveData, PointerLive, TypeLive};
+use crate::runtime::data::live::live_data::ObjectLive;
 use crate::runtime::data::stored::StoredData;
 use crate::runtime::{ExecResult, Symbol};
 use crate::runtime::static_state::state::StaticState;
@@ -10,6 +10,46 @@ use crate::runtime::static_state::state::StaticState;
 pub struct Object {
     pub type_ptr: PointerLive,
     pub fields: HashMap<Symbol, PointerLive>
+}
+
+fn validate_object_field_type(
+    object: &ObjectLive,
+    key: &str,
+    value: &PointerLive,
+) -> ExecResult<()> {
+    let object_type = object.type_ptr.stored_as_type()?;
+
+    let fields = match object_type {
+        TypeLive::Custom(_, _, fields) => fields,
+        _ => return Ok(()),
+    };
+
+    let Some((_, expected_type_ptr)) = fields.iter().find(|(field_name, _)| field_name == key) else {
+        return Err(format!("Key {} not found", key));
+    };
+
+    let expected_type = expected_type_ptr.stored_as_type()?;
+    if *expected_type == TypeLive::Dynamic {
+        return Ok(());
+    }
+
+    let actual_type_ptr = match value.as_ref().as_live().type_of(Arc::new(StaticState::new())) {
+        Some(Ok(ptr)) => ptr,
+        Some(Err(msg)) => return Err(format!("Could not get type of field {}: {}", key, msg)),
+        None => return Err(format!("Cannot set field {} with value of unknown type", key)),
+    };
+
+    let actual_type = actual_type_ptr.stored_as_type()?;
+    if actual_type != expected_type {
+        return Err(format!(
+            "Cannot set field {} of type {} to value of type {}",
+            key,
+            expected_type.get_name(),
+            actual_type.get_name()
+        ));
+    }
+
+    Ok(())
 }
 
 impl LiveData for ObjectLive {
@@ -58,6 +98,10 @@ impl LiveData for ObjectLive {
         
         match self.fields.get(&key) {
             Some(_ptr) => {
+                if let Err(err) = validate_object_field_type(self, &key, &value) {
+                    return Some(Err(err));
+                }
+
                 // replace the pointer at the index (or create a new one)
                 dict.insert(key, value);
             },
