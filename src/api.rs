@@ -104,7 +104,7 @@ pub fn log_error(msg: String) {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use crate::api::{bind, get_worker_counts, load_intermediate, stream_call, try_await_call};
+    use crate::api::{bind, get_worker_counts, load_intermediate, stream_call, try_await_call, try_stream_call};
     use crate::binder::intermediate::collection::Collection;
     use crate::binder::json::jsonify;
     use crate::runtime::data::live::PointerLive;
@@ -164,5 +164,62 @@ mod tests {
     #[test]
     fn none_workers_uses_cpu_count() {
         assert_eq!(get_worker_counts(None), num_cpus::get());
+    }
+
+    #[test]
+    fn try_stream_call_supports_root_relative_import_paths() {
+        let json_collection = r#"{
+            "collections": {
+                "lib": {
+                    "constants": {
+                        "two": 2
+                    },
+                    "functions": {
+                        "double": {
+                            "graph": {
+                                "values": ["two", "num", "result"],
+                                "ops": [
+                                    ["Static", ["two"], ["two"]],
+                                    ["Mul", ["num", "two"], ["result"]]
+                                ],
+                                "input_vals": ["num"],
+                                "output_vals": ["result"]
+                            }
+                        }
+                    }
+                }
+            },
+            "imports": {
+                "double": ["lib", "double"]
+            },
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["double", ["value", 21], "result"],
+                        "ops": [
+                            ["Static", ["double"], ["double"]],
+                            ["Call", ["double", "value"], ["result"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["result"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let static_state = bind(collection, Some("root".to_string())).unwrap();
+
+        let (count, rx, _context) = try_stream_call(
+            vec!["root".to_string(), "main".to_string()],
+            vec![],
+            static_state,
+            Some(1),
+        )
+        .unwrap();
+
+        assert_eq!(count, 1);
+        let (_idx, value) = rx.recv().unwrap();
+        assert_eq!(*value.stored_as_int().unwrap(), 42);
     }
 }
