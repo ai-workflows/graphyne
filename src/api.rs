@@ -273,4 +273,46 @@ mod tests {
         let err = bind(collection, Some("root".to_string())).err().unwrap();
         assert!(err.contains("Duplicate output symbol 'sum'"));
     }
+
+    #[test]
+    fn bind_rejects_bad_opcode_input_arity() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": [["lhs", 2], "sum"],
+                        "ops": [["Add", ["lhs"], ["sum"]]],
+                        "input_vals": [],
+                        "output_vals": ["sum"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Opcode add"));
+        assert!(err.contains("expects 2 inputs but received 1"));
+    }
+
+    #[test]
+    fn bind_rejects_bad_opcode_output_arity() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": [["lhs", 2], ["rhs", 3], "sum1", "sum2"],
+                        "ops": [["Add", ["lhs", "rhs"], ["sum1", "sum2"]]],
+                        "input_vals": [],
+                        "output_vals": ["sum1"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Opcode add"));
+        assert!(err.contains("expects 1 outputs but received 2"));
+    }
 }
