@@ -343,9 +343,19 @@ fn validate_graph_value_declarations(
     Ok(symbol_idxs)
 }
 
+fn get_local_function_output_count(
+    callee_symbol: &str,
+    sibling_functions: Option<&HashMap<Symbol, CollectionFunc>>,
+) -> Option<usize> {
+    let sibling_functions = sibling_functions?;
+    let callee = sibling_functions.get(callee_symbol)?;
+    Some(callee.graph.output_vals.len())
+}
+
 fn cl_func_to_live_func(
     func: &CollectionFunc,
     func_symbol_path: &SymbolPath,
+    sibling_functions: Option<&HashMap<Symbol, CollectionFunc>>,
     static_state: &mut StaticState
 ) -> ExecResult<FuncLive> {
     validate_unique_symbols(&func.graph.input_vals, "input", func_symbol_path)?;
@@ -415,6 +425,20 @@ fn cl_func_to_live_func(
         };
 
         if op_node.opcode == OpCode::Call {
+            if let Some(callee_symbol) = op_node.input_vals.first() {
+                if let Some(expected_outputs) = get_local_function_output_count(callee_symbol, sibling_functions) {
+                    if op_node.output_vals.len() != expected_outputs {
+                        return Err(format!(
+                            "Call to '{}' in function {:?} expects {} outputs but received {}",
+                            callee_symbol,
+                            func_symbol_path,
+                            expected_outputs,
+                            op_node.output_vals.len()
+                        ));
+                    }
+                }
+            }
+
             for (arg_idx, arg_symbol) in op_node.input_vals.iter().enumerate() {
                 val_as_args.entry(arg_symbol.clone()).or_default().push((call_ops.len(), arg_idx));
             }
@@ -574,7 +598,7 @@ pub fn fill_collection(
             path.push(name.clone());
 
             let static_ref: StaticRefLive = static_state.get_ref(&path)?;
-            let live_func: FuncLive = cl_func_to_live_func(func, &path, static_state)?;
+            let live_func: FuncLive = cl_func_to_live_func(func, &path, value.functions.as_ref(), static_state)?;
             static_ref.set(StoredData::FuncStored(live_func))
                 .map_err(|_| format!("Error setting function at path {:?}", path))?;
         }

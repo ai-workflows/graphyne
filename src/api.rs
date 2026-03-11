@@ -461,4 +461,36 @@ mod tests {
         let err = bind(collection, Some("root".to_string())).err().unwrap();
         assert!(err.contains("Duplicate collection symbol 'shared'"));
     }
+
+    #[test]
+    fn bind_rejects_call_output_count_mismatch_for_known_callee() {
+        let json_collection = r#"{
+            "functions": {
+                "double": {
+                    "graph": {
+                        "values": ["num", ["two", 2], "result"],
+                        "ops": [["Mul", ["num", "two"], ["result"]]],
+                        "input_vals": ["num"],
+                        "output_vals": ["result"]
+                    }
+                },
+                "main": {
+                    "graph": {
+                        "values": ["double", ["value", 10], "out1", "out2"],
+                        "ops": [
+                            ["Static", ["double"], ["double"]],
+                            ["Call", ["double", "value"], ["out1", "out2"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["out1", "out2"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Call to 'double'"));
+        assert!(err.contains("expects 1 outputs but received 2"));
+    }
 }
