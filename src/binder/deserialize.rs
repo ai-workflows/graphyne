@@ -62,13 +62,7 @@ impl<'de> Deserialize<'de> for FunctionOpNode {
                                 return Err(serde::de::Error::duplicate_field("output_vals"));
                             }
 
-                            output_vals = Some(match map.next_value()? {
-                                Some(val) => vec![val],
-                                None => match map.next_value()? {
-                                    Some(val) => val,
-                                    None => return Err(serde::de::Error::invalid_length(2, &self)),
-                                }
-                            });
+                            output_vals = Some(map.next_value()?);
                         },
                         _ => {
                             return Err(serde::de::Error::unknown_field(key, &["opcode", "input_vals", "output_vals"]));
@@ -249,6 +243,8 @@ mod tests {
     use std::fs;
     use crate::api::{await_call, bind};
     use crate::binder::intermediate::collection::Collection;
+    use crate::binder::intermediate::func::FunctionOpNode;
+    use crate::runtime::data::functions::OpCode;
     use crate::runtime::data::live::{IntLive, LiveData};
 
     #[test]
@@ -273,5 +269,31 @@ mod tests {
 
         assert_eq!(double, 10);
         assert_eq!(triple, 15);
+    }
+
+    #[test]
+    fn test_deserialize_map_form_op_node_single_output() {
+        let op: FunctionOpNode = serde_json::from_str(r#"{
+            "opcode": "Add",
+            "input_vals": ["lhs", "rhs"],
+            "output_vals": ["sum"]
+        }"#).unwrap();
+
+        assert_eq!(op.opcode, OpCode::Add);
+        assert_eq!(op.input_vals, vec!["lhs".to_string(), "rhs".to_string()]);
+        assert_eq!(op.output_vals, vec!["sum".to_string()]);
+    }
+
+    #[test]
+    fn test_deserialize_map_form_op_node_multi_output() {
+        let op: FunctionOpNode = serde_json::from_str(r#"{
+            "opcode": "Call",
+            "input_vals": ["func", "arg"],
+            "output_vals": ["left", "right"]
+        }"#).unwrap();
+
+        assert_eq!(op.opcode, OpCode::Call);
+        assert_eq!(op.input_vals, vec!["func".to_string(), "arg".to_string()]);
+        assert_eq!(op.output_vals, vec!["left".to_string(), "right".to_string()]);
     }
 }
