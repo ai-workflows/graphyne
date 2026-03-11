@@ -1,7 +1,7 @@
 use clap::Parser;
 use std::process::ExitCode;
 use std::sync::{Arc, mpsc};
-use crate::api::{bind, get_worker_counts, load_intermediate, log_async, log_error, try_await_call, try_stream_call};
+use crate::api::{bind, get_worker_counts, load_intermediate, log_async, log_error, log_info, try_await_call, try_stream_call};
 use crate::binder::intermediate::collection::Collection;
 use crate::binder::json::jsonify;
 use crate::runtime::data::live::PointerLive;
@@ -50,7 +50,7 @@ enum Commands {
 
 fn log_verbose(enabled: bool, message: impl Into<String>) {
     if enabled {
-        log_error(format!("info: {}", message.into()));
+        log_info(format!("info: {}", message.into()));
     }
 }
 

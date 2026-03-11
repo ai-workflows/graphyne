@@ -88,6 +88,11 @@ pub fn log_async(message: String) {
     let _ = writeln!(&mut out.lock(), "{}", message);
 }
 
+pub fn log_info(msg: String) {
+    let err = stderr();
+    let _ = writeln!(&mut err.lock(), "{}", msg);
+}
+
 pub fn log_error(msg: String) {
     let err = stderr();
     let _ = writeln!(&mut err.lock(), "\x1B[31m{}\x1B[0m", msg);

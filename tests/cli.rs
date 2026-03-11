@@ -78,6 +78,7 @@ fn verbose_mode_writes_info_to_stderr_without_polluting_stdout() {
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("info: mode=await"));
     assert!(stderr.contains("info: received 3 outputs"));
+    assert!(!stderr.contains("\u{1b}[31m"));
 }
 
 #[test]
