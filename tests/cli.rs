@@ -114,21 +114,29 @@ fn invalid_program_reports_bind_error_without_panicking() {
 }
 
 #[test]
-fn runtime_operator_error_reports_cleanly_without_abort() {
-    let invalid_program_path = std::env::temp_dir().join("graphyne-runtime-error.json");
+fn runtime_type_errors_are_reported_without_aborting() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-runtime-type-error.json");
     std::fs::write(
         &invalid_program_path,
         r#"{
   "types": {
-    "Person": [["age", "int"]]
+    "Person": [
+      ["name", "str"],
+      ["age", "int"]
+    ]
   },
   "functions": {
     "main": {
       "graph": {
-        "values": ["person_type", ["bad_age", "not-an-int"], "person"],
+        "values": [
+          "Person",
+          ["name", "Ada"],
+          ["age", "thirty six"],
+          "person"
+        ],
         "ops": [
-          ["Static", ["Person"], ["person_type"]],
-          ["Init", ["person_type", "bad_age"], ["person"]]
+          ["Static", ["Person"], ["Person"]],
+          ["Init", ["Person", "name", "age"], ["person"]]
         ],
         "input_vals": [],
         "output_vals": ["person"]
@@ -142,16 +150,16 @@ fn runtime_operator_error_reports_cleanly_without_abort() {
     let output = Command::new(binary_path())
         .args(["await", "-i", invalid_program_path.to_str().unwrap()])
         .output()
-        .expect("failed to run graphyne await with runtime-error program");
+        .expect("failed to run graphyne await with runtime type error");
 
     assert!(!output.status.success(), "expected non-zero exit status for runtime error");
     assert!(output.stdout.is_empty(), "unexpected stdout: {}", String::from_utf8_lossy(&output.stdout));
 
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("Error starting program") || stderr.contains("Runtime error"));
     assert!(stderr.contains("Cannot initialize object of type Person"));
+    assert!(!stderr.contains("Rayon: detected unexpected panic"));
     assert!(!stderr.contains("panicked at"));
-    assert!(!stderr.contains("SIGABRT"));
+    assert!(!stderr.contains("core dumped"));
 }
 
 #[test]

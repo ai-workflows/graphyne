@@ -20,7 +20,7 @@ pub struct CallContext {
     /// A buffer for child call contexts spawned by this call context.
     pub child_calls: Vec<OnceLock<Arc<CallContext>>>,
 
-    /// First runtime error observed while executing this call tree.
+    /// The first runtime error observed while executing this call tree.
     pub runtime_error: Arc<Mutex<Option<String>>>,
 }
 

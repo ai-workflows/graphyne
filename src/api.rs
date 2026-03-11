@@ -7,7 +7,10 @@ use crate::binder::intermediate::collection::Collection;
 use crate::runtime::data::live::PointerLive;
 use crate::runtime::{Symbol, SymbolPath};
 use crate::runtime::static_state::state::StaticState;
-use crate::runtime::vm::manager::{init_await_call, init_stream_call, try_init_await_call, try_init_stream_call, StreamOutputs};
+use crate::runtime::vm::call_context::CallContext;
+use crate::runtime::vm::manager::{init_await_call, init_stream_call, try_init_await_call, try_init_stream_call};
+
+type StreamCallResult = (usize, Receiver<(usize, PointerLive)>, Arc<CallContext>);
 
 fn build_worker_pool(workers: Option<usize>) -> Arc<rayon::ThreadPool> {
     let worker_count = get_worker_counts(workers);
@@ -40,7 +43,7 @@ pub fn try_stream_call(
     inputs: Vec<PointerLive>,
     static_state: Arc<StaticState>,
     workers: Option<usize>,
-) -> Result<StreamOutputs, String> {
+) -> Result<StreamCallResult, String> {
     let worker_pool = build_worker_pool(workers);
     try_init_stream_call(main_symbol_path, inputs, static_state, worker_pool)
 }
