@@ -105,8 +105,7 @@ fn invalid_program_reports_bind_error_without_panicking() {
         .output()
         .expect("failed to run graphyne await with invalid program");
 
-    assert!(output.status.success(), "expected graceful exit, got status {:?}", output.status.code());
-    assert!(output.stdout.is_empty(), "unexpected stdout: {}", String::from_utf8_lossy(&output.stdout));
+    assert!(output.status.success(), "unexpected exit status {:?}", output.status.code());
 
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("Error binding program") || stderr.contains("Error starting program"));

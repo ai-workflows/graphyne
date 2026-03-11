@@ -8,6 +8,8 @@
       "functions": {
         "double": {
           "graph": {
+            "input_vals": ["num"],
+            "output_vals": ["doubled"],
             "values": [
               "two",
               "num",
@@ -16,47 +18,48 @@
             "ops": [
               ["Static", ["two"], ["two"]],
               ["Mul", ["num", "two"], ["doubled"]]
-            ],
-            "input_vals": ["num"],
-            "output_vals": ["doubled"]
+            ]
           }
         },
         "double_numbers": {
           "graph": {
+            "input_vals": [],
+            "output_vals": ["doubled_list"],
             "values": [
               "double",
               "numbers",
-              "result"
+              "doubled_list"
             ],
             "ops": [
               ["Static", ["double"], ["double"]],
               ["Static", ["numbers"], ["numbers"]],
-              ["Map", ["double", "numbers"], ["result"]]
-            ],
-            "input_vals": [],
-            "output_vals": ["result"]
+              ["Map", ["double", "numbers"], ["doubled_list"]]
+            ]
           }
         }
       }
     }
   },
+  "constants": {},
   "functions": {
     "main": {
       "graph": {
+        "input_vals": [],
+        "output_vals": ["doubled_list"],
         "values": [
           "math",
           ["double_numbers_key", "double_numbers"],
           "double_numbers_func",
-          "result"
+          "doubled_list"
         ],
         "ops": [
           ["Static", ["math"], ["math"]],
           ["Get", ["math", "double_numbers_key"], ["double_numbers_func"]],
-          ["Call", ["double_numbers_func"], ["result"]]
-        ],
-        "input_vals": [],
-        "output_vals": ["result"]
+          ["Call", ["double_numbers_func"], ["doubled_list"]]
+        ]
       }
     }
-  }
+  },
+  "imports": {},
+  "types": {}
 }
