@@ -33,7 +33,7 @@ pub fn init_child_call(
     }).collect();
 
     // get the function that this call is to
-    let called_func: &FuncLive = get_static_func(&func_ref);
+    let called_func: &FuncLive = get_static_func(func_ref);
 
     if output_types.len() != called_func.output_vals.len() {
         panic!("CallContext::create_call: output_types length does not match called_func.output_vals length");
@@ -51,14 +51,14 @@ pub fn init_child_call(
     // iterate over each arg (other than the first, the function) and dispatch it in the child context if it is known
     // unknown args will be dispatched as they arrive
     for (i, arg_val_index) in call_op.input_vals.iter().skip(1).enumerate() {
-        match parent_context.val_buffer[*arg_val_index].get() {
-            Some(v) => set_val(
+        if let Some(v) = parent_context.val_buffer[*arg_val_index].get() {
+            set_val(
                 child_context.clone(),
                 called_func.input_vals[i],
                 v.clone(),
                 static_state.clone(),
-                worker_pool.clone()),
-            None => ()
+                worker_pool.clone(),
+            );
         }
     }
 
@@ -148,11 +148,8 @@ pub fn dispatch_call_args(
 
 pub fn get_child_call_opt(context: Arc<CallContext>, call_index: usize) -> Option<Arc<CallContext>> {
     match context.child_calls.get(call_index) {
-        Some(v) => match v.get() {
-            Some(v) => Some(v.clone()),
-            None => None
-        },
-        None => panic!("CallContext::get_child_call_opt: call_index out of bounds")
+        Some(v) => v.get().cloned(),
+        None => panic!("CallContext::get_child_call_opt: call_index out of bounds"),
     }
 }
 
@@ -292,12 +289,14 @@ fn handle_reduce_link(
     }
     else {
         executor::dispatch_next_reduce(
-            link.source_context.clone(),
-            link.source_result_val,
-            link.source_list.clone(),
-            link.source_idx + 1,
-            link.called_func.clone(),
-            val,
+            executor::ReduceDispatch {
+                source_context: link.source_context.clone(),
+                source_result_val: link.source_result_val,
+                source_list: link.source_list.clone(),
+                next_idx: link.source_idx + 1,
+                called_func: link.called_func.clone(),
+                last_val: val,
+            },
             static_state.clone(),
             worker_pool.clone()
         );

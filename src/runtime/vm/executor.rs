@@ -12,6 +12,15 @@ use crate::runtime::vm::operator::ops::Operation;
 use crate::runtime::vm::orchestrator::{get_val, init_anonymous_call, set_val};
 use crate::runtime::vm::outputs::{FilterLink, MapLink, OutputType, ReduceLink};
 
+pub(crate) struct ReduceDispatch {
+    pub(crate) source_context: Arc<CallContext>,
+    pub(crate) source_result_val: usize,
+    pub(crate) source_list: PointerLive,
+    pub(crate) next_idx: usize,
+    pub(crate) called_func: PointerLive,
+    pub(crate) last_val: PointerLive,
+}
+
 pub fn dispatch_op(
     context: Arc<CallContext>,
     op_idx: usize,
@@ -65,7 +74,7 @@ pub fn handle_map_op(
     static_state: Arc<StaticState>,
     worker_pool: Arc<ThreadPool>
 ) {
-    let called_func_pointer: &PointerLive = match inputs.get(0) {
+    let called_func_pointer: &PointerLive = match inputs.first() {
         Some(v) => v,
         None => panic!("dispatch_op: map op has no inputs")
     };
@@ -111,7 +120,7 @@ pub fn handle_map_op(
 
         init_anonymous_call(
             called_func_ref,
-            &[item.clone()],
+            std::slice::from_ref(item),
             vec![OutputType::MapLink(map_link)],
             static_state.clone(),
             worker_pool.clone(),
@@ -126,7 +135,7 @@ pub fn handle_filter_op(
     static_state: Arc<StaticState>,
     worker_pool: Arc<ThreadPool>
 ) {
-    let called_func_pointer: &PointerLive = match inputs.get(0) {
+    let called_func_pointer: &PointerLive = match inputs.first() {
         Some(v) => v,
         None => panic!("dispatch_op: filter op has no inputs")
     };
@@ -173,7 +182,7 @@ pub fn handle_filter_op(
 
         init_anonymous_call(
             called_func_ref,
-            &[item.clone()],
+            std::slice::from_ref(item),
             vec![OutputType::FilterLink(filter_link)],
             static_state.clone(),
             worker_pool.clone(),
@@ -182,39 +191,36 @@ pub fn handle_filter_op(
 }
 
 pub fn dispatch_next_reduce(
-    source_context: Arc<CallContext>,
-    source_result_val: usize,
-    source_list: PointerLive,
-    next_idx: usize,
-    called_func: PointerLive,
-    last_val: PointerLive,
+    dispatch: ReduceDispatch,
     static_state: Arc<StaticState>,
     worker_pool: Arc<ThreadPool>
 ) {
     let new_link: ReduceLink = ReduceLink {
-        source_context,
-        source_result_val,
-        source_list: source_list.clone(),
-        source_idx: next_idx,
-        called_func: called_func.clone()
+        source_context: dispatch.source_context,
+        source_result_val: dispatch.source_result_val,
+        source_list: dispatch.source_list.clone(),
+        source_idx: dispatch.next_idx,
+        called_func: dispatch.called_func.clone()
     };
 
-    let next_item: &PointerLive = match source_list.stored_as_list() {
-        Ok(v) => match v.get(next_idx) {
+    let next_item: &PointerLive = match dispatch.source_list.stored_as_list() {
+        Ok(v) => match v.get(dispatch.next_idx) {
             Some(v) => v,
-            None => return
+            None => return,
         },
         Err(e) => panic!("dispatch_next_reduce: {}", e)
     };
 
-    let called_func_ref = match called_func.as_static_ref() {
+    let called_func_ref = match dispatch.called_func.as_static_ref() {
         Ok(v) => v,
         Err(e) => panic!("dispatch_next_reduce: {}", e)
     };
 
+    // create a new call context for the called function for the next item
+    let inputs = [dispatch.last_val, next_item.clone()];
     init_anonymous_call(
         called_func_ref,
-        &[last_val, next_item.clone()],
+        &inputs,
         vec![OutputType::ReduceLink(new_link)],
         static_state.clone(),
         worker_pool.clone(),
@@ -228,7 +234,7 @@ pub fn handle_reduce_op(
     static_state: Arc<StaticState>,
     worker_pool: Arc<ThreadPool>
 ) {
-    let called_func_pointer: &PointerLive = match inputs.get(0) {
+    let called_func_pointer: &PointerLive = match inputs.first() {
         Some(v) => v,
         None => panic!("dispatch_op: reduce op has no inputs")
     };
@@ -260,12 +266,14 @@ pub fn handle_reduce_op(
     let called_func: PointerLive = called_func_pointer.clone();
 
     dispatch_next_reduce(
-        source_context,
-        source_result_val,
-        source_list,
-        0,
-        called_func,
-        initial_val.clone(),
+        ReduceDispatch {
+            source_context,
+            source_result_val,
+            source_list,
+            next_idx: 0,
+            called_func,
+            last_val: initial_val.clone(),
+        },
         static_state,
         worker_pool,
     );

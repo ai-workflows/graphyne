@@ -7,7 +7,7 @@ use crate::runtime::static_state::state::StaticState;
 
 impl LiveData for DictLive {
     fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {
-        type_map.get_primitive_type(&TypeLive::Dictionary).map(|r| Ok(r))
+        type_map.get_primitive_type(&TypeLive::Dictionary).map(Ok)
     }
 
     fn as_dict(&self) -> Option<ExecResult<DictLive>> {
@@ -35,7 +35,7 @@ impl LiveData for DictLive {
             _ => return Some(Err("Index must be a string".to_string())),
         };
 
-        return Some(match self.get(&key) {
+        Some(match self.get(&key) {
             Some(ptr) => Ok(StoredData::PointerStored(ptr.clone())),
             None => Err(format!("Key {} not found", key)),
         })

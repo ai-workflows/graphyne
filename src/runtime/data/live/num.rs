@@ -27,15 +27,15 @@ macro_rules! checked_arithmetic_int_op {
 
 impl LiveData for IntLive {
     fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {
-        type_map.get_primitive_type(&TypeLive::Integer).map(|r| Ok(r))
+        type_map.get_primitive_type(&TypeLive::Integer).map(Ok)
     }
 
     fn as_int(&self) -> Option<ExecResult<IntLive>> {
-        Some(Ok(self.clone()))
+        Some(Ok(*self))
     }
 
     fn as_float(&self) -> Option<ExecResult<FloatLive>> {
-        Some(Ok(self.clone() as FloatLive))
+        Some(Ok(*self as FloatLive))
     }
 
     fn is_null(&self) -> Option<ExecResult<BoolLive>> {
@@ -44,34 +44,34 @@ impl LiveData for IntLive {
 
     fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
-            StoredData::IntStored(rhs) => Some(Ok(StoredData::BoolStored(self.clone() == *rhs))),
+            StoredData::IntStored(rhs) => Some(Ok(StoredData::BoolStored(*self == *rhs))),
             StoredData::NullStored => self.is_null().map(|r| Ok(StoredData::BoolStored(r?))),
             _ => {
                 let cast_result: Option<ExecResult<IntLive>> = rhs.as_live().as_int();
 
-                cast_result.map(|rhs| Ok(StoredData::BoolStored(self.clone() == rhs?)))
+                cast_result.map(|rhs| Ok(StoredData::BoolStored(*self == rhs?)))
             }
         }
     }
 
     fn op_lt(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
-            StoredData::IntStored(rhs) => Some(Ok(StoredData::BoolStored(self.clone() < *rhs))),
+            StoredData::IntStored(rhs) => Some(Ok(StoredData::BoolStored(*self < *rhs))),
             _ => {
                 let cast_result: Option<ExecResult<IntLive>> = rhs.as_live().as_int();
 
-                cast_result.map(|rhs| Ok(StoredData::BoolStored(self.clone() < rhs?)))
+                cast_result.map(|rhs| Ok(StoredData::BoolStored(*self < rhs?)))
             }
         }
     }
 
     fn op_gt(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
-            StoredData::IntStored(rhs) => Some(Ok(StoredData::BoolStored(self.clone() > *rhs))),
+            StoredData::IntStored(rhs) => Some(Ok(StoredData::BoolStored(*self > *rhs))),
             _ => {
                 let cast_result: Option<ExecResult<IntLive>> = rhs.as_live().as_int();
 
-                cast_result.map(|rhs| Ok(StoredData::BoolStored(self.clone() > rhs?)))
+                cast_result.map(|rhs| Ok(StoredData::BoolStored(*self > rhs?)))
             }
         }
     }
@@ -98,11 +98,11 @@ impl LiveData for IntLive {
 
     fn op_pow(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
-            StoredData::IntStored(rhs) => Some(Ok(StoredData::IntStored(self.clone().pow(*rhs as u32)))),
+            StoredData::IntStored(rhs) => Some(Ok(StoredData::IntStored((*self).pow(*rhs as u32)))),
             _ => {
                 let cast_result: Option<ExecResult<IntLive>> = rhs.as_live().as_int();
 
-                cast_result.map(|rhs| Ok(StoredData::IntStored(self.clone().pow(rhs? as u32))))
+                cast_result.map(|rhs| Ok(StoredData::IntStored((*self).pow(rhs? as u32))))
             }
         }
     }
@@ -130,15 +130,15 @@ macro_rules! checked_arithmetic_float_op {
 
 impl LiveData for FloatLive {
     fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {
-        type_map.get_primitive_type(&TypeLive::Float).map(|r| Ok(r))
+        type_map.get_primitive_type(&TypeLive::Float).map(Ok)
     }
 
     fn as_int(&self) -> Option<ExecResult<IntLive>> {
-        Some(Ok(self.clone() as IntLive))
+        Some(Ok(*self as IntLive))
     }
 
     fn as_float(&self) -> Option<ExecResult<FloatLive>> {
-        Some(Ok(self.clone()))
+        Some(Ok(*self))
     }
 
     fn is_null(&self) -> Option<ExecResult<BoolLive>> {
@@ -147,13 +147,13 @@ impl LiveData for FloatLive {
 
     fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
-            StoredData::FloatStored(rhs) => Some(Ok(StoredData::BoolStored(self.clone() == *rhs))),
+            StoredData::FloatStored(rhs) => Some(Ok(StoredData::BoolStored(*self == *rhs))),
             StoredData::NullStored => self.is_null().map(|r| Ok(StoredData::BoolStored(r?))),
             _ => {
                 let cast_result: Option<ExecResult<FloatLive>> = rhs.as_live().as_float();
 
                 cast_result.map(|rhs| {
-                    Ok(StoredData::BoolStored(self.clone() == rhs?))
+                    Ok(StoredData::BoolStored(*self == rhs?))
                 })
             }
         }
@@ -161,12 +161,12 @@ impl LiveData for FloatLive {
 
     fn op_lt(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
-            StoredData::FloatStored(rhs) => Some(Ok(StoredData::BoolStored(self.clone() < *rhs))),
+            StoredData::FloatStored(rhs) => Some(Ok(StoredData::BoolStored(*self < *rhs))),
             _ => {
                 let cast_result: Option<ExecResult<FloatLive>> = rhs.as_live().as_float();
 
                 cast_result.map(|rhs| {
-                    Ok(StoredData::BoolStored(self.clone() < rhs?))
+                    Ok(StoredData::BoolStored(*self < rhs?))
                 })
             }
         }
@@ -174,12 +174,12 @@ impl LiveData for FloatLive {
 
     fn op_gt(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
-            StoredData::FloatStored(rhs) => Some(Ok(StoredData::BoolStored(self.clone() > *rhs))),
+            StoredData::FloatStored(rhs) => Some(Ok(StoredData::BoolStored(*self > *rhs))),
             _ => {
                 let cast_result: Option<ExecResult<FloatLive>> = rhs.as_live().as_float();
 
                 cast_result.map(|rhs| {
-                    Ok(StoredData::BoolStored(self.clone() > rhs?))
+                    Ok(StoredData::BoolStored(*self > rhs?))
                 })
             }
         }

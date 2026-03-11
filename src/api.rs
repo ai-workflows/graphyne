@@ -24,6 +24,7 @@ pub fn try_await_call(
     try_init_await_call(main_symbol_path, inputs, static_state, worker_pool)
 }
 
+#[allow(dead_code)]
 pub fn await_call(
     main_symbol_path: SymbolPath,
     inputs: Vec<PointerLive>,
@@ -44,6 +45,7 @@ pub fn try_stream_call(
     try_init_stream_call(main_symbol_path, inputs, static_state, worker_pool)
 }
 
+#[allow(dead_code)]
 pub fn stream_call(
     main_symbol_path: SymbolPath,
     inputs: Vec<PointerLive>,

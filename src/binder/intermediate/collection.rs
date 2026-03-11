@@ -26,6 +26,7 @@ pub struct Collection {
     pub imports: Option<HashMap<Symbol, SymbolPath>>,
 }
 
+#[allow(dead_code)]
 impl Collection {
     /// Creates a new collection with the given functions, constants, and sub-intermediate.
     pub fn new(

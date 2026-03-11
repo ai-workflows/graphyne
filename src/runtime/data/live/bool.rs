@@ -7,11 +7,11 @@ use crate::runtime::static_state::state::StaticState;
 
 impl LiveData for BoolLive {
     fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {
-        type_map.get_primitive_type(&TypeLive::Boolean).map(|r| Ok(r))
+        type_map.get_primitive_type(&TypeLive::Boolean).map(Ok)
     }
 
     fn as_bool(&self) -> Option<ExecResult<BoolLive>> {
-        Some(Ok(self.clone()))
+        Some(Ok(*self))
     }
 
     fn is_null(&self) -> Option<ExecResult<BoolLive>> {

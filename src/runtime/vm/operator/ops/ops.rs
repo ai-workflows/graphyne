@@ -5,6 +5,7 @@ use crate::runtime::data::stored::StoredData;
 /// Represents an operation that can be performed on data.
 /// Each operation contains a pointer to the data for its operands.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum Operation {
     /// Get the type of a value
     TypeOf(Arc<StoredData>),

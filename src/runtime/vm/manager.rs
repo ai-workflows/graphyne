@@ -48,6 +48,7 @@ pub fn try_init_stream_call(
     Ok((num_outputs, rx))
 }
 
+#[allow(dead_code)]
 pub fn init_stream_call(
     main_symbol_path: SymbolPath,
     inputs: Vec<PointerLive>,
@@ -81,6 +82,7 @@ pub fn try_init_await_call(
     ).collect()
 }
 
+#[allow(dead_code)]
 pub fn init_await_call(
     main_symbol_path: SymbolPath,
     inputs: Vec<PointerLive>,

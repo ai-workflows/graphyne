@@ -6,7 +6,7 @@ use crate::runtime::static_state::state::StaticState;
 
 impl LiveData for FuncLive {
     fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {
-        type_map.get_primitive_type(&TypeLive::Function).map(|r| Ok(r))
+        type_map.get_primitive_type(&TypeLive::Function).map(Ok)
     }
 
     // fn as_func(&self) -> Option<ExecResult<FuncLive>> {

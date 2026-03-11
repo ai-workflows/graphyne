@@ -34,6 +34,7 @@ pub struct CFnValueNode {
     pub constant: Option<CCData>,
 }
 
+#[allow(dead_code)]
 impl CFnValueNode {
     /// Creates a new function value node with the given symbol, indicating that it is a variable.
     pub fn var(symbol: Symbol) -> Self {
@@ -74,6 +75,7 @@ pub struct FunctionOpNode {
     pub output_vals: Vec<Symbol>,
 }
 
+#[allow(dead_code)]
 impl FunctionOpNode {
     pub fn new(opcode: OpCode, input_vals: Vec<Symbol>, output_val: Symbol) -> Self {
         if opcode == OpCode::Call {
@@ -89,7 +91,7 @@ impl FunctionOpNode {
 
     pub fn call(func: Symbol, args: Vec<Symbol>, outputs: Vec<Symbol>) -> Self {
         // for calling a function, we use a special notation where the first input is the function itself.
-        let input_vals = vec![func].into_iter().chain(args.into_iter()).collect();
+        let input_vals = std::iter::once(func).chain(args).collect();
 
         Self {
             opcode: OpCode::Call,

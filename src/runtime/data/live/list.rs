@@ -7,7 +7,7 @@ use crate::runtime::static_state::state::StaticState;
 
 impl LiveData for ListLive {
     fn type_of(&self, type_map: Arc<StaticState>) -> Option<ExecResult<PointerLive>> {
-        type_map.get_primitive_type(&TypeLive::List).map(|r| Ok(r))
+        type_map.get_primitive_type(&TypeLive::List).map(Ok)
     }
 
     fn as_list(&self) -> Option<ExecResult<ListLive>> {
@@ -101,14 +101,14 @@ impl LiveData for ListLive {
         // Return None to indicate that the operation is not supported
         let cast_result: ExecResult<ListLive> = rhs.as_live().as_list()?;
 
-        return cast_result.map(|rhs| {
+        cast_result.map(|rhs| {
             // Iterate over rhs_list and add elements to lhs
             for element in rhs {
                 lhs.push(element);
             }
             // Convert ListLive to StoredData and wrap in ExecResult
             Ok(StoredData::ListStored(lhs))
-        }).ok();
+        }).ok()
     }
 }
 
