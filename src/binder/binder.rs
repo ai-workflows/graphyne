@@ -12,6 +12,47 @@ use crate::runtime::data::live::{DictLive, PointerLive, StaticRefLive, TypeLive}
 use crate::runtime::data::stored::StoredData;
 
 
+fn validate_collection_symbol_uniqueness(
+    symbol_path: &SymbolPath,
+    value: &Collection,
+) -> ExecResult<()> {
+    let mut seen: HashMap<&str, &str> = HashMap::new();
+
+    macro_rules! check_group {
+        ($group_name:literal, $group:expr) => {
+            if let Some(entries) = $group {
+                for symbol in entries.keys() {
+                    if let Some(existing_group) = seen.insert(symbol.as_str(), $group_name) {
+                        return Err(format!(
+                            "Duplicate collection symbol '{}' in {:?} across {} and {}",
+                            symbol,
+                            symbol_path,
+                            existing_group,
+                            $group_name
+                        ));
+                    }
+                }
+            }
+        };
+    }
+
+    check_group!("functions", value.functions.as_ref());
+    check_group!("constants", value.constants.as_ref());
+    check_group!("types", value.types.as_ref());
+    check_group!("imports", value.imports.as_ref());
+    check_group!("collections", value.collections.as_ref());
+
+    if let Some(collections) = &value.collections {
+        for (name, sub_collection) in collections {
+            let mut sub_path = symbol_path.clone();
+            sub_path.push(name.clone());
+            validate_collection_symbol_uniqueness(&sub_path, sub_collection)?;
+        }
+    }
+
+    Ok(())
+}
+
 fn buffer_collection_property_group<T>(
     group: &Option<HashMap<Symbol, T>>,
     static_state: &mut StaticState,
@@ -559,6 +600,8 @@ pub fn bind_program(
 ) -> ExecResult<PointerLive> {
     let main_symbol: Symbol = main_symbol.unwrap_or_else(|| "main".to_string());
     let main_path: SymbolPath = vec![main_symbol.clone()];
+
+    validate_collection_symbol_uniqueness(&main_path, &program)?;
 
     let main_ptr: PointerLive = match buffer_collection(static_state, &main_path, &program) {
         Ok(v) => v,
