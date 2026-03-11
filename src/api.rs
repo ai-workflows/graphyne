@@ -832,6 +832,36 @@ mod tests {
     }
 
     #[test]
+    fn bind_rejects_duplicate_custom_type_fields() {
+        let json_collection = r#"{
+            "types": {
+                "Person": [
+                    ["name", "str"],
+                    ["name", "int"]
+                ]
+            },
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["Person", ["name1", "Ada"], ["name2", 42], "person"],
+                        "ops": [
+                            ["Static", ["Person"], ["Person"]],
+                            ["Init", ["Person", "name1", "name2"], ["person"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["person"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Duplicate field 'name'"));
+        assert!(err.contains("type 'Person'"));
+    }
+
+    #[test]
     fn bind_rejects_map_target_that_is_known_non_function() {
         let json_collection = r#"{
             "functions": {

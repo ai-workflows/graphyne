@@ -148,6 +148,27 @@ fn cc_data_to_stored(
     }
 }
 
+fn validate_custom_type_fields(
+    type_symbol: &Symbol,
+    type_def: &CustomTypeDef,
+    collection_symbol_path: &SymbolPath,
+) -> ExecResult<()> {
+    let mut seen: HashSet<&str> = HashSet::new();
+
+    for (field_symbol, _) in &type_def.0 {
+        if !seen.insert(field_symbol.as_str()) {
+            return Err(format!(
+                "Duplicate field '{}' in type '{}' at {:?}",
+                field_symbol,
+                type_symbol,
+                collection_symbol_path
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 fn type_def_to_live_type(
     type_def: &CustomTypeDef,
     static_state: &mut StaticState,
@@ -844,6 +865,8 @@ pub fn fill_collection(
         for (name, type_def) in types {
             let mut path: SymbolPath = symbol_path.clone();
             path.push(name.clone());
+
+            validate_custom_type_fields(name, type_def, symbol_path)?;
 
             let static_ref: StaticRefLive = static_state.get_ref(&path)?;
             let live_type: TypeLive = type_def_to_live_type(type_def, static_state, name)?;
