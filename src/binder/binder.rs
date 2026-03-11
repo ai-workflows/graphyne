@@ -308,6 +308,10 @@ fn cl_func_to_live_func(
 fn resolve_import_path(root_symbol_path: &SymbolPath, import_path: &SymbolPath) -> SymbolPath {
     if import_path.first() == root_symbol_path.first() {
         import_path.clone()
+    } else if import_path.first() == root_symbol_path.last() || import_path.first().is_some_and(|segment| segment == "root") {
+        let mut resolved = root_symbol_path.clone();
+        resolved.extend(import_path.iter().skip(1).cloned());
+        resolved
     } else {
         let mut resolved = root_symbol_path.clone();
         resolved.extend(import_path.iter().cloned());
