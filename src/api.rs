@@ -1126,6 +1126,38 @@ mod tests {
     }
 
     #[test]
+    fn bind_rejects_filter_target_with_non_bool_constant_output() {
+        let json_collection = r#"{
+            "functions": {
+                "const_int": {
+                    "graph": {
+                        "values": [["value", 1]],
+                        "ops": [],
+                        "input_vals": [],
+                        "output_vals": ["value"]
+                    }
+                },
+                "main": {
+                    "graph": {
+                        "values": ["const_int", ["items", [1, 2]], "out"],
+                        "ops": [
+                            ["Static", ["const_int"], ["const_int"]],
+                            ["Filter", ["const_int", "items"], ["out"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Filter target 'const_int'"));
+        assert!(err.contains("must produce a bool output"));
+    }
+
+    #[test]
     fn bind_rejects_filter_target_that_is_known_non_function() {
         let json_collection = r#"{
             "functions": {
