@@ -190,6 +190,7 @@ pub fn handle_filter_op(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn dispatch_next_reduce(
     dispatch: ReduceDispatch,
     static_state: Arc<StaticState>,

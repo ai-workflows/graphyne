@@ -149,7 +149,7 @@ pub fn dispatch_call_args(
 pub fn get_child_call_opt(context: Arc<CallContext>, call_index: usize) -> Option<Arc<CallContext>> {
     match context.child_calls.get(call_index) {
         Some(v) => v.get().cloned(),
-        None => panic!("CallContext::get_child_call_opt: call_index out of bounds"),
+        None => panic!("CallContext::get_child_call_opt: call_index out of bounds")
     }
 }
 
