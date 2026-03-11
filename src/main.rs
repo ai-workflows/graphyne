@@ -1,6 +1,6 @@
 use clap::Parser;
 use std::sync::Arc;
-use crate::api::{await_call, bind, get_worker_counts, load_intermediate, log_async, log_error, stream_call};
+use crate::api::{bind, get_worker_counts, load_intermediate, log_async, log_error, try_await_call, try_stream_call};
 use crate::binder::intermediate::collection::Collection;
 use crate::binder::json::jsonify;
 use crate::runtime::data::live::PointerLive;
@@ -74,12 +74,18 @@ fn main() {
                 .map_err(|e| log_error(format!("Error binding program: {}", e)))
                 .unwrap();
 
-            let (num_outputs, outputs_receiver) = stream_call(
+            let (num_outputs, outputs_receiver) = match try_stream_call(
                 vec![main_collection_symbol, "main".to_string()],
                 vec![],
                 static_state.clone(),
                 Some(worker_count),
-            );
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    log_error(format!("Error starting program: {}", e));
+                    return;
+                }
+            };
 
             log_verbose(verbose, format!("waiting for {} outputs", num_outputs));
 
@@ -107,12 +113,18 @@ fn main() {
                 .map_err(|e| log_error(format!("Error binding program: {}", e)))
                 .unwrap();
 
-            let res: Vec<PointerLive> = await_call(
+            let res: Vec<PointerLive> = match try_await_call(
                 vec![main_collection_symbol, "main".to_string()],
                 vec![],
                 static_state.clone(),
                 Some(worker_count),
-            );
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    log_error(format!("Error starting program: {}", e));
+                    return;
+                }
+            };
 
             log_verbose(verbose, format!("received {} outputs", res.len()));
 
