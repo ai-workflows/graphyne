@@ -23,6 +23,7 @@ pub type StaticRefLive = Arc<OnceLock<StoredData>>;
 
 /// Represents data that is currently usable for performing operations.
 #[allow(unused_variables)]
+#[allow(dead_code)]
 pub trait LiveData {
     /// Operations return `None` if they are not implemented.
     /// Returns a pointer to the type of this data. Requires passing a type map.
