@@ -894,6 +894,82 @@ fn resolve_import_path(root_symbol_path: &SymbolPath, import_path: &SymbolPath) 
     }
 }
 
+fn validate_import_cycles(
+    collection: &Collection,
+    root_symbol_path: &SymbolPath,
+    collection_symbol_path: &SymbolPath,
+) -> ExecResult<()> {
+    let Some(imports) = &collection.imports else {
+        return Ok(());
+    };
+
+    let mut import_graph: HashMap<&str, String> = HashMap::new();
+    for (name, import_path) in imports {
+        let resolved_import_path = resolve_import_path(root_symbol_path, import_path);
+        if resolved_import_path.len() == collection_symbol_path.len() + 1
+            && resolved_import_path.starts_with(collection_symbol_path)
+        {
+            let target_symbol = resolved_import_path.last().unwrap();
+            if imports.contains_key(target_symbol) {
+                import_graph.insert(name.as_str(), target_symbol.clone());
+            }
+        }
+    }
+
+    let mut visiting: HashSet<String> = HashSet::new();
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut stack: Vec<String> = Vec::new();
+
+    fn visit(
+        symbol: &str,
+        import_graph: &HashMap<&str, String>,
+        visiting: &mut HashSet<String>,
+        visited: &mut HashSet<String>,
+        stack: &mut Vec<String>,
+        collection_symbol_path: &SymbolPath,
+    ) -> ExecResult<()> {
+        if visited.contains(symbol) {
+            return Ok(());
+        }
+
+        if !visiting.insert(symbol.to_string()) {
+            let cycle_start = stack.iter().position(|name| name == symbol).unwrap_or(0);
+            let mut cycle: Vec<String> = stack[cycle_start..].to_vec();
+            cycle.push(symbol.to_string());
+            let cycle = cycle.join(" -> ");
+            return Err(format!(
+                "Import cycle detected in {:?}: {}",
+                collection_symbol_path,
+                cycle
+            ));
+        }
+
+        stack.push(symbol.to_string());
+
+        if let Some(next) = import_graph.get(symbol) {
+            visit(next, import_graph, visiting, visited, stack, collection_symbol_path)?;
+        }
+
+        stack.pop();
+        visiting.remove(symbol);
+        visited.insert(symbol.to_string());
+        Ok(())
+    }
+
+    for symbol in imports.keys() {
+        visit(
+            symbol.as_str(),
+            &import_graph,
+            &mut visiting,
+            &mut visited,
+            &mut stack,
+            collection_symbol_path,
+        )?;
+    }
+
+    Ok(())
+}
+
 pub fn fill_collection(
     static_state: &mut StaticState,
     root_collection: &Collection,
@@ -912,6 +988,8 @@ pub fn fill_collection(
                 .map_err(|_| format!("Error setting constant at path {:?}", path))?;
         }
     }
+
+    validate_import_cycles(value, root_symbol_path, symbol_path)?;
 
     // store the static reference to the imported collections at each import location
     if let Some(imports) = &value.imports {

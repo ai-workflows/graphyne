@@ -1217,6 +1217,86 @@ fn duplicate_custom_type_fields_report_bind_error_cleanly() {
 }
 
 #[test]
+fn direct_import_cycle_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-direct-import-cycle.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "imports": {
+    "a": ["a"]
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["a", "result"],
+        "ops": [
+          ["Static", ["a"], ["a"]],
+          ["AsString", ["a"], ["result"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["result"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with direct import cycle");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Import cycle detected"));
+    assert!(stderr.contains("a -> a"));
+    assert!(!stderr.contains("stack overflow"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn mutual_import_cycle_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-mutual-import-cycle.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "imports": {
+    "a": ["b"],
+    "b": ["a"]
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["a", "result"],
+        "ops": [
+          ["Static", ["a"], ["a"]],
+          ["AsString", ["a"], ["result"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["result"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with mutual import cycle");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Import cycle detected"));
+    assert!(stderr.contains("a"));
+    assert!(stderr.contains("b"));
+    assert!(!stderr.contains("stack overflow"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn direct_recursive_call_cycle_reports_bind_error_cleanly() {
     let invalid_program_path = std::env::temp_dir().join("graphyne-direct-recursive-call.json");
     std::fs::write(
