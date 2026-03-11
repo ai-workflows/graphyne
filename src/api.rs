@@ -719,4 +719,155 @@ mod tests {
         assert!(err.contains("Call to 'double'"));
         assert!(err.contains("expects 2 inputs but received 1"));
     }
+
+    #[test]
+    fn bind_rejects_init_target_that_is_known_non_type() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": [["value", 42], "result"],
+                        "ops": [["Init", ["value"], ["result"]]],
+                        "input_vals": [],
+                        "output_vals": ["result"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Init target 'value'"));
+        assert!(err.contains("is not a custom type"));
+    }
+
+    #[test]
+    fn bind_rejects_imported_init_target_that_is_not_a_type() {
+        let json_collection = r#"{
+            "collections": {
+                "lib": {
+                    "constants": {
+                        "value": 42
+                    }
+                }
+            },
+            "imports": {
+                "value": ["lib", "value"]
+            },
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["value", "result"],
+                        "ops": [
+                            ["Static", ["value"], ["value"]],
+                            ["Init", ["value"], ["result"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["result"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Init target 'value'"));
+        assert!(err.contains("is not a custom type"));
+    }
+
+    #[test]
+    fn bind_rejects_local_init_arg_count_mismatch() {
+        let json_collection = r#"{
+            "types": {
+                "Person": {
+                    "name": "str",
+                    "age": "int"
+                }
+            },
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["Person", ["name", "Ada"], "person"],
+                        "ops": [
+                            ["Static", ["Person"], ["Person"]],
+                            ["Init", ["Person", "name"], ["person"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["person"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Init of 'Person'"));
+        assert!(err.contains("expects 2 fields but received 1"));
+    }
+
+    #[test]
+    fn bind_rejects_imported_init_arg_count_mismatch() {
+        let json_collection = r#"{
+            "collections": {
+                "lib": {
+                    "types": {
+                        "Person": {
+                            "name": "str",
+                            "age": "int"
+                        }
+                    }
+                }
+            },
+            "imports": {
+                "Person": ["lib", "Person"]
+            },
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["Person", ["name", "Ada"], "person"],
+                        "ops": [
+                            ["Static", ["Person"], ["Person"]],
+                            ["Init", ["Person", "name"], ["person"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["person"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Init of 'Person'"));
+        assert!(err.contains("expects 2 fields but received 1"));
+    }
+
+    #[test]
+    fn bind_rejects_init_output_count_mismatch() {
+        let json_collection = r#"{
+            "types": {
+                "Person": {
+                    "name": "str"
+                }
+            },
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["Person", ["name", "Ada"], "person1", "person2"],
+                        "ops": [
+                            ["Static", ["Person"], ["Person"]],
+                            ["Init", ["Person", "name"], ["person1", "person2"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["person1"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Opcode init"));
+        assert!(err.contains("expects 1 outputs but received 2"));
+    }
 }

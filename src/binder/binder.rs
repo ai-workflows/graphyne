@@ -354,13 +354,15 @@ fn get_local_function_signature(
 
 enum CollectionTarget<'a> {
     Function(&'a CollectionFunc),
+    Type(&'a CustomTypeDef),
     Import(&'a SymbolPath),
     Other,
 }
 
-enum ImportedCallTarget<'a> {
+enum ImportedTarget<'a> {
     Function(&'a CollectionFunc),
-    NonFunction,
+    Type(&'a CustomTypeDef),
+    Other,
 }
 
 fn get_collection_target<'a>(
@@ -390,6 +392,12 @@ fn get_collection_target<'a>(
         }
     }
 
+    if let Some(types) = &collection.types {
+        if let Some(type_def) = types.get(target_symbol) {
+            return Some(CollectionTarget::Type(type_def));
+        }
+    }
+
     if let Some(imports) = &collection.imports {
         if let Some(import_path) = imports.get(target_symbol) {
             return Some(CollectionTarget::Import(import_path));
@@ -397,7 +405,6 @@ fn get_collection_target<'a>(
     }
 
     if collection.constants.as_ref().is_some_and(|constants| constants.contains_key(target_symbol))
-        || collection.types.as_ref().is_some_and(|types| types.contains_key(target_symbol))
         || collection.collections.as_ref().is_some_and(|collections| collections.contains_key(target_symbol))
     {
         return Some(CollectionTarget::Other);
@@ -406,14 +413,14 @@ fn get_collection_target<'a>(
     None
 }
 
-fn resolve_imported_call_target<'a>(
-    callee_symbol: &str,
+fn resolve_imported_target<'a>(
+    symbol: &str,
     sibling_imports: Option<&HashMap<Symbol, SymbolPath>>,
     root_collection: &'a Collection,
     root_symbol_path: &SymbolPath,
-) -> Option<ImportedCallTarget<'a>> {
+) -> Option<ImportedTarget<'a>> {
     let sibling_imports = sibling_imports?;
-    let import_path = sibling_imports.get(callee_symbol)?;
+    let import_path = sibling_imports.get(symbol)?;
     let mut resolved_path = resolve_import_path(root_symbol_path, import_path);
     let mut visited: HashSet<SymbolPath> = HashSet::new();
 
@@ -423,19 +430,22 @@ fn resolve_imported_call_target<'a>(
         }
 
         match get_collection_target(root_collection, root_symbol_path, &resolved_path)? {
-            CollectionTarget::Function(func) => return Some(ImportedCallTarget::Function(func)),
+            CollectionTarget::Function(func) => return Some(ImportedTarget::Function(func)),
+            CollectionTarget::Type(type_def) => return Some(ImportedTarget::Type(type_def)),
             CollectionTarget::Import(import_path) => {
                 resolved_path = resolve_import_path(root_symbol_path, import_path);
             }
-            CollectionTarget::Other => return Some(ImportedCallTarget::NonFunction),
+            CollectionTarget::Other => return Some(ImportedTarget::Other),
         }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cl_func_to_live_func(
     func: &CollectionFunc,
     func_symbol_path: &SymbolPath,
     sibling_functions: Option<&HashMap<Symbol, CollectionFunc>>,
+    sibling_types: Option<&HashMap<Symbol, CustomTypeDef>>,
     sibling_imports: Option<&HashMap<Symbol, SymbolPath>>,
     root_collection: &Collection,
     root_symbol_path: &SymbolPath,
@@ -515,7 +525,7 @@ fn cl_func_to_live_func(
 
         if op_node.opcode == OpCode::Call {
             if let Some(callee_symbol) = op_node.input_vals.first() {
-                let imported_target = resolve_imported_call_target(
+                let imported_target = resolve_imported_target(
                     callee_symbol,
                     sibling_imports,
                     root_collection,
@@ -524,7 +534,7 @@ fn cl_func_to_live_func(
 
                 if let Some((callee_inputs, callee_outputs)) = get_local_function_signature(callee_symbol, sibling_functions)
                     .or(match imported_target {
-                        Some(ImportedCallTarget::Function(func)) => {
+                        Some(ImportedTarget::Function(func)) => {
                             Some((func.graph.input_vals.len(), func.graph.output_vals.len()))
                         }
                         _ => None,
@@ -563,7 +573,7 @@ fn cl_func_to_live_func(
                     }
                 }
 
-                if matches!(imported_target, Some(ImportedCallTarget::NonFunction)) {
+                if matches!(imported_target, Some(ImportedTarget::Other) | Some(ImportedTarget::Type(_))) {
                     return Err(format!(
                         "Call target '{}' in function {:?} is not a function",
                         callee_symbol,
@@ -576,6 +586,65 @@ fn cl_func_to_live_func(
                 val_as_args.entry(arg_symbol.clone()).or_default().push((call_ops.len(), arg_idx));
             }
             call_ops.push(func_op.index);
+        }
+
+        if op_node.opcode == OpCode::Init {
+            if op_node.output_vals.len() != 1 {
+                return Err(format!(
+                    "Opcode init in function {:?} expects 1 outputs but received {}",
+                    func_symbol_path,
+                    op_node.output_vals.len()
+                ));
+            }
+
+            if let Some(type_symbol) = op_node.input_vals.first() {
+                let imported_target = resolve_imported_target(
+                    type_symbol,
+                    sibling_imports,
+                    root_collection,
+                    root_symbol_path,
+                );
+
+                if let Some(type_idx) = symbol_idxs.get(type_symbol) {
+                    let type_val = &func.graph.values[*type_idx];
+                    if type_val.constant.is_some() {
+                        return Err(format!(
+                            "Init target '{}' in function {:?} is not a custom type",
+                            type_symbol,
+                            func_symbol_path
+                        ));
+                    }
+                }
+
+                let local_type_field_count = sibling_types
+                    .and_then(|types| types.get(type_symbol))
+                    .map(|type_def| type_def.0.len());
+                let imported_type_field_count = match imported_target {
+                    Some(ImportedTarget::Type(type_def)) => Some(type_def.0.len()),
+                    _ => None,
+                };
+
+                if let Some(expected_init_args) = local_type_field_count.or(imported_type_field_count) {
+                    let provided_init_args = op_node.input_vals.len() - 1;
+                    if provided_init_args != expected_init_args {
+                        return Err(format!(
+                            "Init of '{}' in function {:?} expects {} fields but received {}",
+                            type_symbol,
+                            func_symbol_path,
+                            expected_init_args,
+                            provided_init_args
+                        ));
+                    }
+                }
+
+                if matches!(imported_target, Some(ImportedTarget::Function(_)) | Some(ImportedTarget::Other)) {
+                    return Err(format!(
+                        "Init target '{}' in function {:?} is not a custom type",
+                        type_symbol,
+                        func_symbol_path
+                    ));
+                }
+            }
         }
 
         ops.push(func_op);
@@ -739,7 +808,7 @@ pub fn fill_collection(
             path.push(name.clone());
 
             let static_ref: StaticRefLive = static_state.get_ref(&path)?;
-            let live_func: FuncLive = cl_func_to_live_func(func, &path, value.functions.as_ref(), value.imports.as_ref(), root_collection, root_symbol_path, static_state)?;
+            let live_func: FuncLive = cl_func_to_live_func(func, &path, value.functions.as_ref(), value.types.as_ref(), value.imports.as_ref(), root_collection, root_symbol_path, static_state)?;
             static_ref.set(StoredData::FuncStored(live_func))
                 .map_err(|_| format!("Error setting function at path {:?}", path))?;
         }
