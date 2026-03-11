@@ -742,6 +742,38 @@ fn call_input_count_mismatch_reports_bind_error_cleanly() {
 }
 
 #[test]
+fn missing_static_reference_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-missing-static-reference.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["missing_ref", "result"],
+        "ops": [["Static", ["missing_ref"], ["result"]]],
+        "input_vals": [],
+        "output_vals": ["result"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with missing static reference");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Static reference"));
+    assert!(stderr.contains("is not declared"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn invalid_input_path_exits_non_zero() {
     let output = Command::new(binary_path())
         .args(["await", "-i", "examples/intermediate/does_not_exist.json"])

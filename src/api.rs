@@ -525,4 +525,25 @@ mod tests {
         assert!(err.contains("Call to 'double'"));
         assert!(err.contains("expects 2 inputs but received 1"));
     }
+
+    #[test]
+    fn bind_rejects_missing_static_reference_with_clear_error() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["missing_ref", "result"],
+                        "ops": [["Static", ["missing_ref"], ["result"]]],
+                        "input_vals": [],
+                        "output_vals": ["result"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Static reference"));
+        assert!(err.contains("is not declared"));
+    }
 }

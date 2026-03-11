@@ -380,7 +380,13 @@ fn cl_func_to_live_func(
                 .take(func_symbol_path.len() - 1).cloned().collect();
             static_path.extend(op_node.input_vals.iter().cloned());
 
-            let static_ref: StaticRefLive = static_state.get_ref(&static_path)?;
+            let static_ref: StaticRefLive = static_state.get_ref(&static_path).map_err(|_| {
+                format!(
+                    "Static reference {:?} used by function {:?} is not declared",
+                    static_path,
+                    func_symbol_path
+                )
+            })?;
 
             let output_symbol: Symbol = op_node.output_vals.first().cloned()
                 .expect("Static op must have an output value");
