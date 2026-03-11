@@ -409,6 +409,81 @@ fn get_local_function_signature(
     Some((callee.graph.input_vals.len(), callee.graph.output_vals.len()))
 }
 
+fn validate_local_call_cycles(
+    sibling_functions: Option<&HashMap<Symbol, CollectionFunc>>,
+    collection_symbol_path: &SymbolPath,
+) -> ExecResult<()> {
+    let Some(sibling_functions) = sibling_functions else {
+        return Ok(());
+    };
+
+    let mut call_graph: HashMap<&str, Vec<&str>> = HashMap::new();
+    for (func_name, func) in sibling_functions {
+        let callees = func.graph.ops.iter()
+            .filter(|op_node| op_node.opcode == OpCode::Call)
+            .filter_map(|op_node| op_node.input_vals.first())
+            .filter(|callee_symbol| sibling_functions.contains_key(*callee_symbol))
+            .map(|callee_symbol| callee_symbol.as_str())
+            .collect();
+        call_graph.insert(func_name.as_str(), callees);
+    }
+
+    let mut visiting: HashSet<&str> = HashSet::new();
+    let mut visited: HashSet<&str> = HashSet::new();
+    let mut stack: Vec<&str> = Vec::new();
+
+    fn visit<'a>(
+        func_name: &'a str,
+        call_graph: &HashMap<&'a str, Vec<&'a str>>,
+        visiting: &mut HashSet<&'a str>,
+        visited: &mut HashSet<&'a str>,
+        stack: &mut Vec<&'a str>,
+        collection_symbol_path: &SymbolPath,
+    ) -> ExecResult<()> {
+        if visited.contains(func_name) {
+            return Ok(());
+        }
+
+        if !visiting.insert(func_name) {
+            let cycle_start = stack.iter().position(|name| *name == func_name).unwrap_or(0);
+            let mut cycle: Vec<&str> = stack[cycle_start..].to_vec();
+            cycle.push(func_name);
+            let cycle = cycle.join(" -> ");
+            return Err(format!(
+                "Recursive call cycle detected in {:?}: {}",
+                collection_symbol_path,
+                cycle
+            ));
+        }
+
+        stack.push(func_name);
+
+        if let Some(callees) = call_graph.get(func_name) {
+            for callee in callees {
+                visit(callee, call_graph, visiting, visited, stack, collection_symbol_path)?;
+            }
+        }
+
+        stack.pop();
+        visiting.remove(func_name);
+        visited.insert(func_name);
+        Ok(())
+    }
+
+    for func_name in sibling_functions.keys() {
+        visit(
+            func_name.as_str(),
+            &call_graph,
+            &mut visiting,
+            &mut visited,
+            &mut stack,
+            collection_symbol_path,
+        )?;
+    }
+
+    Ok(())
+}
+
 enum CollectionTarget<'a> {
     Function(&'a CollectionFunc),
     Type(&'a CustomTypeDef),
@@ -877,6 +952,8 @@ pub fn fill_collection(
 
     // store the functions at each location
     if let Some(functions) = &value.functions {
+        validate_local_call_cycles(value.functions.as_ref(), symbol_path)?;
+
         for (name, func) in functions {
             let mut path: SymbolPath = symbol_path.clone();
             path.push(name.clone());
