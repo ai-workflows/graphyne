@@ -307,6 +307,57 @@ fn object_person_example_uses_map_form_type_definition() {
 }
 
 #[test]
+fn object_set_wrong_field_type_reports_clean_runtime_error() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-object-wrong-field-type.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "types": {
+    "Person": {
+      "name": "str",
+      "age": "int"
+    }
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [
+          "Person",
+          ["name", "Ada"],
+          ["age", 36],
+          "person",
+          ["age_key", "age"],
+          ["wrong_age", "thirty seven"],
+          "updated_person"
+        ],
+        "ops": [
+          ["Static", ["Person"], ["Person"]],
+          ["Init", ["Person", "name", "age"], ["person"]],
+          ["Set", ["person", "age_key", "wrong_age"], ["updated_person"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["updated_person"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with wrong object field type");
+
+    assert!(!output.status.success(), "expected non-zero exit status for runtime error");
+    assert!(output.stdout.is_empty(), "unexpected stdout: {}", String::from_utf8_lossy(&output.stdout));
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Cannot set field age of type Integer to value of type String"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn object_set_missing_field_reports_clean_runtime_error() {
     let invalid_program_path = std::env::temp_dir().join("graphyne-object-missing-field.json");
     std::fs::write(
