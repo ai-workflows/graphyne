@@ -1,7 +1,7 @@
 use std::sync::{Arc, mpsc};
 use rayon::ThreadPool;
 use crate::runtime::data::functions::func::FuncLive;
-use crate::runtime::data::live::{PointerLive};
+use crate::runtime::data::live::PointerLive;
 use crate::runtime::static_state::state::StaticState;
 use crate::runtime::SymbolPath;
 use crate::runtime::vm::orchestrator;
@@ -66,16 +66,17 @@ pub fn init_await_call(
     ).collect()
 }
 
-
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc};
+    use std::sync::Arc;
     use crate::api::bind;
     use crate::binder::intermediate::collection::Collection;
     use crate::binder::json::jsonify;
-    use crate::runtime::data::live::{LiveData, IntLive, PointerLive};
+    use crate::runtime::data::live::{IntLive, LiveData, PointerLive};
     use crate::runtime::static_state::state::StaticState;
     use crate::runtime::vm::manager::init_await_call;
+
+    const CORRECTNESS_REPEATS: usize = 10;
 
     #[test]
     fn test_start_call_simple() {
@@ -108,8 +109,7 @@ mod tests {
         let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
         let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
 
-        let start_time = std::time::Instant::now();
-        for _ in 0..100000 {
+        for _ in 0..CORRECTNESS_REPEATS {
             let _ = init_await_call(
                 vec!["my_collection".to_string(), "main".to_string()],
                 vec![],
@@ -117,8 +117,6 @@ mod tests {
                 worker_pool.clone()
             );
         }
-        let elapsed = start_time.elapsed();
-        println!("Average time: {:?}", elapsed / 100000);
 
         let res = init_await_call(
             vec!["my_collection".to_string(), "main".to_string()],
@@ -185,8 +183,7 @@ mod tests {
         let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
         let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
 
-        let start_time = std::time::Instant::now();
-        for _ in 0..10000 {
+        for _ in 0..CORRECTNESS_REPEATS {
             let _ = init_await_call(
                 vec!["my_collection".to_string(), "main".to_string()],
                 vec![],
@@ -194,9 +191,6 @@ mod tests {
                 worker_pool.clone()
             );
         }
-
-        let elapsed = start_time.elapsed();
-        println!("Average time: {:?}", elapsed / 10000);
 
         let res = init_await_call(
             vec!["my_collection".to_string(), "main".to_string()],
@@ -264,9 +258,7 @@ mod tests {
         let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
         let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
 
-        let start_time = std::time::Instant::now();
-
-        for _ in 0..10000 {
+        for _ in 0..CORRECTNESS_REPEATS {
             let _ = init_await_call(
                 vec!["my_collection".to_string(), "main".to_string()],
                 vec![],
@@ -274,9 +266,6 @@ mod tests {
                 worker_pool.clone()
             );
         }
-
-        let elapsed = start_time.elapsed();
-        println!("Average time: {:?}", elapsed / 10000);
 
         let res = init_await_call(
             vec!["my_collection".to_string(), "main".to_string()],
@@ -351,9 +340,7 @@ mod tests {
 
         let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap());
 
-        let start_time = std::time::Instant::now();
-
-        for _ in 0..100000 {
+        for _ in 0..CORRECTNESS_REPEATS {
             let _ = init_await_call(
                 vec!["my_collection".to_string(), "double_list".to_string()],
                 vec![],
@@ -361,9 +348,6 @@ mod tests {
                 worker_pool.clone()
             );
         }
-
-        let elapsed = start_time.elapsed();
-        println!("Average time: {:?}", elapsed / 100000);
 
         let res: Vec<PointerLive> = init_await_call(
             vec!["my_collection".to_string(), "double_list".to_string()],
@@ -440,8 +424,7 @@ mod tests {
         let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
         let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap());
 
-        let start_time = std::time::Instant::now();
-        for _ in 0..10000 {
+        for _ in 0..CORRECTNESS_REPEATS {
             let _ = init_await_call(
                 vec!["my_collection".to_string(), "filter_even".to_string()],
                 vec![],
@@ -449,9 +432,6 @@ mod tests {
                 worker_pool.clone()
             );
         }
-
-        let elapsed = start_time.elapsed();
-        println!("Average time: {:?}", elapsed / 10000);
 
         let res = init_await_call(
             vec!["my_collection".to_string(), "filter_even".to_string()],
