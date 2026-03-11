@@ -66,3 +66,18 @@ fn verbose_mode_writes_info_to_stderr_without_polluting_stdout() {
     assert!(stderr.contains("info: mode=await"));
     assert!(stderr.contains("info: received 3 outputs"));
 }
+
+#[test]
+fn invalid_program_reports_bind_error_without_panicking() {
+    let output = Command::new(binary_path())
+        .args(["await", "-i", "examples/intermediate/double_list.json"])
+        .output()
+        .expect("failed to run graphyne await with invalid program");
+
+    assert!(output.status.success(), "expected graceful exit, got status {:?}", output.status.code());
+    assert!(output.stdout.is_empty(), "unexpected stdout: {}", String::from_utf8_lossy(&output.stdout));
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Error binding program"));
+    assert!(!stderr.contains("panicked at"));
+}

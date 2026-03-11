@@ -70,9 +70,13 @@ fn main() {
             };
             let main_collection_symbol = uuid::Uuid::new_v4().to_string();
 
-            let static_state: Arc<StaticState> = bind(program, Some(main_collection_symbol.clone()))
-                .map_err(|e| log_error(format!("Error binding program: {}", e)))
-                .unwrap();
+            let static_state: Arc<StaticState> = match bind(program, Some(main_collection_symbol.clone())) {
+                Ok(state) => state,
+                Err(e) => {
+                    log_error(format!("Error binding program: {}", e));
+                    return;
+                }
+            };
 
             let (num_outputs, outputs_receiver) = match try_stream_call(
                 vec![main_collection_symbol, "main".to_string()],
@@ -109,9 +113,13 @@ fn main() {
 
             let main_collection_symbol = uuid::Uuid::new_v4().to_string();
 
-            let static_state: Arc<StaticState> = bind(program, Some(main_collection_symbol.clone()))
-                .map_err(|e| log_error(format!("Error binding program: {}", e)))
-                .unwrap();
+            let static_state: Arc<StaticState> = match bind(program, Some(main_collection_symbol.clone())) {
+                Ok(state) => state,
+                Err(e) => {
+                    log_error(format!("Error binding program: {}", e));
+                    return;
+                }
+            };
 
             let res: Vec<PointerLive> = match try_await_call(
                 vec![main_collection_symbol, "main".to_string()],
