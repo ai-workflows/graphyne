@@ -51,6 +51,12 @@ And an object/custom-type example:
 cargo run -- await -i examples/intermediate/object_person.json
 ```
 
+A composition example that combines imports, custom types, object field access, and arithmetic:
+
+```bash
+cargo run -- await -i examples/intermediate/imported_object_sum.json
+```
+
 ### Stream mode
 
 Print each output as soon as it becomes available:
