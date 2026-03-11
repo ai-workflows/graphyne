@@ -152,3 +152,43 @@ fn runtime_operator_error_reports_cleanly_without_abort() {
     assert!(!stderr.contains("panicked at"));
     assert!(!stderr.contains("SIGABRT"));
 }
+
+#[test]
+fn stream_runtime_operator_error_reports_cleanly_without_hanging() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-stream-runtime-error.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "types": {
+    "Person": [["age", "int"]]
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["person_type", ["bad_age", "not-an-int"], "person"],
+        "ops": [
+          ["Static", ["Person"], ["person_type"]],
+          ["Init", ["person_type", "bad_age"], ["person"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["person"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["stream", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne stream with runtime-error program");
+
+    assert!(output.status.success(), "unexpected exit status {:?}", output.status.code());
+    assert!(output.stdout.is_empty(), "unexpected stdout: {}", String::from_utf8_lossy(&output.stdout));
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Runtime error") || stderr.contains("Error starting program"));
+    assert!(stderr.contains("Cannot initialize object of type Person"));
+    assert!(!stderr.contains("panicked at"));
+}

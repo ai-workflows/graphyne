@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::sync::Arc;
+use std::sync::{Arc, mpsc};
 use crate::api::{bind, get_worker_counts, load_intermediate, log_async, log_error, try_await_call, try_stream_call};
 use crate::binder::intermediate::collection::Collection;
 use crate::binder::json::jsonify;
@@ -93,13 +93,26 @@ fn main() {
 
             log_verbose(verbose, format!("waiting for {} outputs", num_outputs));
 
-            for _ in 0..num_outputs {
+            let mut received_outputs = 0usize;
+            while received_outputs < num_outputs {
                 if let Ok(err) = error_receiver.try_recv() {
                     log_error(format!("Runtime error: {}", err));
                     return;
                 }
-                let res = outputs_receiver.recv().unwrap();
-                log_async(format!("out | {}: {}", res.0, jsonify(res.1.as_ref())));
+
+                match outputs_receiver.recv_timeout(std::time::Duration::from_millis(10)) {
+                    Ok(res) => {
+                        log_async(format!("out | {}: {}", res.0, jsonify(res.1.as_ref())));
+                        received_outputs += 1;
+                    }
+                    Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        if let Ok(err) = error_receiver.try_recv() {
+                            log_error(format!("Runtime error: {}", err));
+                        }
+                        return;
+                    }
+                }
             }
         },
 
