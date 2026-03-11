@@ -546,4 +546,61 @@ mod tests {
         assert!(err.contains("Static reference"));
         assert!(err.contains("is not declared"));
     }
+
+    #[test]
+    fn bind_rejects_call_target_that_is_known_non_function() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": [["value", 42], "result"],
+                        "ops": [
+                            ["Call", ["value"], ["result"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["result"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Call target 'value'"));
+        assert!(err.contains("is not a function"));
+    }
+
+    #[test]
+    fn bind_rejects_missing_import_target_with_clear_error() {
+        let json_collection = r#"{
+            "collections": {
+                "lib": {
+                    "constants": {
+                        "value": 42
+                    }
+                }
+            },
+            "imports": {
+                "missing": ["lib", "does_not_exist"]
+            },
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["missing", "result"],
+                        "ops": [
+                            ["Static", ["missing"], ["missing"]],
+                            ["AsString", ["missing"], ["result"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["result"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Import 'missing'"));
+        assert!(err.contains("points to missing target"));
+    }
 }

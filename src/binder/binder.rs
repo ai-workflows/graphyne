@@ -458,6 +458,17 @@ fn cl_func_to_live_func(
                         }
                     }
                 }
+
+                if let Some(callee_idx) = symbol_idxs.get(callee_symbol) {
+                    let callee_val = &func.graph.values[*callee_idx];
+                    if callee_val.constant.is_some() {
+                        return Err(format!(
+                            "Call target '{}' in function {:?} is not a function",
+                            callee_symbol,
+                            func_symbol_path
+                        ));
+                    }
+                }
             }
 
             for (arg_idx, arg_symbol) in op_node.input_vals.iter().enumerate() {
@@ -592,7 +603,14 @@ pub fn fill_collection(
 
             let static_ref: StaticRefLive = static_state.get_ref(&path)?;
             let resolved_import_path = resolve_import_path(root_symbol_path, import_path);
-            let import_static_ref: StaticRefLive = static_state.get_ref(&resolved_import_path)?;
+            let import_static_ref: StaticRefLive = static_state.get_ref(&resolved_import_path).map_err(|_| {
+                format!(
+                    "Import '{}' in {:?} points to missing target {:?}",
+                    name,
+                    symbol_path,
+                    resolved_import_path
+                )
+            })?;
 
             static_ref.set(StoredData::StaticRefStored(import_static_ref))
                 .map_err(|_| format!("Error setting import at path {:?}", path))?;
