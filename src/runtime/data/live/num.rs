@@ -98,11 +98,30 @@ impl LiveData for IntLive {
 
     fn op_pow(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
-            StoredData::IntStored(rhs) => Some(Ok(StoredData::IntStored((*self).pow(*rhs as u32)))),
+            StoredData::IntStored(rhs) => {
+                if *rhs < 0 {
+                    return Some(Err("Negative integer exponent not supported".to_string()));
+                }
+
+                Some(match self.checked_pow(*rhs as u32) {
+                    Some(value) => Ok(StoredData::IntStored(value)),
+                    None => Err("Overflow Error".to_string()),
+                })
+            }
             _ => {
                 let cast_result: Option<ExecResult<IntLive>> = rhs.as_live().as_int();
 
-                cast_result.map(|rhs| Ok(StoredData::IntStored((*self).pow(rhs? as u32))))
+                cast_result.map(|rhs| {
+                    let rhs = rhs?;
+                    if rhs < 0 {
+                        return Err("Negative integer exponent not supported".to_string());
+                    }
+
+                    match self.checked_pow(rhs as u32) {
+                        Some(value) => Ok(StoredData::IntStored(value)),
+                        None => Err("Overflow Error".to_string()),
+                    }
+                })
             }
         }
     }

@@ -213,6 +213,64 @@ mod tests {
     }
 
     #[test]
+    fn try_init_await_call_returns_error_for_negative_integer_pow_exponent() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": [["base", 2], ["exp", -1], "out"],
+                        "ops": [["Pow", ["base", "exp"], ["out"]]],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
+        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
+
+        let err = try_init_await_call(
+            vec!["my_collection".to_string(), "main".to_string()],
+            vec![],
+            static_state,
+            worker_pool,
+        ).unwrap_err();
+
+        assert!(err.contains("Negative integer exponent not supported"));
+    }
+
+    #[test]
+    fn try_init_await_call_returns_error_for_integer_pow_overflow() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": [["base", 2], ["exp", 63], "out"],
+                        "ops": [["Pow", ["base", "exp"], ["out"]]],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
+        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
+
+        let err = try_init_await_call(
+            vec!["my_collection".to_string(), "main".to_string()],
+            vec![],
+            static_state,
+            worker_pool,
+        ).unwrap_err();
+
+        assert!(err.contains("Overflow Error"));
+    }
+
+    #[test]
     fn test_start_call_simple() {
         let json_collection = r#"{
             "constants": {
