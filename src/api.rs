@@ -862,6 +862,62 @@ mod tests {
     }
 
     #[test]
+    fn bind_rejects_direct_import_cycle() {
+        let json_collection = r#"{
+            "imports": {
+                "a": ["a"]
+            },
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["a", "result"],
+                        "ops": [
+                            ["Static", ["a"], ["a"]],
+                            ["AsString", ["a"], ["result"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["result"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Import cycle detected"));
+        assert!(err.contains("a -> a"));
+    }
+
+    #[test]
+    fn bind_rejects_mutual_import_cycle() {
+        let json_collection = r#"{
+            "imports": {
+                "a": ["b"],
+                "b": ["a"]
+            },
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["a", "result"],
+                        "ops": [
+                            ["Static", ["a"], ["a"]],
+                            ["AsString", ["a"], ["result"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["result"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Import cycle detected"));
+        assert!(err.contains("a"));
+        assert!(err.contains("b"));
+    }
+
+    #[test]
     fn bind_rejects_direct_recursive_call_cycle() {
         let json_collection = r#"{
             "functions": {
