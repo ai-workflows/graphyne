@@ -1,10 +1,10 @@
 use std::{fs, io};
 use std::io::Write;
-use std::sync::{Arc};
-use std::sync::mpsc::{Receiver};
+use std::sync::Arc;
+use std::sync::mpsc::Receiver;
 use crate::binder::binder;
 use crate::binder::intermediate::collection::Collection;
-use crate::runtime::data::live::{PointerLive};
+use crate::runtime::data::live::PointerLive;
 use crate::runtime::{Symbol, SymbolPath};
 use crate::runtime::static_state::state::StaticState;
 use crate::runtime::vm::manager::{init_await_call, init_stream_call};
@@ -62,30 +62,13 @@ pub fn bind(program: Collection, program_symbol: Option<Symbol>) -> Result<Arc<S
     Ok(Arc::new(static_state))
 }
 
-pub fn get_worker_counts(
-    workers: Option<usize>,
-) -> usize {
-    // if we know one but not the other, use the known value for both
-    // if we know neither, use the number of CPUs
-
-    let count = match workers {
+pub fn get_worker_counts(workers: Option<usize>) -> usize {
+    match workers {
+        Some(0) => 1,
         Some(v) => v,
-        None => workers.unwrap_or_else(|| num_cpus::get()),
-    };
-
-    count
+        None => num_cpus::get(),
+    }
 }
-
-// pub fn get_main_func_ref(main_collection_symbol: Symbol,
-//                          binder: &Binder
-// ) -> Result<PointerLive, String> {
-//     binder.get_path(vec![main_collection_symbol, "main".to_string()])
-// }
-//
-// pub fn get_func_output_count(fn_ref: &PointerLive, mmu: Arc<MMU>) -> Result<usize, String> {
-//     let main_func: FuncLive = get_func_from_ptr(mmu.clone(), &fn_ref.pointer)?;
-//     Ok(main_func.output_vals.len())
-// }
 
 pub fn log_async(message: String) {
     let stdout = io::stdout();
@@ -102,22 +85,10 @@ pub fn log_error(msg: String) {
     );
 }
 
-
-// pub fn log_output(func_val: &FuncValLive, value: &PointerLive) {
-//     let symbol = match &func_val.symbol {
-//         Some(s) => s,
-//         None => &func_val.guid,
-//     };
-//
-//     let val = jsonify(value.as_ref());
-//     log_async(format!("out | {}: {}", symbol, val));
-// }
-
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use crate::api::{bind, load_intermediate, stream_call};
+    use crate::api::{bind, get_worker_counts, load_intermediate, stream_call};
     use crate::binder::intermediate::collection::Collection;
     use crate::binder::json::jsonify;
     use crate::runtime::data::live::PointerLive;
@@ -152,5 +123,15 @@ mod tests {
 
         let age = outputs.get(&2).unwrap().stored_as_int().unwrap();
         assert_eq!(*age, 60);
+    }
+
+    #[test]
+    fn zero_workers_falls_back_to_one_thread() {
+        assert_eq!(get_worker_counts(Some(0)), 1);
+    }
+
+    #[test]
+    fn none_workers_uses_cpu_count() {
+        assert_eq!(get_worker_counts(None), num_cpus::get());
     }
 }

@@ -1,9 +1,9 @@
 use serde::{Deserialize, Deserializer, Serialize};
-use serde::de::{SeqAccess};
+use serde::de::SeqAccess;
 use crate::runtime::data::live::TypeLive;
 use crate::runtime::{Symbol, SymbolPath};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub enum CollectionType {
     Any,
     Null,
@@ -11,16 +11,17 @@ pub enum CollectionType {
     Float,
     Str,
     Bool,
+    Pointer,
     List,
     Dict,
     Type,
     Custom(SymbolPath)
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct CustomTypeDef(pub Vec<(Symbol, CollectionTypeConst)>);
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct CollectionTypeConst(pub CollectionType);
 
 impl From<TypeLive> for CollectionTypeConst {
@@ -30,7 +31,7 @@ impl From<TypeLive> for CollectionTypeConst {
             TypeLive::Float => CollectionTypeConst(CollectionType::Float),
             TypeLive::String => CollectionTypeConst(CollectionType::Str),
             TypeLive::Boolean => CollectionTypeConst(CollectionType::Bool),
-            TypeLive::Pointer => CollectionTypeConst(CollectionType::Int),
+            TypeLive::Pointer => CollectionTypeConst(CollectionType::Pointer),
             TypeLive::List => CollectionTypeConst(CollectionType::List),
             TypeLive::Dictionary => CollectionTypeConst(CollectionType::Dict),
             TypeLive::Null => CollectionTypeConst(CollectionType::Null),
@@ -66,6 +67,7 @@ impl<'de> Deserialize<'de> for CollectionTypeConst {
                     "float" => Ok(CollectionTypeConst(CollectionType::Float)),
                     "str" => Ok(CollectionTypeConst(CollectionType::Str)),
                     "bool" => Ok(CollectionTypeConst(CollectionType::Bool)),
+                    "pointer" => Ok(CollectionTypeConst(CollectionType::Pointer)),
                     "list" => Ok(CollectionTypeConst(CollectionType::List)),
                     "dict" => Ok(CollectionTypeConst(CollectionType::Dict)),
                     "type" => Ok(CollectionTypeConst(CollectionType::Type)),
@@ -109,5 +111,22 @@ impl<'de> Deserialize<'de> for CustomTypeDef {
         }
 
         deserializer.deserialize_seq(CTypeVisitor)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::binder::intermediate::r#type::{CollectionType, CollectionTypeConst};
+    use crate::runtime::data::live::TypeLive;
+
+    #[test]
+    fn pointer_type_maps_to_pointer_collection_type() {
+        assert_eq!(CollectionTypeConst::from(TypeLive::Pointer), CollectionTypeConst(CollectionType::Pointer));
+    }
+
+    #[test]
+    fn deserialize_pointer_collection_type() {
+        let parsed: CollectionTypeConst = serde_json::from_str("\"pointer\"").unwrap();
+        assert_eq!(parsed, CollectionTypeConst(CollectionType::Pointer));
     }
 }

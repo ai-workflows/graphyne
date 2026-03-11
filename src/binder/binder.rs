@@ -121,6 +121,7 @@ fn type_def_to_live_type(
             CollectionType::Float => static_state.get_primitive_type(&TypeLive::Float),
             CollectionType::Str => static_state.get_primitive_type(&TypeLive::String),
             CollectionType::Bool => static_state.get_primitive_type(&TypeLive::Boolean),
+            CollectionType::Pointer => static_state.get_primitive_type(&TypeLive::Pointer),
             CollectionType::List => static_state.get_primitive_type(&TypeLive::List),
             CollectionType::Dict => static_state.get_primitive_type(&TypeLive::Dictionary),
             CollectionType::Type => static_state.get_primitive_type(&TypeLive::Type),
