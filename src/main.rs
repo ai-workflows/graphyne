@@ -78,7 +78,7 @@ fn main() {
                 }
             };
 
-            let (num_outputs, outputs_receiver) = match try_stream_call(
+            let (num_outputs, outputs_receiver, error_receiver) = match try_stream_call(
                 vec![main_collection_symbol, "main".to_string()],
                 vec![],
                 static_state.clone(),
@@ -94,6 +94,10 @@ fn main() {
             log_verbose(verbose, format!("waiting for {} outputs", num_outputs));
 
             for _ in 0..num_outputs {
+                if let Ok(err) = error_receiver.try_recv() {
+                    log_error(format!("Runtime error: {}", err));
+                    return;
+                }
                 let res = outputs_receiver.recv().unwrap();
                 log_async(format!("out | {}: {}", res.0, jsonify(res.1.as_ref())));
             }

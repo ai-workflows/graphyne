@@ -7,7 +7,7 @@ use crate::binder::intermediate::collection::Collection;
 use crate::runtime::data::live::PointerLive;
 use crate::runtime::{Symbol, SymbolPath};
 use crate::runtime::static_state::state::StaticState;
-use crate::runtime::vm::manager::{init_await_call, init_stream_call, try_init_await_call, try_init_stream_call};
+use crate::runtime::vm::manager::{init_await_call, init_stream_call, try_init_await_call, try_init_stream_call, StreamOutputs};
 
 fn build_worker_pool(workers: Option<usize>) -> Arc<rayon::ThreadPool> {
     let worker_count = get_worker_counts(workers);
@@ -40,7 +40,7 @@ pub fn try_stream_call(
     inputs: Vec<PointerLive>,
     static_state: Arc<StaticState>,
     workers: Option<usize>,
-) -> Result<(usize, Receiver<(usize, PointerLive)>), String> {
+) -> Result<StreamOutputs, String> {
     let worker_pool = build_worker_pool(workers);
     try_init_stream_call(main_symbol_path, inputs, static_state, worker_pool)
 }
@@ -111,7 +111,7 @@ mod tests {
             vec!["top_level".to_string(), "main".to_string()],
             vec![],
             static_state.clone(),
-            Some(4)
+            Some(4),
         );
 
         let mut outputs: HashMap<usize, PointerLive> = HashMap::new();

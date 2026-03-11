@@ -1,10 +1,12 @@
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, Mutex, mpsc};
 use rayon::ThreadPool;
 use crate::runtime::data::live::PointerLive;
 use crate::runtime::static_state::state::StaticState;
 use crate::runtime::{ExecResult, SymbolPath};
 use crate::runtime::vm::orchestrator;
 use crate::runtime::vm::outputs::OutputType;
+
+pub type StreamOutputs = (usize, mpsc::Receiver<(usize, PointerLive)>, mpsc::Receiver<String>);
 
 fn get_entry_func(main_symbol_path: &SymbolPath, static_state: &Arc<StaticState>) -> ExecResult<PointerLive> {
     let func_ref = static_state.get_ptr_to_ref(main_symbol_path)
@@ -16,23 +18,24 @@ fn get_entry_func(main_symbol_path: &SymbolPath, static_state: &Arc<StaticState>
     Ok(func_ref)
 }
 
-/// Initializes a stream call of a function with the given inputs.
 pub fn try_init_stream_call(
     main_symbol_path: SymbolPath,
     inputs: Vec<PointerLive>,
     static_state: Arc<StaticState>,
     worker_pool: Arc<ThreadPool>
-) -> ExecResult<(usize, mpsc::Receiver<(usize, PointerLive)>)> {
+) -> ExecResult<StreamOutputs> {
     let func_ref = get_entry_func(&main_symbol_path, &static_state)?;
     let num_outputs = func_ref.stored_as_func()
         .map_err(|e| format!("Entry point {:?} is not a function: {}", main_symbol_path, e))?
         .output_vals.len();
 
     let (tx, rx) = mpsc::channel();
+    let (err_tx, err_rx) = mpsc::channel();
 
-    let output_types: Vec<OutputType> = (0..num_outputs)
+    let mut output_types: Vec<OutputType> = (0..num_outputs)
         .map(|i| OutputType::Final(i, tx.clone()))
         .collect();
+    output_types.push(OutputType::FinalError(err_tx));
 
     let func_static_ref = func_ref.as_static_ref()
         .map_err(|e| format!("Entry point {:?} is not a static function reference: {}", main_symbol_path, e))?;
@@ -43,9 +46,10 @@ pub fn try_init_stream_call(
         output_types,
         static_state,
         worker_pool,
+        Arc::new(Mutex::new(None)),
     );
 
-    Ok((num_outputs, rx))
+    Ok((num_outputs, rx, err_rx))
 }
 
 #[allow(dead_code)]
@@ -55,26 +59,43 @@ pub fn init_stream_call(
     static_state: Arc<StaticState>,
     worker_pool: Arc<ThreadPool>
 ) -> (usize, mpsc::Receiver<(usize, PointerLive)>) {
-    try_init_stream_call(main_symbol_path, inputs, static_state, worker_pool)
-        .unwrap_or_else(|e| panic!("start_call_v2: {}", e))
+    let (num_outputs, rx, _err_rx) = try_init_stream_call(main_symbol_path, inputs, static_state, worker_pool)
+        .unwrap_or_else(|e| panic!("start_call_v2: {}", e));
+    (num_outputs, rx)
 }
 
-/// Awaits the result of a function call with the given inputs.
 pub fn try_init_await_call(
     main_symbol_path: SymbolPath,
     inputs: Vec<PointerLive>,
     static_state: Arc<StaticState>,
     worker_pool: Arc<ThreadPool>
 ) -> ExecResult<Vec<PointerLive>> {
-    let (num_outputs, rx) = try_init_stream_call(main_symbol_path, inputs, static_state, worker_pool)?;
+    let (num_outputs, rx, err_rx) = try_init_stream_call(main_symbol_path, inputs, static_state, worker_pool)?;
 
     let mut outputs: Vec<Option<PointerLive>> = Vec::with_capacity(num_outputs);
     for _ in 0..num_outputs {
         outputs.push(None);
     }
 
-    for (i, v) in rx.iter().take(num_outputs) {
-        outputs[i] = Some(v);
+    let mut received_outputs = 0usize;
+    while received_outputs < num_outputs {
+        if let Ok(err) = err_rx.try_recv() {
+            return Err(err);
+        }
+
+        match rx.recv_timeout(std::time::Duration::from_millis(10)) {
+            Ok((i, v)) => {
+                outputs[i] = Some(v);
+                received_outputs += 1;
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                if let Ok(err) = err_rx.try_recv() {
+                    return Err(err);
+                }
+                return Err("init_await_call: function halted execution before all outputs were returned".to_string());
+            }
+        }
     }
 
     outputs.into_iter().map(|v|
@@ -154,6 +175,45 @@ mod tests {
         ).unwrap_err();
 
         assert!(err.contains("is not a function"));
+    }
+
+    #[test]
+    fn try_init_await_call_returns_runtime_error_instead_of_panicking() {
+        let json_collection = r#"{
+            "types": {
+                "Person": [["age", "int"]]
+            },
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": [
+                            "person_type",
+                            ["bad_age", "not-an-int"],
+                            "person"
+                        ],
+                        "ops": [
+                            ["Static", ["Person"], ["person_type"]],
+                            ["Init", ["person_type", "bad_age"], ["person"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["person"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
+        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
+
+        let err = try_init_await_call(
+            vec!["my_collection".to_string(), "main".to_string()],
+            vec![],
+            static_state,
+            worker_pool,
+        ).unwrap_err();
+
+        assert!(err.contains("Cannot initialize object of type Person"));
     }
 
     #[test]
