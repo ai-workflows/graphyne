@@ -105,7 +105,7 @@ fn invalid_program_reports_bind_error_without_panicking() {
         .output()
         .expect("failed to run graphyne await with invalid program");
 
-    assert!(output.status.success(), "unexpected exit status {:?}", output.status.code());
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
 
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("Error binding program") || stderr.contains("Error starting program"));
@@ -143,7 +143,7 @@ fn runtime_operator_error_reports_cleanly_without_abort() {
         .output()
         .expect("failed to run graphyne await with runtime-error program");
 
-    assert!(output.status.success(), "unexpected exit status {:?}", output.status.code());
+    assert!(!output.status.success(), "expected non-zero exit status for runtime error");
     assert!(output.stdout.is_empty(), "unexpected stdout: {}", String::from_utf8_lossy(&output.stdout));
 
     let stderr = String::from_utf8(output.stderr).unwrap();
@@ -184,11 +184,21 @@ fn stream_runtime_operator_error_reports_cleanly_without_hanging() {
         .output()
         .expect("failed to run graphyne stream with runtime-error program");
 
-    assert!(output.status.success(), "unexpected exit status {:?}", output.status.code());
+    assert!(!output.status.success(), "expected non-zero exit status for runtime error");
     assert!(output.stdout.is_empty(), "unexpected stdout: {}", String::from_utf8_lossy(&output.stdout));
 
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("Runtime error") || stderr.contains("Error starting program"));
     assert!(stderr.contains("Cannot initialize object of type Person"));
     assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn invalid_input_path_exits_non_zero() {
+    let output = Command::new(binary_path())
+        .args(["await", "-i", "examples/intermediate/does_not_exist.json"])
+        .output()
+        .expect("failed to run graphyne await with invalid path");
+
+    assert!(!output.status.success(), "expected non-zero exit status for load error");
 }
