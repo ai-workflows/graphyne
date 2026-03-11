@@ -1176,6 +1176,47 @@ fn imported_init_target_that_is_not_a_type_reports_bind_error_cleanly() {
 }
 
 #[test]
+fn duplicate_custom_type_fields_report_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-duplicate-type-fields.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "types": {
+    "Person": [
+      ["name", "str"],
+      ["name", "int"]
+    ]
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["Person", ["name1", "Ada"], ["name2", 42], "person"],
+        "ops": [
+          ["Static", ["Person"], ["Person"]],
+          ["Init", ["Person", "name1", "name2"], ["person"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["person"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with duplicate custom type fields");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Duplicate field 'name'"));
+    assert!(stderr.contains("type 'Person'"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn map_target_that_is_known_non_function_reports_bind_error_cleanly() {
     let invalid_program_path = std::env::temp_dir().join("graphyne-map-known-non-function.json");
     std::fs::write(
