@@ -343,20 +343,36 @@ fn validate_graph_value_declarations(
     Ok(symbol_idxs)
 }
 
-#[allow(dead_code)]
-fn get_local_function_output_count(
+fn get_local_function_signature(
     callee_symbol: &str,
     sibling_functions: Option<&HashMap<Symbol, CollectionFunc>>,
-) -> Option<usize> {
+) -> Option<(usize, usize)> {
     let sibling_functions = sibling_functions?;
     let callee = sibling_functions.get(callee_symbol)?;
-    Some(callee.graph.output_vals.len())
+    Some((callee.graph.input_vals.len(), callee.graph.output_vals.len()))
+}
+
+fn get_imported_function_signature(
+    callee_symbol: &str,
+    sibling_imports: Option<&HashMap<Symbol, SymbolPath>>,
+    root_symbol_path: &SymbolPath,
+    static_state: &StaticState,
+) -> Option<(usize, usize)> {
+    let sibling_imports = sibling_imports?;
+    let import_path = sibling_imports.get(callee_symbol)?;
+    let resolved_import_path = resolve_import_path(root_symbol_path, import_path);
+    let func_ref = static_state.get_ref(&resolved_import_path).ok()?;
+    let stored = func_ref.get()?;
+    let func = stored.stored_as_func().ok()?;
+    Some((func.input_vals.len(), func.output_vals.len()))
 }
 
 fn cl_func_to_live_func(
     func: &CollectionFunc,
     func_symbol_path: &SymbolPath,
     sibling_functions: Option<&HashMap<Symbol, CollectionFunc>>,
+    sibling_imports: Option<&HashMap<Symbol, SymbolPath>>,
+    root_symbol_path: &SymbolPath,
     static_state: &mut StaticState
 ) -> ExecResult<FuncLive> {
     validate_unique_symbols(&func.graph.input_vals, "input", func_symbol_path)?;
@@ -433,33 +449,30 @@ fn cl_func_to_live_func(
 
         if op_node.opcode == OpCode::Call {
             if let Some(callee_symbol) = op_node.input_vals.first() {
-                if let Some(sibling_functions) = sibling_functions {
-                    if let Some(callee_func) = sibling_functions.get(callee_symbol) {
-                        let expected_inputs = callee_func.graph.input_vals.len() + 1;
-                        if op_node.input_vals.len() != expected_inputs {
-                            return Err(format!(
-                                "Call to '{}' in function {:?} expects {} inputs but received {}",
-                                callee_symbol,
-                                func_symbol_path,
-                                expected_inputs,
-                                op_node.input_vals.len()
-                            ));
-                        }
-
-                        let expected_outputs = callee_func.graph.output_vals.len();
-                        if op_node.output_vals.len() != expected_outputs {
-                            return Err(format!(
-                                "Call to '{}' in function {:?} expects {} outputs but received {}",
-                                callee_symbol,
-                                func_symbol_path,
-                                expected_outputs,
-                                op_node.output_vals.len()
-                            ));
-                        }
+                if let Some((callee_inputs, callee_outputs)) = get_local_function_signature(callee_symbol, sibling_functions)
+                    .or_else(|| get_imported_function_signature(callee_symbol, sibling_imports, root_symbol_path, static_state))
+                {
+                    let expected_inputs = callee_inputs + 1;
+                    if op_node.input_vals.len() != expected_inputs {
+                        return Err(format!(
+                            "Call to '{}' in function {:?} expects {} inputs but received {}",
+                            callee_symbol,
+                            func_symbol_path,
+                            expected_inputs,
+                            op_node.input_vals.len()
+                        ));
                     }
-                }
 
-                if let Some(callee_idx) = symbol_idxs.get(callee_symbol) {
+                    if op_node.output_vals.len() != callee_outputs {
+                        return Err(format!(
+                            "Call to '{}' in function {:?} expects {} outputs but received {}",
+                            callee_symbol,
+                            func_symbol_path,
+                            callee_outputs,
+                            op_node.output_vals.len()
+                        ));
+                    }
+                } else if let Some(callee_idx) = symbol_idxs.get(callee_symbol) {
                     let callee_val = &func.graph.values[*callee_idx];
                     if callee_val.constant.is_some() {
                         return Err(format!(
@@ -637,7 +650,7 @@ pub fn fill_collection(
             path.push(name.clone());
 
             let static_ref: StaticRefLive = static_state.get_ref(&path)?;
-            let live_func: FuncLive = cl_func_to_live_func(func, &path, value.functions.as_ref(), static_state)?;
+            let live_func: FuncLive = cl_func_to_live_func(func, &path, value.functions.as_ref(), value.imports.as_ref(), root_symbol_path, static_state)?;
             static_ref.set(StoredData::FuncStored(live_func))
                 .map_err(|_| format!("Error setting function at path {:?}", path))?;
         }
