@@ -57,6 +57,8 @@ A composition example that combines imports, custom types, object field access, 
 cargo run -- await -i examples/intermediate/imported_object_sum.json
 ```
 
+If you specifically need to keep custom-type invariants enforced, prefer operating on the object directly with `Get`/`Set` instead of converting it with `AsDictionary`.
+
 And an example showing typed objects stored in both lists and dictionaries:
 
 ```bash
@@ -179,6 +181,8 @@ You can run the shipped version directly:
 ```bash
 cargo run -- await -i examples/intermediate/object_person.json
 ```
+
+Note that `AsDictionary` on an object is currently a lossy conversion: it produces a plain dictionary of fields and does **not** preserve the object's custom type metadata. After that conversion, later dictionary mutations are no longer checked against the original object field types.
 
 Import paths may be written in either of these forms:
 
