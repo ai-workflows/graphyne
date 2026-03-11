@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 use std::sync::atomic::AtomicUsize;
 use std::sync::mpsc::Sender;
 use crate::runtime::data::live::PointerLive;
@@ -63,9 +63,6 @@ pub enum OutputType {
     /// the value is a final result that should be broadcast to the user
     Final(usize, Sender<(usize, PointerLive)>),
 
-    /// the error is a final runtime error that should be broadcast to the user
-    FinalError(Sender<String>),
-
     /// the value is linked to the output val (indexed by usize) of a call op in another context
     CrossCallLink(Arc<CallContext>, usize),
 
@@ -79,12 +76,3 @@ pub enum OutputType {
     ReduceLink(ReduceLink),
 }
 
-pub fn store_runtime_error(runtime_error: &Arc<Mutex<Option<String>>>, error: String) -> bool {
-    let mut guard = runtime_error.lock().unwrap();
-    if guard.is_none() {
-        *guard = Some(error);
-        true
-    } else {
-        false
-    }
-}

@@ -68,7 +68,7 @@ pub fn init_anonymous_call(
     output_types: Vec<OutputType>,
     static_state: Arc<StaticState>,
     worker_pool: Arc<ThreadPool>,
-    runtime_error: std::sync::Arc<std::sync::Mutex<Option<String>>>,
+    runtime_error: Arc<std::sync::Mutex<Option<String>>>,
 ) {
     let func: &FuncLive = get_static_func(func_ref);
 
@@ -147,6 +147,13 @@ pub fn get_op(func: &FuncLive, index: usize) -> &FuncOp {
     }
 }
 
+pub fn record_runtime_error(context: &Arc<CallContext>, message: String) {
+    let mut error_slot = context.runtime_error.lock().unwrap();
+    if error_slot.is_none() {
+        *error_slot = Some(message);
+    }
+}
+
 pub fn get_val(context: Arc<CallContext>, index: usize) -> PointerLive {
     match context.val_buffer[index].get() {
         Some(v) => v.clone(),
@@ -183,7 +190,6 @@ pub fn set_val(
             OutputType::Final(output_idx, output_sender) => {
                 output_sender.send((*output_idx, val)).unwrap();
             }
-            OutputType::FinalError(_) => {}
             OutputType::CrossCallLink(ctx, output_index) =>
                 set_val(ctx.clone(), *output_index, val, static_state.clone(), worker_pool.clone()),
             OutputType::MapLink(link) =>

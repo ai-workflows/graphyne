@@ -1,12 +1,14 @@
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{mpsc, Arc};
 use rayon::ThreadPool;
 use crate::runtime::data::live::PointerLive;
 use crate::runtime::static_state::state::StaticState;
 use crate::runtime::{ExecResult, SymbolPath};
 use crate::runtime::vm::orchestrator;
 use crate::runtime::vm::outputs::OutputType;
+use crate::runtime::vm::call_context::CallContext;
+use std::sync::Mutex;
 
-pub type StreamOutputs = (usize, mpsc::Receiver<(usize, PointerLive)>, mpsc::Receiver<String>);
+type StreamInit = (usize, mpsc::Receiver<(usize, PointerLive)>, Arc<CallContext>);
 
 fn get_entry_func(main_symbol_path: &SymbolPath, static_state: &Arc<StaticState>) -> ExecResult<PointerLive> {
     let func_ref = static_state.get_ptr_to_ref(main_symbol_path)
@@ -23,33 +25,33 @@ pub fn try_init_stream_call(
     inputs: Vec<PointerLive>,
     static_state: Arc<StaticState>,
     worker_pool: Arc<ThreadPool>
-) -> ExecResult<StreamOutputs> {
+) -> ExecResult<StreamInit> {
     let func_ref = get_entry_func(&main_symbol_path, &static_state)?;
     let num_outputs = func_ref.stored_as_func()
         .map_err(|e| format!("Entry point {:?} is not a function: {}", main_symbol_path, e))?
         .output_vals.len();
 
     let (tx, rx) = mpsc::channel();
-    let (err_tx, err_rx) = mpsc::channel();
 
-    let mut output_types: Vec<OutputType> = (0..num_outputs)
+    let output_types: Vec<OutputType> = (0..num_outputs)
         .map(|i| OutputType::Final(i, tx.clone()))
         .collect();
-    output_types.push(OutputType::FinalError(err_tx));
 
     let func_static_ref = func_ref.as_static_ref()
         .map_err(|e| format!("Entry point {:?} is not a static function reference: {}", main_symbol_path, e))?;
 
+    let runtime_error = Arc::new(Mutex::new(None));
     orchestrator::init_anonymous_call(
         func_static_ref,
         &inputs,
         output_types,
         static_state,
         worker_pool,
-        Arc::new(Mutex::new(None)),
+        runtime_error.clone(),
     );
 
-    Ok((num_outputs, rx, err_rx))
+    let context = Arc::new(CallContext::new(func_static_ref.clone(), Vec::new(), runtime_error));
+    Ok((num_outputs, rx, context))
 }
 
 #[allow(dead_code)]
@@ -59,7 +61,7 @@ pub fn init_stream_call(
     static_state: Arc<StaticState>,
     worker_pool: Arc<ThreadPool>
 ) -> (usize, mpsc::Receiver<(usize, PointerLive)>) {
-    let (num_outputs, rx, _err_rx) = try_init_stream_call(main_symbol_path, inputs, static_state, worker_pool)
+    let (num_outputs, rx, _context) = try_init_stream_call(main_symbol_path, inputs, static_state, worker_pool)
         .unwrap_or_else(|e| panic!("start_call_v2: {}", e));
     (num_outputs, rx)
 }
@@ -70,37 +72,31 @@ pub fn try_init_await_call(
     static_state: Arc<StaticState>,
     worker_pool: Arc<ThreadPool>
 ) -> ExecResult<Vec<PointerLive>> {
-    let (num_outputs, rx, err_rx) = try_init_stream_call(main_symbol_path, inputs, static_state, worker_pool)?;
+    let (num_outputs, rx, context) = try_init_stream_call(main_symbol_path, inputs, static_state, worker_pool)?;
 
     let mut outputs: Vec<Option<PointerLive>> = Vec::with_capacity(num_outputs);
     for _ in 0..num_outputs {
         outputs.push(None);
     }
 
-    let mut received_outputs = 0usize;
-    while received_outputs < num_outputs {
-        if let Ok(err) = err_rx.try_recv() {
-            return Err(err);
-        }
-
-        match rx.recv_timeout(std::time::Duration::from_millis(10)) {
-            Ok((i, v)) => {
-                outputs[i] = Some(v);
-                received_outputs += 1;
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => continue,
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                if let Ok(err) = err_rx.try_recv() {
-                    return Err(err);
-                }
-                return Err("init_await_call: function halted execution before all outputs were returned".to_string());
-            }
+    for _ in 0..num_outputs {
+        match rx.recv_timeout(std::time::Duration::from_millis(500)) {
+            Ok((i, v)) => outputs[i] = Some(v),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
 
-    outputs.into_iter().map(|v|
-        v.ok_or_else(|| "init_await_call: function halted execution before all outputs were returned".to_string())
-    ).collect()
+    let res: ExecResult<Vec<PointerLive>> = outputs.into_iter().map(|v|
+        v.ok_or_else(|| {
+            match context.runtime_error.lock().unwrap().clone() {
+                Some(err) => err,
+                None => "init_await_call: function halted execution before all outputs were returned".to_string(),
+            }
+        })
+    ).collect();
+
+    res
 }
 
 #[allow(dead_code)]

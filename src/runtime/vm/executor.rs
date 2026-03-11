@@ -9,8 +9,8 @@ use crate::runtime::static_state::state::StaticState;
 use crate::runtime::vm::call_context::{get_static_func, CallContext};
 use crate::runtime::vm::operator::operator::execute_op;
 use crate::runtime::vm::operator::ops::Operation;
-use crate::runtime::vm::orchestrator::{get_val, init_anonymous_call, set_val};
-use crate::runtime::vm::outputs::{store_runtime_error, FilterLink, MapLink, OutputType, ReduceLink};
+use crate::runtime::vm::orchestrator::{get_val, init_anonymous_call, record_runtime_error, set_val};
+use crate::runtime::vm::outputs::{FilterLink, MapLink, OutputType, ReduceLink};
 
 pub(crate) struct ReduceDispatch {
     pub(crate) source_context: Arc<CallContext>,
@@ -21,14 +21,8 @@ pub(crate) struct ReduceDispatch {
     pub(crate) last_val: PointerLive,
 }
 
-fn signal_runtime_error(context: Arc<CallContext>, message: String) {
-    if store_runtime_error(&context.runtime_error, message.clone()) {
-        for output_type in &context.output_types {
-            if let OutputType::FinalError(sender) = output_type {
-                let _ = sender.send(message.clone());
-            }
-        }
-    }
+fn signal_runtime_error(context: &Arc<CallContext>, message: String) {
+    record_runtime_error(context, message);
 }
 
 pub fn dispatch_op(
@@ -70,7 +64,7 @@ pub fn handle_normal_op(
     let outputs: Vec<PointerLive> = match execute_op(op, static_state.clone()) {
         Ok(v) => v,
         Err(e) => {
-            signal_runtime_error(context, e);
+            signal_runtime_error(&context, format!("dispatch_op: execute_op error: {}", e));
             return;
         }
     };
@@ -100,7 +94,7 @@ pub fn handle_map_op(
     let list_arg: &Vec<PointerLive> = match list_arg_ptr.stored_as_list() {
         Ok(v) => v,
         Err(e) => {
-            signal_runtime_error(context, e);
+            signal_runtime_error(&context, e);
             return;
         }
     };
@@ -132,7 +126,7 @@ pub fn handle_map_op(
         let called_func_ref = match called_func_pointer.as_static_ref() {
             Ok(v) => v,
             Err(e) => {
-                signal_runtime_error(context, e);
+                signal_runtime_error(&context, e);
                 return;
             }
         };
@@ -168,7 +162,7 @@ pub fn handle_filter_op(
     let list_arg: &Vec<PointerLive> = match list_arg_ptr.stored_as_list() {
         Ok(v) => v,
         Err(e) => {
-            signal_runtime_error(context, e);
+            signal_runtime_error(&context, e);
             return;
         }
     };
@@ -201,7 +195,7 @@ pub fn handle_filter_op(
         let called_func_ref = match called_func_pointer.as_static_ref() {
             Ok(v) => v,
             Err(e) => {
-                signal_runtime_error(context, e);
+                signal_runtime_error(&context, e);
                 return;
             }
         };
@@ -237,7 +231,7 @@ pub fn dispatch_next_reduce(
             None => return,
         },
         Err(e) => {
-            signal_runtime_error(dispatch.source_context, e);
+            signal_runtime_error(&dispatch.source_context, e);
             return;
         }
     };
@@ -245,7 +239,7 @@ pub fn dispatch_next_reduce(
     let called_func_ref = match dispatch.called_func.as_static_ref() {
         Ok(v) => v,
         Err(e) => {
-            signal_runtime_error(dispatch.source_context, e);
+            signal_runtime_error(&dispatch.source_context, e);
             return;
         }
     };
@@ -287,7 +281,7 @@ pub fn handle_reduce_op(
     let source_list: &Vec<PointerLive> = match list_arg_ptr.stored_as_list() {
         Ok(v) => v,
         Err(e) => {
-            signal_runtime_error(context, e);
+            signal_runtime_error(&context, e);
             return;
         }
     };

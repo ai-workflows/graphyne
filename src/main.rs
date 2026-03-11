@@ -79,7 +79,7 @@ fn main() -> ExitCode {
                 }
             };
 
-            let (num_outputs, outputs_receiver, error_receiver) = match try_stream_call(
+            let (num_outputs, outputs_receiver, context) = match try_stream_call(
                 vec![main_collection_symbol, "main".to_string()],
                 vec![],
                 static_state.clone(),
@@ -94,23 +94,15 @@ fn main() -> ExitCode {
 
             log_verbose(verbose, format!("waiting for {} outputs", num_outputs));
 
-            let mut received_outputs = 0usize;
-            while received_outputs < num_outputs {
-                if let Ok(err) = error_receiver.try_recv() {
-                    log_error(format!("Runtime error: {}", err));
-                    return ExitCode::FAILURE;
-                }
-
-                match outputs_receiver.recv_timeout(std::time::Duration::from_millis(10)) {
-                    Ok(res) => {
-                        log_async(format!("out | {}: {}", res.0, jsonify(res.1.as_ref())));
-                        received_outputs += 1;
-                    }
-                    Err(mpsc::RecvTimeoutError::Timeout) => continue,
-                    Err(mpsc::RecvTimeoutError::Disconnected) => {
-                        if let Ok(err) = error_receiver.try_recv() {
-                            log_error(format!("Runtime error: {}", err));
-                            return ExitCode::FAILURE;
+            for _ in 0..num_outputs {
+                match outputs_receiver.recv_timeout(std::time::Duration::from_millis(500)) {
+                    Ok(res) => log_async(format!("out | {}: {}", res.0, jsonify(res.1.as_ref()))),
+                    Err(mpsc::RecvTimeoutError::Timeout) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        let runtime_error = context.runtime_error.lock().unwrap().clone();
+                        if let Some(err) = runtime_error {
+                            log_error(format!("Error starting program: {}", err));
+                        } else {
+                            log_error("Error starting program: function halted execution before all outputs were returned".to_string());
                         }
                         return ExitCode::FAILURE;
                     }
