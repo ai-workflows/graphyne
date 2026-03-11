@@ -717,7 +717,24 @@ fn cl_func_to_live_func(
                             ));
                         }
                     }
-                } else if let Some((_callee_inputs, callee_outputs)) = local_signature.or(imported_signature) {
+                } else if let Some((callee_inputs, callee_outputs)) = local_signature.or(imported_signature) {
+                    let expected_inputs = match op_node.opcode {
+                        OpCode::Map | OpCode::Filter => 1,
+                        OpCode::Reduce => 2,
+                        _ => unreachable!(),
+                    };
+
+                    if callee_inputs != expected_inputs {
+                        return Err(format!(
+                            "{} target '{}' in function {:?} must accept exactly {} inputs but accepts {}",
+                            target_kind,
+                            callee_symbol,
+                            func_symbol_path,
+                            expected_inputs,
+                            callee_inputs
+                        ));
+                    }
+
                     if callee_outputs != 1 {
                         return Err(format!(
                             "{} target '{}' in function {:?} must produce exactly 1 output but produces {}",
