@@ -493,4 +493,36 @@ mod tests {
         assert!(err.contains("Call to 'double'"));
         assert!(err.contains("expects 1 outputs but received 2"));
     }
+
+    #[test]
+    fn bind_rejects_call_input_count_mismatch_for_known_callee() {
+        let json_collection = r#"{
+            "functions": {
+                "double": {
+                    "graph": {
+                        "values": ["num", ["two", 2], "result"],
+                        "ops": [["Mul", ["num", "two"], ["result"]]],
+                        "input_vals": ["num"],
+                        "output_vals": ["result"]
+                    }
+                },
+                "main": {
+                    "graph": {
+                        "values": ["double", "out"],
+                        "ops": [
+                            ["Static", ["double"], ["double"]],
+                            ["Call", ["double"], ["out"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Call to 'double'"));
+        assert!(err.contains("expects 2 inputs but received 1"));
+    }
 }
