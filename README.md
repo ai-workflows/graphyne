@@ -57,6 +57,12 @@ A composition example that combines imports, custom types, object field access, 
 cargo run -- await -i examples/intermediate/imported_object_sum.json
 ```
 
+And an example showing typed objects stored in both lists and dictionaries:
+
+```bash
+cargo run -- await -i examples/intermediate/collections_of_objects.json
+```
+
 ### Stream mode
 
 Print each output as soon as it becomes available:
