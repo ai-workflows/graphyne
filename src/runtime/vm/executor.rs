@@ -84,6 +84,18 @@ pub fn handle_map_op(
     };
 
     let result_val: usize = fn_op.output_vals[0];
+
+    if list_arg.is_empty() {
+        set_val(
+            context,
+            result_val,
+            PointerLive::new(crate::runtime::data::stored::StoredData::ListStored(vec![])),
+            static_state,
+            worker_pool,
+        );
+        return;
+    }
+
     let result_buffer: Arc<Vec<OnceLock<PointerLive>>> = Arc::new(list_arg.iter().map(|_| OnceLock::new()).collect());
     let remaining_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(list_arg.len()));
 
@@ -135,6 +147,18 @@ pub fn handle_filter_op(
     };
 
     let result_val: usize = fn_op.output_vals[0];
+
+    if list_arg.is_empty() {
+        set_val(
+            context,
+            result_val,
+            PointerLive::new(crate::runtime::data::stored::StoredData::ListStored(vec![])),
+            static_state,
+            worker_pool,
+        );
+        return;
+    }
+
     let result_buffer: Arc<Vec<OnceLock<PointerLive>>> = Arc::new(list_arg.iter().map(|_| OnceLock::new()).collect());
     let remaining_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(list_arg.len()));
 
@@ -227,6 +251,12 @@ pub fn handle_reduce_op(
     };
 
     let result_val: usize = fn_op.output_vals[0];
+
+    if list_arg_ptr.stored_as_list().unwrap().is_empty() {
+        set_val(context, result_val, initial_val.clone(), static_state, worker_pool);
+        return;
+    }
+
     let source_context: Arc<CallContext> = context.clone();
     let source_result_val: usize = result_val;
     let source_list: PointerLive = list_arg_ptr.clone();

@@ -449,4 +449,151 @@ mod tests {
 
         assert_eq!(result, vec![2, 4, 6, 8, 10]);
     }
+
+    #[test]
+    fn test_map_empty_list_returns_empty_list() {
+        let json_collection = r#"{
+            "constants": {
+                "my_list": []
+            },
+            "functions": {
+                "double": {
+                    "name": "Double",
+                    "description": "Doubles a number",
+                    "graph": {
+                        "values": ["num", ["two", 2], "doubled"],
+                        "ops": [["Mul", ["num", "two"], ["doubled"]]],
+                        "input_vals": ["num"],
+                        "output_vals": ["doubled"]
+                    }
+                },
+                "main": {
+                    "name": "Main",
+                    "description": "Maps over an empty list",
+                    "graph": {
+                        "values": ["double", "my_list", "result"],
+                        "ops": [
+                            ["Static", ["double"], ["double"]],
+                            ["Static", ["my_list"], ["my_list"]],
+                            ["Map", ["double", "my_list"], ["result"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["result"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
+        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
+
+        let res = init_await_call(
+            vec!["my_collection".to_string(), "main".to_string()],
+            vec![],
+            static_state,
+            worker_pool
+        );
+
+        let result = res[0].as_live().as_list().unwrap().unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_filter_empty_list_returns_empty_list() {
+        let json_collection = r#"{
+            "constants": {
+                "my_list": []
+            },
+            "functions": {
+                "always_true": {
+                    "name": "Always True",
+                    "description": "Returns true",
+                    "graph": {
+                        "values": ["num", ["truth", true]],
+                        "ops": [],
+                        "input_vals": ["num"],
+                        "output_vals": ["truth"]
+                    }
+                },
+                "main": {
+                    "name": "Main",
+                    "description": "Filters an empty list",
+                    "graph": {
+                        "values": ["always_true", "my_list", "result"],
+                        "ops": [
+                            ["Static", ["always_true"], ["always_true"]],
+                            ["Static", ["my_list"], ["my_list"]],
+                            ["Filter", ["always_true", "my_list"], ["result"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["result"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
+        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
+
+        let res = init_await_call(
+            vec!["my_collection".to_string(), "main".to_string()],
+            vec![],
+            static_state,
+            worker_pool
+        );
+
+        let result = res[0].as_live().as_list().unwrap().unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_reduce_empty_list_returns_initial_value() {
+        let json_collection = r#"{
+            "constants": {
+                "my_list": []
+            },
+            "functions": {
+                "add": {
+                    "name": "Add",
+                    "description": "Adds two numbers",
+                    "graph": {
+                        "values": ["lhs", "rhs", "sum"],
+                        "ops": [["Add", ["lhs", "rhs"], ["sum"]]],
+                        "input_vals": ["lhs", "rhs"],
+                        "output_vals": ["sum"]
+                    }
+                },
+                "main": {
+                    "name": "Main",
+                    "description": "Reduces an empty list",
+                    "graph": {
+                        "values": ["add", "my_list", ["initial", 42], "result"],
+                        "ops": [
+                            ["Static", ["add"], ["add"]],
+                            ["Static", ["my_list"], ["my_list"]],
+                            ["Reduce", ["add", "my_list", "initial"], ["result"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["result"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
+        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
+
+        let res = init_await_call(
+            vec!["my_collection".to_string(), "main".to_string()],
+            vec![],
+            static_state,
+            worker_pool
+        );
+
+        let result = res[0].as_live().as_int().unwrap().unwrap();
+        assert_eq!(result, 42);
+    }
 }
