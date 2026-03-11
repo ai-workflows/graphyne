@@ -160,6 +160,70 @@ fn validate_unique_symbols(symbols: &[Symbol], group_name: &str, func_symbol_pat
     Ok(())
 }
 
+fn validate_op_arity(op_node: &crate::binder::intermediate::func::FunctionOpNode, func_symbol_path: &SymbolPath) -> ExecResult<()> {
+    let (expected_inputs, expected_outputs) = match op_node.opcode {
+        OpCode::TypeOf
+        | OpCode::AsInt
+        | OpCode::AsFloat
+        | OpCode::AsString
+        | OpCode::AsBool
+        | OpCode::AsPointer
+        | OpCode::AsList
+        | OpCode::AsDictionary
+        | OpCode::AsType
+        | OpCode::Not
+        | OpCode::IsNull
+        | OpCode::Length => (Some(1), Some(1)),
+        OpCode::And
+        | OpCode::Or
+        | OpCode::Equal
+        | OpCode::LessThan
+        | OpCode::GreaterThan
+        | OpCode::Get
+        | OpCode::Push
+        | OpCode::Remove
+        | OpCode::Add
+        | OpCode::Sub
+        | OpCode::Mul
+        | OpCode::Div
+        | OpCode::Mod
+        | OpCode::Pow
+        | OpCode::Map
+        | OpCode::Filter => (Some(2), Some(1)),
+        OpCode::If
+        | OpCode::Set
+        | OpCode::Reduce => (Some(3), Some(1)),
+        OpCode::Static => (None, Some(1)),
+        OpCode::Call | OpCode::Init => (None, None),
+    };
+
+    if let Some(expected_inputs) = expected_inputs {
+        if op_node.input_vals.len() != expected_inputs {
+            return Err(format!(
+                "Opcode {} in function {:?} expects {} inputs but received {}",
+                op_node.opcode,
+                func_symbol_path,
+                expected_inputs,
+                op_node.input_vals.len()
+            ));
+        }
+    }
+
+    if let Some(expected_outputs) = expected_outputs {
+        if op_node.output_vals.len() != expected_outputs {
+            return Err(format!(
+                "Opcode {} in function {:?} expects {} outputs but received {}",
+                op_node.opcode,
+                func_symbol_path,
+                expected_outputs,
+                op_node.output_vals.len()
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 fn cl_func_to_live_func(
     func: &CollectionFunc,
     func_symbol_path: &SymbolPath,
@@ -182,6 +246,8 @@ fn cl_func_to_live_func(
     let mut static_val_constants: HashMap<Symbol, PointerLive> = HashMap::new();
 
     for (i, op_node) in func.graph.ops.iter().enumerate() {
+        validate_op_arity(op_node, func_symbol_path)?;
+
         if op_node.opcode == OpCode::Static {
             // if the op is static, get the static ref and store it in the static state
             let mut static_path: SymbolPath = func_symbol_path.iter()
