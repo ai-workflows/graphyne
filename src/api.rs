@@ -375,4 +375,67 @@ mod tests {
         let err = bind(collection, Some("root".to_string())).err().unwrap();
         assert!(err.contains("Op input symbol 'rhs' is not declared in values"));
     }
+
+    #[test]
+    fn bind_rejects_zero_input_call() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["result"],
+                        "ops": [["Call", [], ["result"]]],
+                        "input_vals": [],
+                        "output_vals": ["result"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Opcode call"));
+        assert!(err.contains("requires at least 1 inputs but received 0"));
+    }
+
+    #[test]
+    fn bind_rejects_zero_input_init() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["result"],
+                        "ops": [["Init", [], ["result"]]],
+                        "input_vals": [],
+                        "output_vals": ["result"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Opcode init"));
+        assert!(err.contains("requires at least 1 inputs but received 0"));
+    }
+
+    #[test]
+    fn bind_rejects_zero_input_static() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["result"],
+                        "ops": [["Static", [], ["result"]]],
+                        "input_vals": [],
+                        "output_vals": ["result"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Opcode static"));
+        assert!(err.contains("expects 1 inputs but received 0"));
+    }
 }
