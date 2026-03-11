@@ -37,7 +37,8 @@ pub fn init_stream_call(
         &inputs,
         output_types,
         static_state,
-        worker_pool);
+        worker_pool,
+    );
 
     (num_outputs, rx)
 }
@@ -51,7 +52,6 @@ pub fn init_await_call(
 ) -> Vec<PointerLive> {
     let (num_outputs, rx) = init_stream_call(main_symbol_path, inputs, static_state, worker_pool);
 
-    // initialize vector of length num_outputs
     let mut outputs: Vec<Option<PointerLive>> = Vec::with_capacity(num_outputs);
     for _ in 0..num_outputs {
         outputs.push(None);
@@ -114,7 +114,7 @@ mod tests {
                 vec!["my_collection".to_string(), "main".to_string()],
                 vec![],
                 static_state.clone(),
-                worker_pool.clone()
+                worker_pool.clone(),
             );
         }
 
@@ -122,7 +122,7 @@ mod tests {
             vec!["my_collection".to_string(), "main".to_string()],
             vec![],
             static_state.clone(),
-            worker_pool.clone()
+            worker_pool.clone(),
         );
 
         assert_eq!(res.len(), 1);
@@ -188,7 +188,7 @@ mod tests {
                 vec!["my_collection".to_string(), "main".to_string()],
                 vec![],
                 static_state.clone(),
-                worker_pool.clone()
+                worker_pool.clone(),
             );
         }
 
@@ -196,7 +196,7 @@ mod tests {
             vec!["my_collection".to_string(), "main".to_string()],
             vec![],
             static_state.clone(),
-            worker_pool.clone()
+            worker_pool.clone(),
         );
 
         assert_eq!(res.len(), 1);
@@ -263,7 +263,7 @@ mod tests {
                 vec!["my_collection".to_string(), "main".to_string()],
                 vec![],
                 static_state.clone(),
-                worker_pool.clone()
+                worker_pool.clone(),
             );
         }
 
@@ -271,7 +271,7 @@ mod tests {
             vec!["my_collection".to_string(), "main".to_string()],
             vec![],
             static_state.clone(),
-            worker_pool.clone()
+            worker_pool.clone(),
         );
 
         assert_eq!(res.len(), 1);
@@ -345,7 +345,7 @@ mod tests {
                 vec!["my_collection".to_string(), "double_list".to_string()],
                 vec![],
                 static_state.clone(),
-                worker_pool.clone()
+                worker_pool.clone(),
             );
         }
 
@@ -353,7 +353,7 @@ mod tests {
             vec!["my_collection".to_string(), "double_list".to_string()],
             vec![],
             static_state.clone(),
-            worker_pool.clone()
+            worker_pool.clone(),
         );
 
         for (i, v) in res.iter().enumerate() {
@@ -368,6 +368,125 @@ mod tests {
             ptr.as_live().as_int().unwrap().unwrap()).collect();
 
         assert_eq!(result, vec![20, 40, 60]);
+    }
+
+    #[test]
+    fn test_empty_map_returns_empty_list() {
+        let json_collection = r#"{
+            "constants": {
+                "my_list": []
+            },
+            "functions": {
+                "double": {
+                   "name": "Double",
+                   "description": "Doubles a number",
+                   "graph": {
+                        "values": [
+                            ["two", 2],
+                            "num",
+                            "doubled"
+                        ],
+                        "ops": [
+                            ["Mul", ["num", "two"], ["doubled"]]
+                        ],
+                        "input_vals": ["num"],
+                        "output_vals": ["doubled"]
+                    }
+                },
+                "main": {
+                    "name": "Main",
+                    "description": "Main function",
+                    "graph": {
+                        "values": [
+                            "double",
+                            "my_list",
+                            "result"
+                        ],
+                        "ops": [
+                            ["Static", ["double"], ["double"]],
+                            ["Static", ["my_list"], ["my_list"]],
+                            ["Map", ["double", "my_list"], ["result"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["result"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
+        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
+
+        let res = init_await_call(
+            vec!["my_collection".to_string(), "main".to_string()],
+            vec![],
+            static_state,
+            worker_pool,
+        );
+
+        let result = res[0].as_live().as_list().unwrap().unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_empty_reduce_returns_initial_value() {
+        let json_collection = r#"{
+            "constants": {
+                "my_list": []
+            },
+            "functions": {
+                "add": {
+                   "name": "Add",
+                   "description": "Adds two numbers",
+                   "graph": {
+                        "values": [
+                            "lhs",
+                            "rhs",
+                            "sum"
+                        ],
+                        "ops": [
+                            ["Add", ["lhs", "rhs"], ["sum"]]
+                        ],
+                        "input_vals": ["lhs", "rhs"],
+                        "output_vals": ["sum"]
+                    }
+                },
+                "main": {
+                    "name": "Main",
+                    "description": "Main function",
+                    "graph": {
+                        "values": [
+                            "add",
+                            "my_list",
+                            ["initial", 7],
+                            "result"
+                        ],
+                        "ops": [
+                            ["Static", ["add"], ["add"]],
+                            ["Static", ["my_list"], ["my_list"]],
+                            ["Reduce", ["add", "my_list", "initial"], ["result"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["result"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
+        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
+
+        let res = init_await_call(
+            vec!["my_collection".to_string(), "main".to_string()],
+            vec![],
+            static_state,
+            worker_pool,
+        );
+
+        let result = res[0].as_live().as_int().unwrap().unwrap();
+        assert_eq!(result, 7);
     }
 
     #[test]
@@ -429,7 +548,7 @@ mod tests {
                 vec!["my_collection".to_string(), "filter_even".to_string()],
                 vec![],
                 static_state.clone(),
-                worker_pool.clone()
+                worker_pool.clone(),
             );
         }
 
@@ -437,7 +556,7 @@ mod tests {
             vec!["my_collection".to_string(), "filter_even".to_string()],
             vec![],
             static_state.clone(),
-            worker_pool.clone()
+            worker_pool.clone(),
         );
 
         assert_eq!(res.len(), 1);
@@ -451,31 +570,44 @@ mod tests {
     }
 
     #[test]
-    fn test_map_empty_list_returns_empty_list() {
+    fn test_empty_filter_returns_empty_list() {
         let json_collection = r#"{
             "constants": {
                 "my_list": []
             },
             "functions": {
-                "double": {
-                    "name": "Double",
-                    "description": "Doubles a number",
+                "is_even": {
+                    "name": "Is Even",
+                    "description": "Checks if a number is even",
                     "graph": {
-                        "values": ["num", ["two", 2], "doubled"],
-                        "ops": [["Mul", ["num", "two"], ["doubled"]]],
+                        "values": [
+                            ["two", 2],
+                            ["zero", 0],
+                            "num",
+                            "is_even",
+                            "mod_result"
+                        ],
+                        "ops": [
+                            ["Mod", ["num", "two"], ["mod_result"]],
+                            ["Equal", ["mod_result", "zero"], ["is_even"]]
+                        ],
                         "input_vals": ["num"],
-                        "output_vals": ["doubled"]
+                        "output_vals": ["is_even"]
                     }
                 },
                 "main": {
                     "name": "Main",
-                    "description": "Maps over an empty list",
+                    "description": "Main function",
                     "graph": {
-                        "values": ["double", "my_list", "result"],
+                        "values": [
+                            "is_even",
+                            "my_list",
+                            "result"
+                        ],
                         "ops": [
-                            ["Static", ["double"], ["double"]],
+                            ["Static", ["is_even"], ["is_even"]],
                             ["Static", ["my_list"], ["my_list"]],
-                            ["Map", ["double", "my_list"], ["result"]]
+                            ["Filter", ["is_even", "my_list"], ["result"]]
                         ],
                         "input_vals": [],
                         "output_vals": ["result"]
@@ -492,108 +624,10 @@ mod tests {
             vec!["my_collection".to_string(), "main".to_string()],
             vec![],
             static_state,
-            worker_pool
+            worker_pool,
         );
 
         let result = res[0].as_live().as_list().unwrap().unwrap();
         assert!(result.is_empty());
-    }
-
-    #[test]
-    fn test_filter_empty_list_returns_empty_list() {
-        let json_collection = r#"{
-            "constants": {
-                "my_list": []
-            },
-            "functions": {
-                "always_true": {
-                    "name": "Always True",
-                    "description": "Returns true",
-                    "graph": {
-                        "values": ["num", ["truth", true]],
-                        "ops": [],
-                        "input_vals": ["num"],
-                        "output_vals": ["truth"]
-                    }
-                },
-                "main": {
-                    "name": "Main",
-                    "description": "Filters an empty list",
-                    "graph": {
-                        "values": ["always_true", "my_list", "result"],
-                        "ops": [
-                            ["Static", ["always_true"], ["always_true"]],
-                            ["Static", ["my_list"], ["my_list"]],
-                            ["Filter", ["always_true", "my_list"], ["result"]]
-                        ],
-                        "input_vals": [],
-                        "output_vals": ["result"]
-                    }
-                }
-            }
-        }"#;
-
-        let collection: Collection = serde_json::from_str(json_collection).unwrap();
-        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
-        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
-
-        let res = init_await_call(
-            vec!["my_collection".to_string(), "main".to_string()],
-            vec![],
-            static_state,
-            worker_pool
-        );
-
-        let result = res[0].as_live().as_list().unwrap().unwrap();
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn test_reduce_empty_list_returns_initial_value() {
-        let json_collection = r#"{
-            "constants": {
-                "my_list": []
-            },
-            "functions": {
-                "add": {
-                    "name": "Add",
-                    "description": "Adds two numbers",
-                    "graph": {
-                        "values": ["lhs", "rhs", "sum"],
-                        "ops": [["Add", ["lhs", "rhs"], ["sum"]]],
-                        "input_vals": ["lhs", "rhs"],
-                        "output_vals": ["sum"]
-                    }
-                },
-                "main": {
-                    "name": "Main",
-                    "description": "Reduces an empty list",
-                    "graph": {
-                        "values": ["add", "my_list", ["initial", 42], "result"],
-                        "ops": [
-                            ["Static", ["add"], ["add"]],
-                            ["Static", ["my_list"], ["my_list"]],
-                            ["Reduce", ["add", "my_list", "initial"], ["result"]]
-                        ],
-                        "input_vals": [],
-                        "output_vals": ["result"]
-                    }
-                }
-            }
-        }"#;
-
-        let collection: Collection = serde_json::from_str(json_collection).unwrap();
-        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
-        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
-
-        let res = init_await_call(
-            vec!["my_collection".to_string(), "main".to_string()],
-            vec![],
-            static_state,
-            worker_pool
-        );
-
-        let result = res[0].as_live().as_int().unwrap().unwrap();
-        assert_eq!(result, 42);
     }
 }
