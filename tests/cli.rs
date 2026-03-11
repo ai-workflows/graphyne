@@ -434,6 +434,37 @@ fn collections_of_objects_example_runs_successfully() {
 }
 
 #[test]
+fn duplicate_output_symbols_report_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-duplicate-output-symbols.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [["lhs", 2], ["rhs", 3], "sum"],
+        "ops": [["Add", ["lhs", "rhs"], ["sum"]]],
+        "input_vals": [],
+        "output_vals": ["sum", "sum"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with duplicate outputs");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Duplicate output symbol 'sum'"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn invalid_input_path_exits_non_zero() {
     let output = Command::new(binary_path())
         .args(["await", "-i", "examples/intermediate/does_not_exist.json"])
