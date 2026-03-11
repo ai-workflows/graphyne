@@ -70,6 +70,19 @@ Use `--verbose` to print execution metadata such as mode, input file, and worker
 cargo run -- stream -i examples/intermediate/test_compiled.json --verbose
 ```
 
+### Output streams and exit codes
+
+- program results are written to `stdout`
+- verbose diagnostics and errors are written to `stderr`
+- the CLI exits with status code `0` on success
+- the CLI exits with a non-zero status code for load, bind, startup, or runtime failures
+
+This makes it suitable for shell scripting and redirection:
+
+```bash
+cargo run -- await -i examples/intermediate/test_compiled.json >results.txt 2>diagnostics.txt
+```
+
 ## Intermediate format overview
 
 At a high level, a program is a `Collection` containing:
