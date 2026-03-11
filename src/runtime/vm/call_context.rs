@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicUsize};
-use std::sync::{Arc, OnceLock};
+use std::sync::atomic::AtomicUsize;
+use std::sync::{Arc, Mutex, OnceLock};
 use crate::runtime::data::functions::func::FuncLive;
 use crate::runtime::data::live::{PointerLive, StaticRefLive};
 use crate::runtime::vm::outputs::OutputType;
@@ -19,12 +19,16 @@ pub struct CallContext {
 
     /// A buffer for child call contexts spawned by this call context.
     pub child_calls: Vec<OnceLock<Arc<CallContext>>>,
+
+    /// First runtime error observed while executing this call tree.
+    pub runtime_error: Arc<Mutex<Option<String>>>,
 }
 
 impl CallContext {
     pub fn new(
         func_ref: StaticRefLive,
         output_types: Vec<OutputType>,
+        runtime_error: Arc<Mutex<Option<String>>>,
     ) -> CallContext {
         let func = get_static_func(&func_ref);
 
@@ -34,6 +38,7 @@ impl CallContext {
             unknown_arg_counts: func.ops.iter().map(|op| op.input_vals.len().into()).collect(),
             output_types,
             child_calls: func.call_ops.iter().map(|_| OnceLock::new()).collect(),
+            runtime_error,
         }
     }
 }
@@ -42,8 +47,8 @@ pub fn get_static_func(func_ref: &StaticRefLive) -> &FuncLive {
     match func_ref.as_ref().get() {
         Some(v) => match v.stored_as_func() {
             Ok(v) => v,
-            Err(e) => panic!("CallContext::get_func: {}", e)
+            Err(e) => panic!("CallContext::get_func: {}", e),
         },
-        None => panic!("CallContext::get_func: func_ref does not point to a FuncValV2::Func")
+        None => panic!("CallContext::get_func: func_ref does not point to a FuncValV2::Func"),
     }
 }
