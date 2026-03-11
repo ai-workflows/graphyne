@@ -699,6 +699,49 @@ fn call_output_count_mismatch_reports_bind_error_cleanly() {
 }
 
 #[test]
+fn call_input_count_mismatch_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-call-input-mismatch.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "double": {
+      "graph": {
+        "values": ["num", ["two", 2], "result"],
+        "ops": [["Mul", ["num", "two"], ["result"]]],
+        "input_vals": ["num"],
+        "output_vals": ["result"]
+      }
+    },
+    "main": {
+      "graph": {
+        "values": ["double", "out"],
+        "ops": [
+          ["Static", ["double"], ["double"]],
+          ["Call", ["double"], ["out"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with call input mismatch");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Call to 'double'"));
+    assert!(stderr.contains("expects 2 inputs but received 1"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn invalid_input_path_exits_non_zero() {
     let output = Command::new(binary_path())
         .args(["await", "-i", "examples/intermediate/does_not_exist.json"])

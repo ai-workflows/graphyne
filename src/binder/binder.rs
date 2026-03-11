@@ -343,6 +343,7 @@ fn validate_graph_value_declarations(
     Ok(symbol_idxs)
 }
 
+#[allow(dead_code)]
 fn get_local_function_output_count(
     callee_symbol: &str,
     sibling_functions: Option<&HashMap<Symbol, CollectionFunc>>,
@@ -426,15 +427,29 @@ fn cl_func_to_live_func(
 
         if op_node.opcode == OpCode::Call {
             if let Some(callee_symbol) = op_node.input_vals.first() {
-                if let Some(expected_outputs) = get_local_function_output_count(callee_symbol, sibling_functions) {
-                    if op_node.output_vals.len() != expected_outputs {
-                        return Err(format!(
-                            "Call to '{}' in function {:?} expects {} outputs but received {}",
-                            callee_symbol,
-                            func_symbol_path,
-                            expected_outputs,
-                            op_node.output_vals.len()
-                        ));
+                if let Some(sibling_functions) = sibling_functions {
+                    if let Some(callee_func) = sibling_functions.get(callee_symbol) {
+                        let expected_inputs = callee_func.graph.input_vals.len() + 1;
+                        if op_node.input_vals.len() != expected_inputs {
+                            return Err(format!(
+                                "Call to '{}' in function {:?} expects {} inputs but received {}",
+                                callee_symbol,
+                                func_symbol_path,
+                                expected_inputs,
+                                op_node.input_vals.len()
+                            ));
+                        }
+
+                        let expected_outputs = callee_func.graph.output_vals.len();
+                        if op_node.output_vals.len() != expected_outputs {
+                            return Err(format!(
+                                "Call to '{}' in function {:?} expects {} outputs but received {}",
+                                callee_symbol,
+                                func_symbol_path,
+                                expected_outputs,
+                                op_node.output_vals.len()
+                            ));
+                        }
                     }
                 }
             }
