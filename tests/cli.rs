@@ -559,6 +559,37 @@ fn missing_value_declarations_report_bind_error_cleanly() {
 }
 
 #[test]
+fn missing_op_input_declarations_report_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-missing-input-value.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [["lhs", 2], "sum"],
+        "ops": [["Add", ["lhs", "rhs"], ["sum"]]],
+        "input_vals": [],
+        "output_vals": ["sum"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with missing op input declaration");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Op input symbol 'rhs' is not declared in values"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn invalid_input_path_exits_non_zero() {
     let output = Command::new(binary_path())
         .args(["await", "-i", "examples/intermediate/does_not_exist.json"])
