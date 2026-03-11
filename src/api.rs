@@ -315,4 +315,44 @@ mod tests {
         assert!(err.contains("Opcode add"));
         assert!(err.contains("expects 1 outputs but received 2"));
     }
+
+    #[test]
+    fn bind_rejects_duplicate_value_symbols() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": [["lhs", 2], ["lhs", 3], "sum"],
+                        "ops": [["Add", ["lhs", "lhs"], ["sum"]]],
+                        "input_vals": [],
+                        "output_vals": ["sum"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Duplicate value symbol 'lhs'"));
+    }
+
+    #[test]
+    fn bind_rejects_missing_output_value_declarations() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": [["lhs", 2], ["rhs", 3]],
+                        "ops": [["Add", ["lhs", "rhs"], ["sum"]]],
+                        "input_vals": [],
+                        "output_vals": ["sum"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Output symbol 'sum' is not declared in values"));
+    }
 }

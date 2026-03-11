@@ -224,6 +224,57 @@ fn validate_op_arity(op_node: &crate::binder::intermediate::func::FunctionOpNode
     Ok(())
 }
 
+fn validate_graph_value_declarations(
+    func: &CollectionFunc,
+    func_symbol_path: &SymbolPath,
+) -> ExecResult<HashMap<Symbol, usize>> {
+    let mut symbol_idxs: HashMap<Symbol, usize> = HashMap::new();
+
+    for (i, val) in func.graph.values.iter().enumerate() {
+        if symbol_idxs.insert(val.symbol.clone(), i).is_some() {
+            return Err(format!(
+                "Duplicate value symbol '{}' in function {:?}",
+                val.symbol,
+                func_symbol_path
+            ));
+        }
+    }
+
+    for input_symbol in &func.graph.input_vals {
+        if !symbol_idxs.contains_key(input_symbol) {
+            return Err(format!(
+                "Input symbol '{}' is not declared in values for function {:?}",
+                input_symbol,
+                func_symbol_path
+            ));
+        }
+    }
+
+    for output_symbol in &func.graph.output_vals {
+        if !symbol_idxs.contains_key(output_symbol) {
+            return Err(format!(
+                "Output symbol '{}' is not declared in values for function {:?}",
+                output_symbol,
+                func_symbol_path
+            ));
+        }
+    }
+
+    for op_node in &func.graph.ops {
+        for output_symbol in &op_node.output_vals {
+            if !symbol_idxs.contains_key(output_symbol) {
+                return Err(format!(
+                    "Op output symbol '{}' is not declared in values for function {:?}",
+                    output_symbol,
+                    func_symbol_path
+                ));
+            }
+        }
+    }
+
+    Ok(symbol_idxs)
+}
+
 fn cl_func_to_live_func(
     func: &CollectionFunc,
     func_symbol_path: &SymbolPath,
@@ -232,11 +283,7 @@ fn cl_func_to_live_func(
     validate_unique_symbols(&func.graph.input_vals, "input", func_symbol_path)?;
     validate_unique_symbols(&func.graph.output_vals, "output", func_symbol_path)?;
 
-    let mut symbol_idxs: HashMap<Symbol, usize> = HashMap::new();
-
-    for (i, val) in func.graph.values.iter().enumerate() {
-        symbol_idxs.insert(val.symbol.clone(), i);
-    }
+    let symbol_idxs = validate_graph_value_declarations(func, func_symbol_path)?;
 
     let mut val_deps: HashMap<Symbol, Vec<usize>> = HashMap::new();
     let mut val_as_args: HashMap<Symbol, Vec<(usize, usize)>> = HashMap::new();

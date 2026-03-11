@@ -497,6 +497,68 @@ fn bad_opcode_arity_reports_bind_error_cleanly() {
 }
 
 #[test]
+fn duplicate_value_symbols_report_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-duplicate-value-symbols.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [["lhs", 2], ["lhs", 3], "sum"],
+        "ops": [["Add", ["lhs", "lhs"], ["sum"]]],
+        "input_vals": [],
+        "output_vals": ["sum"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with duplicate values");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Duplicate value symbol 'lhs'"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn missing_value_declarations_report_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-missing-value-declaration.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [["lhs", 2], ["rhs", 3]],
+        "ops": [["Add", ["lhs", "rhs"], ["sum"]]],
+        "input_vals": [],
+        "output_vals": ["sum"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with missing value declaration");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Output symbol 'sum' is not declared in values"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn invalid_input_path_exits_non_zero() {
     let output = Command::new(binary_path())
         .args(["await", "-i", "examples/intermediate/does_not_exist.json"])
