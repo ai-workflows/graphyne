@@ -1,5 +1,5 @@
 use serde::{Deserialize, Deserializer, Serialize};
-use serde::de::SeqAccess;
+use serde::de::{MapAccess, SeqAccess};
 use crate::runtime::data::live::TypeLive;
 use crate::runtime::{Symbol, SymbolPath};
 
@@ -85,7 +85,7 @@ impl<'de> Deserialize<'de> for CollectionTypeConst {
     }
 }
 
-// deserialize a list of fields into a custom type definition
+// deserialize a list or map of fields into a custom type definition
 impl<'de> Deserialize<'de> for CustomTypeDef {
     fn deserialize<D>(deserializer: D) -> Result<CustomTypeDef, D::Error>
     where
@@ -100,7 +100,10 @@ impl<'de> Deserialize<'de> for CustomTypeDef {
                 formatter.write_str("a custom type definition")
             }
 
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: SeqAccess<'de> {
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
                 let mut fields: Vec<(Symbol, CollectionTypeConst)> = Vec::new();
 
                 while let Some(field) = seq.next_element()? {
@@ -108,15 +111,28 @@ impl<'de> Deserialize<'de> for CustomTypeDef {
                 }
                 Ok(CustomTypeDef(fields))
             }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let mut fields: Vec<(Symbol, CollectionTypeConst)> = Vec::new();
+
+                while let Some((field_name, field_type)) = map.next_entry()? {
+                    fields.push((field_name, field_type));
+                }
+
+                Ok(CustomTypeDef(fields))
+            }
         }
 
-        deserializer.deserialize_seq(CTypeVisitor)
+        deserializer.deserialize_any(CTypeVisitor)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::binder::intermediate::r#type::{CollectionType, CollectionTypeConst};
+    use crate::binder::intermediate::r#type::{CollectionType, CollectionTypeConst, CustomTypeDef};
     use crate::runtime::data::live::TypeLive;
 
     #[test]
@@ -128,5 +144,21 @@ mod tests {
     fn deserialize_pointer_collection_type() {
         let parsed: CollectionTypeConst = serde_json::from_str("\"pointer\"").unwrap();
         assert_eq!(parsed, CollectionTypeConst(CollectionType::Pointer));
+    }
+
+    #[test]
+    fn deserialize_custom_type_def_from_map_form() {
+        let parsed: CustomTypeDef = serde_json::from_str(r#"{
+            "name": "str",
+            "age": "int"
+        }"#).unwrap();
+
+        assert_eq!(
+            parsed,
+            CustomTypeDef(vec![
+                ("name".to_string(), CollectionTypeConst(CollectionType::Str)),
+                ("age".to_string(), CollectionTypeConst(CollectionType::Int)),
+            ])
+        );
     }
 }

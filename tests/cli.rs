@@ -295,6 +295,18 @@ fn object_person_example_runs_successfully() {
 }
 
 #[test]
+fn object_person_example_uses_map_form_type_definition() {
+    let output = Command::new(binary_path())
+        .args(["await", "-i", "examples/intermediate/object_person.json"])
+        .output()
+        .expect("failed to run graphyne await for object_person example");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("\"name\":\"Person\""));
+}
+
+#[test]
 fn object_set_missing_field_reports_clean_runtime_error() {
     let invalid_program_path = std::env::temp_dir().join("graphyne-object-missing-field.json");
     std::fs::write(
