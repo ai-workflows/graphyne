@@ -968,6 +968,214 @@ fn imported_call_input_count_mismatch_reports_bind_error_cleanly() {
 }
 
 #[test]
+fn init_target_that_is_known_non_type_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-init-known-non-type.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [["value", 42], "result"],
+        "ops": [
+          ["Init", ["value"], ["result"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["result"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with known non-type init target");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Init target 'value'"));
+    assert!(stderr.contains("is not a custom type"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn imported_init_target_that_is_not_a_type_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-imported-init-non-type.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "collections": {
+    "lib": {
+      "constants": {
+        "value": 42
+      }
+    }
+  },
+  "imports": {
+    "value": ["lib", "value"]
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["value", "result"],
+        "ops": [
+          ["Static", ["value"], ["value"]],
+          ["Init", ["value"], ["result"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["result"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with imported non-type init target");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Init target 'value'"));
+    assert!(stderr.contains("is not a custom type"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn local_init_arg_count_mismatch_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-local-init-arg-mismatch.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "types": {
+    "Person": {
+      "name": "str",
+      "age": "int"
+    }
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["Person", ["name", "Ada"], "person"],
+        "ops": [
+          ["Static", ["Person"], ["Person"]],
+          ["Init", ["Person", "name"], ["person"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["person"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with local init arg mismatch");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Init of 'Person'"));
+    assert!(stderr.contains("expects 2 fields but received 1"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn imported_init_arg_count_mismatch_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-imported-init-arg-mismatch.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "collections": {
+    "lib": {
+      "types": {
+        "Person": {
+          "name": "str",
+          "age": "int"
+        }
+      }
+    }
+  },
+  "imports": {
+    "Person": ["lib", "Person"]
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["Person", ["name", "Ada"], "person"],
+        "ops": [
+          ["Static", ["Person"], ["Person"]],
+          ["Init", ["Person", "name"], ["person"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["person"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with imported init arg mismatch");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Init of 'Person'"));
+    assert!(stderr.contains("expects 2 fields but received 1"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn init_output_count_mismatch_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-init-output-mismatch.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "types": {
+    "Person": {
+      "name": "str"
+    }
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["Person", ["name", "Ada"], "person1", "person2"],
+        "ops": [
+          ["Static", ["Person"], ["Person"]],
+          ["Init", ["Person", "name"], ["person1", "person2"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["person1"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with init output mismatch");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Opcode init"));
+    assert!(stderr.contains("expects 1 outputs but received 2"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn invalid_input_path_exits_non_zero() {
     let output = Command::new(binary_path())
         .args(["await", "-i", "examples/intermediate/does_not_exist.json"])
