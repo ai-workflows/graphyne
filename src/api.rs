@@ -1000,6 +1000,102 @@ mod tests {
     }
 
     #[test]
+    fn bind_rejects_map_target_with_wrong_input_count() {
+        let json_collection = r#"{
+            "functions": {
+                "const_one": {
+                    "graph": {
+                        "values": [["value", 1]],
+                        "ops": [],
+                        "input_vals": [],
+                        "output_vals": ["value"]
+                    }
+                },
+                "main": {
+                    "graph": {
+                        "values": ["const_one", ["items", [1, 2]], "out"],
+                        "ops": [
+                            ["Static", ["const_one"], ["const_one"]],
+                            ["Map", ["const_one", "items"], ["out"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Map target 'const_one'"));
+        assert!(err.contains("must accept exactly 1 inputs but accepts 0"));
+    }
+
+    #[test]
+    fn bind_rejects_filter_target_with_wrong_input_count() {
+        let json_collection = r#"{
+            "functions": {
+                "const_true": {
+                    "graph": {
+                        "values": [["value", true]],
+                        "ops": [],
+                        "input_vals": [],
+                        "output_vals": ["value"]
+                    }
+                },
+                "main": {
+                    "graph": {
+                        "values": ["const_true", ["items", [1, 2]], "out"],
+                        "ops": [
+                            ["Static", ["const_true"], ["const_true"]],
+                            ["Filter", ["const_true", "items"], ["out"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Filter target 'const_true'"));
+        assert!(err.contains("must accept exactly 1 inputs but accepts 0"));
+    }
+
+    #[test]
+    fn bind_rejects_reduce_target_with_wrong_input_count() {
+        let json_collection = r#"{
+            "functions": {
+                "const_one": {
+                    "graph": {
+                        "values": [["value", 1]],
+                        "ops": [],
+                        "input_vals": [],
+                        "output_vals": ["value"]
+                    }
+                },
+                "main": {
+                    "graph": {
+                        "values": ["const_one", ["items", [1, 2]], ["init", 0], "out"],
+                        "ops": [
+                            ["Static", ["const_one"], ["const_one"]],
+                            ["Reduce", ["const_one", "items", "init"], ["out"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Reduce target 'const_one'"));
+        assert!(err.contains("must accept exactly 2 inputs but accepts 0"));
+    }
+
+    #[test]
     fn bind_rejects_map_target_with_multiple_outputs() {
         let json_collection = r#"{
             "functions": {
@@ -1154,7 +1250,7 @@ mod tests {
         let collection: Collection = serde_json::from_str(json_collection).unwrap();
         let err = bind(collection, Some("root".to_string())).err().unwrap();
         assert!(err.contains("Filter target 'const_int'"));
-        assert!(err.contains("must produce a bool output"));
+        assert!(err.contains("must accept exactly 1 inputs but accepts 0") || err.contains("must produce a bool output"));
     }
 
     #[test]

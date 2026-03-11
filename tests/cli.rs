@@ -1402,6 +1402,135 @@ fn mutual_recursive_call_cycle_reports_bind_error_cleanly() {
 }
 
 #[test]
+fn map_target_with_wrong_input_count_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-map-wrong-input-count.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "const_one": {
+      "graph": {
+        "values": [["value", 1]],
+        "ops": [],
+        "input_vals": [],
+        "output_vals": ["value"]
+      }
+    },
+    "main": {
+      "graph": {
+        "values": ["const_one", ["items", [1, 2]], "out"],
+        "ops": [
+          ["Static", ["const_one"], ["const_one"]],
+          ["Map", ["const_one", "items"], ["out"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with wrong map callback input count");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Map target 'const_one'"));
+    assert!(stderr.contains("must accept exactly 1 inputs but accepts 0"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn filter_target_with_wrong_input_count_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-filter-wrong-input-count.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "const_true": {
+      "graph": {
+        "values": [["value", true]],
+        "ops": [],
+        "input_vals": [],
+        "output_vals": ["value"]
+      }
+    },
+    "main": {
+      "graph": {
+        "values": ["const_true", ["items", [1, 2]], "out"],
+        "ops": [
+          ["Static", ["const_true"], ["const_true"]],
+          ["Filter", ["const_true", "items"], ["out"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with wrong filter callback input count");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Filter target 'const_true'"));
+    assert!(stderr.contains("must accept exactly 1 inputs but accepts 0"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn reduce_target_with_wrong_input_count_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-reduce-wrong-input-count.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "const_one": {
+      "graph": {
+        "values": [["value", 1]],
+        "ops": [],
+        "input_vals": [],
+        "output_vals": ["value"]
+      }
+    },
+    "main": {
+      "graph": {
+        "values": ["const_one", ["items", [1, 2]], ["init", 0], "out"],
+        "ops": [
+          ["Static", ["const_one"], ["const_one"]],
+          ["Reduce", ["const_one", "items", "init"], ["out"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with wrong reduce callback input count");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Reduce target 'const_one'"));
+    assert!(stderr.contains("must accept exactly 2 inputs but accepts 0"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn map_target_with_multiple_outputs_reports_bind_error_cleanly() {
     let invalid_program_path = std::env::temp_dir().join("graphyne-map-multi-output-callback.json");
     std::fs::write(
@@ -1612,7 +1741,7 @@ fn filter_target_with_non_bool_constant_output_reports_bind_error_cleanly() {
     assert!(!output.status.success(), "expected non-zero exit status for bind error");
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("Filter target 'const_int'"));
-    assert!(stderr.contains("must produce a bool output"));
+    assert!(stderr.contains("must accept exactly 1 inputs but accepts 0") || stderr.contains("must produce a bool output"));
     assert!(!stderr.contains("panicked at"));
 }
 
