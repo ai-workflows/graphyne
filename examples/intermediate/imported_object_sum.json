@@ -1,0 +1,58 @@
+{
+  "collections": {
+    "math": {
+      "constants": {
+        "two": 2
+      },
+      "functions": {
+        "double": {
+          "graph": {
+            "values": ["two", "num", "result"],
+            "ops": [
+              ["Static", ["two"], ["two"]],
+              ["Mul", ["num", "two"], ["result"]]
+            ],
+            "input_vals": ["num"],
+            "output_vals": ["result"]
+          }
+        }
+      }
+    }
+  },
+  "imports": {
+    "double": ["math", "double"]
+  },
+  "types": {
+    "Pair": {
+      "left": "int",
+      "right": "int"
+    }
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [
+          "double",
+          "Pair",
+          ["left_const", 10],
+          ["right_const", 11],
+          "pair",
+          ["left_key", "left"],
+          "left_val",
+          "doubled_left",
+          "sum"
+        ],
+        "ops": [
+          ["Static", ["double"], ["double"]],
+          ["Static", ["Pair"], ["Pair"]],
+          ["Init", ["Pair", "left_const", "right_const"], ["pair"]],
+          ["Get", ["pair", "left_key"], ["left_val"]],
+          ["Call", ["double", "left_val"], ["doubled_left"]],
+          ["Add", ["doubled_left", "right_const"], ["sum"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["sum"]
+      }
+    }
+  }
+}

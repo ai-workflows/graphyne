@@ -409,6 +409,18 @@ fn object_set_missing_field_reports_clean_runtime_error() {
 }
 
 #[test]
+fn imported_object_sum_example_runs_successfully() {
+    let output = Command::new(binary_path())
+        .args(["await", "-i", "examples/intermediate/imported_object_sum.json"])
+        .output()
+        .expect("failed to run graphyne await for imported_object_sum example");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("out | 0: 31"));
+}
+
+#[test]
 fn invalid_input_path_exits_non_zero() {
     let output = Command::new(binary_path())
         .args(["await", "-i", "examples/intermediate/does_not_exist.json"])
