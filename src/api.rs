@@ -721,6 +721,62 @@ mod tests {
     }
 
     #[test]
+    fn bind_rejects_value_assigned_by_multiple_ops() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": [["lhs", 2], ["rhs", 3], "sum"],
+                        "ops": [
+                            ["Add", ["lhs", "rhs"], ["sum"]],
+                            ["Mul", ["sum", "rhs"], ["sum"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["sum"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Value 'sum'"));
+        assert!(err.contains("assigned 2 times"));
+    }
+
+    #[test]
+    fn bind_rejects_value_assigned_by_input_and_call_output() {
+        let json_collection = r#"{
+            "functions": {
+                "id": {
+                    "graph": {
+                        "values": ["x"],
+                        "ops": [],
+                        "input_vals": ["x"],
+                        "output_vals": ["x"]
+                    }
+                },
+                "main": {
+                    "graph": {
+                        "values": ["id", ["x", 5]],
+                        "ops": [
+                            ["Static", ["id"], ["id"]],
+                            ["Call", ["id", "x"], ["x"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["x"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Value 'x'"));
+        assert!(err.contains("assigned 2 times"));
+    }
+
+    #[test]
     fn bind_rejects_init_target_that_is_known_non_type() {
         let json_collection = r#"{
             "functions": {

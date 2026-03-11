@@ -343,6 +343,42 @@ fn validate_graph_value_declarations(
     Ok(symbol_idxs)
 }
 
+fn validate_single_assignment(
+    func: &CollectionFunc,
+    func_symbol_path: &SymbolPath,
+) -> ExecResult<()> {
+    let mut write_counts: HashMap<&str, usize> = HashMap::new();
+
+    for val in &func.graph.values {
+        if val.constant.is_some() {
+            *write_counts.entry(val.symbol.as_str()).or_default() += 1;
+        }
+    }
+
+    for input_symbol in &func.graph.input_vals {
+        *write_counts.entry(input_symbol.as_str()).or_default() += 1;
+    }
+
+    for op_node in &func.graph.ops {
+        for output_symbol in &op_node.output_vals {
+            *write_counts.entry(output_symbol.as_str()).or_default() += 1;
+        }
+    }
+
+    for (symbol, count) in write_counts {
+        if count > 1 {
+            return Err(format!(
+                "Value '{}' in function {:?} is assigned {} times",
+                symbol,
+                func_symbol_path,
+                count
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 fn get_local_function_signature(
     callee_symbol: &str,
     sibling_functions: Option<&HashMap<Symbol, CollectionFunc>>,
@@ -455,6 +491,7 @@ fn cl_func_to_live_func(
     validate_unique_symbols(&func.graph.output_vals, "output", func_symbol_path)?;
 
     let symbol_idxs = validate_graph_value_declarations(func, func_symbol_path)?;
+    validate_single_assignment(func, func_symbol_path)?;
 
     let mut val_deps: HashMap<Symbol, Vec<usize>> = HashMap::new();
     let mut val_as_args: HashMap<Symbol, Vec<(usize, usize)>> = HashMap::new();

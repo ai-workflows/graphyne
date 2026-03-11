@@ -968,6 +968,84 @@ fn imported_call_input_count_mismatch_reports_bind_error_cleanly() {
 }
 
 #[test]
+fn value_assigned_by_multiple_ops_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-multiple-op-writes.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [["lhs", 2], ["rhs", 3], "sum"],
+        "ops": [
+          ["Add", ["lhs", "rhs"], ["sum"]],
+          ["Mul", ["sum", "rhs"], ["sum"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["sum"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with multiple writes to one value");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Value 'sum'"));
+    assert!(stderr.contains("assigned 2 times"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn value_assigned_by_input_and_call_output_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-input-call-overwrite.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "id": {
+      "graph": {
+        "values": ["x"],
+        "ops": [],
+        "input_vals": ["x"],
+        "output_vals": ["x"]
+      }
+    },
+    "main": {
+      "graph": {
+        "values": ["id", ["x", 5]],
+        "ops": [
+          ["Static", ["id"], ["id"]],
+          ["Call", ["id", "x"], ["x"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["x"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with input overwritten by call output");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Value 'x'"));
+    assert!(stderr.contains("assigned 2 times"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn init_target_that_is_known_non_type_reports_bind_error_cleanly() {
     let invalid_program_path = std::env::temp_dir().join("graphyne-init-known-non-type.json");
     std::fs::write(
