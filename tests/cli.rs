@@ -1217,6 +1217,111 @@ fn duplicate_custom_type_fields_report_bind_error_cleanly() {
 }
 
 #[test]
+fn direct_recursive_call_cycle_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-direct-recursive-call.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "loop": {
+      "graph": {
+        "values": ["loop", "out"],
+        "ops": [
+          ["Static", ["loop"], ["loop"]],
+          ["Call", ["loop"], ["out"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    },
+    "main": {
+      "graph": {
+        "values": ["loop", "out"],
+        "ops": [
+          ["Static", ["loop"], ["loop"]],
+          ["Call", ["loop"], ["out"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with direct recursive call cycle");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Recursive call cycle detected"));
+    assert!(stderr.contains("loop -> loop"));
+    assert!(!stderr.contains("stack overflow"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
+fn mutual_recursive_call_cycle_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-mutual-recursive-call.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "a": {
+      "graph": {
+        "values": ["b", "out"],
+        "ops": [
+          ["Static", ["b"], ["b"]],
+          ["Call", ["b"], ["out"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    },
+    "b": {
+      "graph": {
+        "values": ["a", "out"],
+        "ops": [
+          ["Static", ["a"], ["a"]],
+          ["Call", ["a"], ["out"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    },
+    "main": {
+      "graph": {
+        "values": ["a", "out"],
+        "ops": [
+          ["Static", ["a"], ["a"]],
+          ["Call", ["a"], ["out"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with mutual recursive call cycle");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Recursive call cycle detected"));
+    assert!(stderr.contains("a") && stderr.contains("b"));
+    assert!(!stderr.contains("stack overflow"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn map_target_that_is_known_non_function_reports_bind_error_cleanly() {
     let invalid_program_path = std::env::temp_dir().join("graphyne-map-known-non-function.json");
     std::fs::write(

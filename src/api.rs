@@ -862,6 +862,88 @@ mod tests {
     }
 
     #[test]
+    fn bind_rejects_direct_recursive_call_cycle() {
+        let json_collection = r#"{
+            "functions": {
+                "loop": {
+                    "graph": {
+                        "values": ["loop", "out"],
+                        "ops": [
+                            ["Static", ["loop"], ["loop"]],
+                            ["Call", ["loop"], ["out"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                },
+                "main": {
+                    "graph": {
+                        "values": ["loop", "out"],
+                        "ops": [
+                            ["Static", ["loop"], ["loop"]],
+                            ["Call", ["loop"], ["out"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Recursive call cycle detected"));
+        assert!(err.contains("loop -> loop"));
+    }
+
+    #[test]
+    fn bind_rejects_mutual_recursive_call_cycle() {
+        let json_collection = r#"{
+            "functions": {
+                "a": {
+                    "graph": {
+                        "values": ["b", "out"],
+                        "ops": [
+                            ["Static", ["b"], ["b"]],
+                            ["Call", ["b"], ["out"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                },
+                "b": {
+                    "graph": {
+                        "values": ["a", "out"],
+                        "ops": [
+                            ["Static", ["a"], ["a"]],
+                            ["Call", ["a"], ["out"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                },
+                "main": {
+                    "graph": {
+                        "values": ["a", "out"],
+                        "ops": [
+                            ["Static", ["a"], ["a"]],
+                            ["Call", ["a"], ["out"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Recursive call cycle detected"));
+        assert!(err.contains("a"));
+        assert!(err.contains("b"));
+    }
+
+    #[test]
     fn bind_rejects_map_target_that_is_known_non_function() {
         let json_collection = r#"{
             "functions": {
