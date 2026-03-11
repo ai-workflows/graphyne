@@ -2,15 +2,15 @@ use std::sync::{Arc, OnceLock};
 use std::sync::atomic::AtomicUsize;
 use rayon::ThreadPool;
 use crate::runtime::data::functions::OpCode;
-use crate::runtime::data::functions::func::{FuncOp, FuncLive};
+use crate::runtime::data::functions::func::{FuncLive, FuncOp};
 use crate::runtime::data::live::PointerLive;
+use crate::runtime::data::stored::StoredData::ListStored;
 use crate::runtime::static_state::state::StaticState;
-use crate::runtime::vm::call_context::{CallContext, get_static_func};
+use crate::runtime::vm::call_context::{get_static_func, CallContext};
 use crate::runtime::vm::operator::operator::execute_op;
 use crate::runtime::vm::operator::ops::Operation;
 use crate::runtime::vm::orchestrator::{get_val, init_anonymous_call, set_val};
 use crate::runtime::vm::outputs::{FilterLink, MapLink, OutputType, ReduceLink};
-
 
 pub fn dispatch_op(
     context: Arc<CallContext>,
@@ -41,8 +41,6 @@ pub fn dispatch_op(
     });
 }
 
-
-
 pub fn handle_normal_op(
     fn_op: &FuncOp,
     op: Operation,
@@ -55,7 +53,6 @@ pub fn handle_normal_op(
         Err(e) => panic!("dispatch_op: execute_op error: {}", e)
     };
 
-    // set the result values
     for (i, v) in outputs.iter().enumerate() {
         set_val(context.clone(), fn_op.output_vals[i], v.clone(), static_state.clone(), worker_pool.clone());
     }
@@ -84,12 +81,11 @@ pub fn handle_map_op(
     };
 
     let result_val: usize = fn_op.output_vals[0];
-
     if list_arg.is_empty() {
         set_val(
             context,
             result_val,
-            PointerLive::new(crate::runtime::data::stored::StoredData::ListStored(vec![])),
+            PointerLive::new(ListStored(Vec::new())),
             static_state,
             worker_pool,
         );
@@ -100,7 +96,6 @@ pub fn handle_map_op(
     let remaining_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(list_arg.len()));
 
     for (i, item) in list_arg.iter().enumerate() {
-        // create a new map link
         let map_link: MapLink = MapLink {
             source_context: context.clone(),
             source_result_val: result_val,
@@ -114,13 +109,13 @@ pub fn handle_map_op(
             Err(e) => panic!("dispatch_op: {}", e)
         };
 
-        // initialize a new call context for the called function and the current item
         init_anonymous_call(
             called_func_ref,
             &[item.clone()],
             vec![OutputType::MapLink(map_link)],
             static_state.clone(),
-            worker_pool.clone());
+            worker_pool.clone(),
+        );
     }
 }
 
@@ -147,12 +142,11 @@ pub fn handle_filter_op(
     };
 
     let result_val: usize = fn_op.output_vals[0];
-
     if list_arg.is_empty() {
         set_val(
             context,
             result_val,
-            PointerLive::new(crate::runtime::data::stored::StoredData::ListStored(vec![])),
+            PointerLive::new(ListStored(Vec::new())),
             static_state,
             worker_pool,
         );
@@ -163,7 +157,6 @@ pub fn handle_filter_op(
     let remaining_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(list_arg.len()));
 
     for (i, item) in list_arg.iter().enumerate() {
-        // create a new filter link
         let filter_link: FilterLink = FilterLink {
             source_context: context.clone(),
             source_result_val: result_val,
@@ -178,13 +171,13 @@ pub fn handle_filter_op(
             Err(e) => panic!("dispatch_op: {}", e)
         };
 
-        // initialize a new call context for the called function and the current item
         init_anonymous_call(
             called_func_ref,
             &[item.clone()],
             vec![OutputType::FilterLink(filter_link)],
             static_state.clone(),
-            worker_pool.clone());
+            worker_pool.clone(),
+        );
     }
 }
 
@@ -219,13 +212,13 @@ pub fn dispatch_next_reduce(
         Err(e) => panic!("dispatch_next_reduce: {}", e)
     };
 
-    // create a new call context for the called function for the next item
     init_anonymous_call(
         called_func_ref,
         &[last_val, next_item.clone()],
         vec![OutputType::ReduceLink(new_link)],
         static_state.clone(),
-        worker_pool.clone());
+        worker_pool.clone(),
+    );
 }
 
 pub fn handle_reduce_op(
@@ -251,8 +244,12 @@ pub fn handle_reduce_op(
     };
 
     let result_val: usize = fn_op.output_vals[0];
+    let source_list: &Vec<PointerLive> = match list_arg_ptr.stored_as_list() {
+        Ok(v) => v,
+        Err(e) => panic!("dispatch_op: {}", e)
+    };
 
-    if list_arg_ptr.stored_as_list().unwrap().is_empty() {
+    if source_list.is_empty() {
         set_val(context, result_val, initial_val.clone(), static_state, worker_pool);
         return;
     }
@@ -262,7 +259,14 @@ pub fn handle_reduce_op(
     let source_list: PointerLive = list_arg_ptr.clone();
     let called_func: PointerLive = called_func_pointer.clone();
 
-    dispatch_next_reduce(source_context, source_result_val,
-                         source_list, 0, called_func, initial_val.clone(),
-                         static_state, worker_pool);
+    dispatch_next_reduce(
+        source_context,
+        source_result_val,
+        source_list,
+        0,
+        called_func,
+        initial_val.clone(),
+        static_state,
+        worker_pool,
+    );
 }
