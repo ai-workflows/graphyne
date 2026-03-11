@@ -1217,6 +1217,92 @@ fn duplicate_custom_type_fields_report_bind_error_cleanly() {
 }
 
 #[test]
+fn root_relative_custom_type_references_work_in_cli_programs() {
+    let program_path = std::env::temp_dir().join("graphyne-root-relative-custom-type-ref.json");
+    std::fs::write(
+        &program_path,
+        r#"{
+  "types": {
+    "PersonName": {
+      "value": "str"
+    },
+    "Person": {
+      "name": "PersonName"
+    }
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["PersonName", ["value", "Ada"], "name_obj", "Person", "person"],
+        "ops": [
+          ["Static", ["PersonName"], ["PersonName"]],
+          ["Init", ["PersonName", "value"], ["name_obj"]],
+          ["Static", ["Person"], ["Person"]],
+          ["Init", ["Person", "name_obj"], ["person"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["person"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with root-relative custom type reference");
+
+    assert!(output.status.success(), "expected successful execution");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("\"name\":{\"data\":{\"value\":\"Ada\"}"));
+}
+
+#[test]
+fn root_symbol_prefixed_custom_type_references_work_in_cli_programs() {
+    let program_path = std::env::temp_dir().join("graphyne-root-prefixed-custom-type-ref.json");
+    std::fs::write(
+        &program_path,
+        r#"{
+  "types": {
+    "PersonName": {
+      "value": "str"
+    },
+    "Person": {
+      "name": "root.PersonName"
+    }
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["PersonName", ["value", "Ada"], "name_obj", "Person", "person"],
+        "ops": [
+          ["Static", ["PersonName"], ["PersonName"]],
+          ["Init", ["PersonName", "value"], ["name_obj"]],
+          ["Static", ["Person"], ["Person"]],
+          ["Init", ["Person", "name_obj"], ["person"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["person"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with root-prefixed custom type reference");
+
+    assert!(output.status.success(), "expected successful execution");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("\"name\":{\"data\":{\"value\":\"Ada\"}"));
+}
+
+#[test]
 fn direct_import_cycle_reports_bind_error_cleanly() {
     let invalid_program_path = std::env::temp_dir().join("graphyne-direct-import-cycle.json");
     std::fs::write(

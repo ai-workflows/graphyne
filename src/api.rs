@@ -832,6 +832,96 @@ mod tests {
     }
 
     #[test]
+    fn bind_supports_root_relative_custom_type_references() {
+        let json_collection = r#"{
+            "types": {
+                "PersonName": {
+                    "value": "str"
+                },
+                "Person": {
+                    "name": "PersonName"
+                }
+            },
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["PersonName", ["value", "Ada"], "name_obj", "Person", "person"],
+                        "ops": [
+                            ["Static", ["PersonName"], ["PersonName"]],
+                            ["Init", ["PersonName", "value"], ["name_obj"]],
+                            ["Static", ["Person"], ["Person"]],
+                            ["Init", ["Person", "name_obj"], ["person"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["person"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let static_state = bind(collection, Some("root".to_string())).unwrap();
+
+        let outputs = try_await_call(
+            vec!["root".to_string(), "main".to_string()],
+            vec![],
+            static_state,
+            Some(1),
+        )
+        .unwrap();
+
+        let person = outputs[0].stored_as_object().unwrap();
+        let name_value = person.fields.get("name").unwrap().stored_as_object().unwrap();
+        let nested_value = name_value.fields.get("value").unwrap().stored_as_string().unwrap();
+        assert_eq!(nested_value, "Ada");
+    }
+
+    #[test]
+    fn bind_supports_root_symbol_prefixed_custom_type_references() {
+        let json_collection = r#"{
+            "types": {
+                "PersonName": {
+                    "value": "str"
+                },
+                "Person": {
+                    "name": "root.PersonName"
+                }
+            },
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["PersonName", ["value", "Ada"], "name_obj", "Person", "person"],
+                        "ops": [
+                            ["Static", ["PersonName"], ["PersonName"]],
+                            ["Init", ["PersonName", "value"], ["name_obj"]],
+                            ["Static", ["Person"], ["Person"]],
+                            ["Init", ["Person", "name_obj"], ["person"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["person"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let static_state = bind(collection, Some("root".to_string())).unwrap();
+
+        let outputs = try_await_call(
+            vec!["root".to_string(), "main".to_string()],
+            vec![],
+            static_state,
+            Some(1),
+        )
+        .unwrap();
+
+        let person = outputs[0].stored_as_object().unwrap();
+        let name_value = person.fields.get("name").unwrap().stored_as_object().unwrap();
+        let nested_value = name_value.fields.get("value").unwrap().stored_as_string().unwrap();
+        assert_eq!(nested_value, "Ada");
+    }
+
+    #[test]
     fn bind_rejects_duplicate_custom_type_fields() {
         let json_collection = r#"{
             "types": {
