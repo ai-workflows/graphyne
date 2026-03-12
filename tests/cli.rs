@@ -203,10 +203,10 @@ fn stream_runtime_operator_error_reports_cleanly_without_hanging() {
 }
 
 #[test]
-fn negative_integer_pow_reports_clean_runtime_error() {
-    let invalid_program_path = std::env::temp_dir().join("graphyne-negative-int-pow.json");
+fn negative_integer_pow_reports_float_result_cleanly() {
+    let program_path = std::env::temp_dir().join("graphyne-negative-int-pow.json");
     std::fs::write(
-        &invalid_program_path,
+        &program_path,
         r#"{
   "functions": {
     "main": {
@@ -223,23 +223,20 @@ fn negative_integer_pow_reports_clean_runtime_error() {
     .unwrap();
 
     let output = Command::new(binary_path())
-        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .args(["await", "-i", program_path.to_str().unwrap()])
         .output()
         .expect("failed to run graphyne await with negative integer pow");
 
-    assert!(!output.status.success(), "expected non-zero exit status for runtime error");
-    assert!(output.stdout.is_empty(), "unexpected stdout: {}", String::from_utf8_lossy(&output.stdout));
-
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("Negative integer exponent not supported"));
-    assert!(!stderr.contains("panicked at"));
+    assert!(output.status.success(), "expected successful execution");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("out | 0: 0.5"));
 }
 
 #[test]
-fn overflowing_integer_pow_reports_clean_runtime_error() {
-    let invalid_program_path = std::env::temp_dir().join("graphyne-overflowing-int-pow.json");
+fn overflowing_integer_pow_reports_large_float_result_cleanly() {
+    let program_path = std::env::temp_dir().join("graphyne-overflowing-int-pow.json");
     std::fs::write(
-        &invalid_program_path,
+        &program_path,
         r#"{
   "functions": {
     "main": {
@@ -256,16 +253,73 @@ fn overflowing_integer_pow_reports_clean_runtime_error() {
     .unwrap();
 
     let output = Command::new(binary_path())
-        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .args(["await", "-i", program_path.to_str().unwrap()])
         .output()
         .expect("failed to run graphyne await with overflowing integer pow");
 
-    assert!(!output.status.success(), "expected non-zero exit status for runtime error");
-    assert!(output.stdout.is_empty(), "unexpected stdout: {}", String::from_utf8_lossy(&output.stdout));
+    assert!(output.status.success(), "expected successful execution");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("out | 0: 9.223372036854776e18") || stdout.contains("out | 0: 9223372036854776000"));
+}
 
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("Overflow Error"));
-    assert!(!stderr.contains("panicked at"));
+#[test]
+fn fractional_float_pow_exponents_work() {
+    let program_path = std::env::temp_dir().join("graphyne-fractional-float-pow.json");
+    std::fs::write(
+        &program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [["base", 9.0], ["exp", 0.5], "out"],
+        "ops": [["Pow", ["base", "exp"], ["out"]]],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with fractional float pow");
+
+    assert!(output.status.success(), "expected successful execution");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("out | 0: 3"));
+}
+
+#[test]
+fn negative_float_pow_exponents_work() {
+    let program_path = std::env::temp_dir().join("graphyne-negative-float-pow.json");
+    std::fs::write(
+        &program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [["base", 2.0], ["exp", -1.0], "out"],
+        "ops": [["Pow", ["base", "exp"], ["out"]]],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with negative float pow");
+
+    assert!(output.status.success(), "expected successful execution");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("out | 0: 0.5"));
 }
 
 fn write_import_program(import_path: &str, file_name: &str) -> std::path::PathBuf {
