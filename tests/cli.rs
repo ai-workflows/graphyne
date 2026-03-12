@@ -1966,6 +1966,58 @@ fn reduce_target_that_is_known_non_function_reports_bind_error_cleanly() {
 }
 
 #[test]
+fn imported_filter_target_with_non_bool_constant_output_reports_bind_error_cleanly() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-imported-filter-non-bool-callback.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "collections": {
+    "lib": {
+      "functions": {
+        "always_one": {
+          "graph": {
+            "values": ["x", ["value", 1]],
+            "ops": [],
+            "input_vals": ["x"],
+            "output_vals": ["value"]
+          }
+        }
+      }
+    }
+  },
+  "imports": {
+    "always_one": ["lib", "always_one"]
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["always_one", ["items", [1, 2]], "out"],
+        "ops": [
+          ["Static", ["always_one"], ["always_one"]],
+          ["Filter", ["always_one", "items"], ["out"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with imported non-bool filter callback");
+
+    assert!(!output.status.success(), "expected non-zero exit status for bind error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Filter target 'always_one'"));
+    assert!(stderr.contains("must produce a bool output"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn imported_map_target_that_is_not_a_function_reports_bind_error_cleanly() {
     let invalid_program_path = std::env::temp_dir().join("graphyne-imported-map-non-function.json");
     std::fs::write(

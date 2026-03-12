@@ -418,8 +418,15 @@ fn get_local_function_output_constant<'a>(
 ) -> Option<&'a CCData> {
     let sibling_functions = sibling_functions?;
     let callee = sibling_functions.get(callee_symbol)?;
-    let output_symbol = callee.graph.output_vals.get(output_idx)?;
-    callee.graph.values.iter()
+    get_function_output_constant(callee, output_idx)
+}
+
+fn get_function_output_constant(
+    func: &CollectionFunc,
+    output_idx: usize,
+) -> Option<&CCData> {
+    let output_symbol = func.graph.output_vals.get(output_idx)?;
+    func.graph.values.iter()
         .find(|value| &value.symbol == output_symbol)
         .and_then(|value| value.constant.as_ref())
 }
@@ -748,7 +755,14 @@ fn cl_func_to_live_func(
                     }
 
                     if op_node.opcode == OpCode::Filter {
-                        if let Some(output_constant) = get_local_function_output_constant(callee_symbol, sibling_functions, 0) {
+                        let imported_output_constant = match imported_target {
+                            Some(ImportedTarget::Function(func)) => get_function_output_constant(func, 0),
+                            _ => None,
+                        };
+
+                        if let Some(output_constant) = get_local_function_output_constant(callee_symbol, sibling_functions, 0)
+                            .or(imported_output_constant)
+                        {
                             if !matches!(output_constant, CCData::Bool(_)) {
                                 return Err(format!(
                                     "Filter target '{}' in function {:?} must produce a bool output",
