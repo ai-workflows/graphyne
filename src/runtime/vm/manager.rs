@@ -337,6 +337,7 @@ mod tests {
         assert!((out - 0.5).abs() < 1e-9);
     }
 
+
     #[test]
     fn test_start_call_simple() {
         let json_collection = r#"{
