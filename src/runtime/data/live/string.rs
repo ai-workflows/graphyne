@@ -10,11 +10,11 @@ impl LiveData for StringLive {
         type_map.get_primitive_type(&TypeLive::String).map(Ok)
     }
     fn as_int(&self) -> Option<ExecResult<IntLive>> {
-        Some(self.parse::<IntLive>().map_err(|_| "Error parsing int from string".to_string()))
+        Some(self.trim().parse::<IntLive>().map_err(|_| "Error parsing int from string".to_string()))
     }
 
     fn as_float(&self) -> Option<ExecResult<FloatLive>> {
-        Some(self.parse::<FloatLive>().map_err(|_| "Error parsing float from string".to_string()))
+        Some(self.trim().parse::<FloatLive>().map_err(|_| "Error parsing float from string".to_string()))
     }
 
     fn as_string(&self) -> Option<ExecResult<StringLive>> {
@@ -22,7 +22,7 @@ impl LiveData for StringLive {
     }
 
     fn as_bool(&self) -> Option<ExecResult<BoolLive>> {
-        match self.to_ascii_lowercase().as_str() {
+        match self.trim().to_ascii_lowercase().as_str() {
             "true" => Some(Ok(true)),
             "false" => Some(Ok(false)),
             _ => Some(Err("Error parsing bool from string".to_string())),
@@ -72,6 +72,14 @@ mod string_bool_tests {
         assert!(!"false".to_string().as_bool().unwrap().unwrap());
         assert!("TRUE".to_string().as_bool().unwrap().unwrap());
         assert!(!"False".to_string().as_bool().unwrap().unwrap());
+        assert!(" true ".to_string().as_bool().unwrap().unwrap());
+        assert!(!" false ".to_string().as_bool().unwrap().unwrap());
+    }
+
+    #[test]
+    fn parse_numeric_values_from_strings_with_surrounding_whitespace() {
+        assert_eq!(" 42 ".to_string().as_int().unwrap().unwrap(), 42);
+        assert!((" 3.5 ".to_string().as_float().unwrap().unwrap() - 3.5).abs() < 1e-9);
     }
 
     #[test]

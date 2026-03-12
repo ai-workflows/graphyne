@@ -468,6 +468,42 @@ fn as_bool_reports_clean_error_for_invalid_string_values() {
 }
 
 #[test]
+fn numeric_and_boolean_string_casts_ignore_surrounding_whitespace() {
+    let program_path = std::env::temp_dir().join("graphyne-whitespace-string-casts.json");
+    std::fs::write(
+        &program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [["int_text", " 42 "], ["float_text", " 3.5 "], ["bool_text", " true "], "as_int", "as_float", "as_bool"],
+        "ops": [
+          ["AsInt", ["int_text"], ["as_int"]],
+          ["AsFloat", ["float_text"], ["as_float"]],
+          ["AsBool", ["bool_text"], ["as_bool"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["as_int", "as_float", "as_bool"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await for whitespace-trimmed string casts");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("out | 0: 42"));
+    assert!(stdout.contains("out | 1: 3.5"));
+    assert!(stdout.contains("out | 2: true"));
+}
+
+#[test]
 fn object_person_example_runs_successfully() {
     let output = Command::new(binary_path())
         .args(["await", "-i", "examples/intermediate/object_person.json"])
