@@ -20,7 +20,7 @@ impl LiveData for PointerLive {
     fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
             StoredData::PointerStored(ptr) => Some(Ok(StoredData::BoolStored(BoolLive::from(self == ptr)))),
-            StoredData::NullStored => self.is_null().map(|r| Ok(StoredData::BoolStored(r?))),
+            StoredData::NullStored => Some(Ok(StoredData::BoolStored(false))),
             _ => None,
         }
     }

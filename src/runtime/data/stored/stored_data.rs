@@ -67,6 +67,17 @@ impl StoredData {
         }
     }
 
+    pub fn is_nullish(&self) -> bool {
+        match self {
+            StoredData::NullStored => true,
+            StoredData::StaticRefStored(val) => match val.get() {
+                Some(data) => data.is_nullish(),
+                None => false,
+            },
+            _ => false,
+        }
+    }
+
     pub fn stored_as_int(&self) -> ExecResult<&IntLive> {
         match self {
             StoredData::IntStored(value) => Ok(value),

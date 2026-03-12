@@ -24,7 +24,7 @@ impl LiveData for DictLive {
 
     fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
-            StoredData::NullStored => self.is_null().map(|r| Ok(StoredData::BoolStored(r?))),
+            StoredData::NullStored => Some(Ok(StoredData::BoolStored(false))),
             _ => None,
         }
     }

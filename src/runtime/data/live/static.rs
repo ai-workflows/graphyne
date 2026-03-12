@@ -72,7 +72,15 @@ impl LiveData for StaticRefLive {
     no_arg_op!(op_not, StoredData);
     one_arg_op!(op_and, StoredData, &StoredData);
     one_arg_op!(op_or, StoredData, &StoredData);
-    one_arg_op!(op_eq, StoredData, &StoredData);
+    fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
+        match rhs {
+            StoredData::NullStored => Some(Ok(StoredData::BoolStored(false))),
+            _ => match get_static_value(self) {
+                Ok(data) => data.as_live().op_eq(rhs),
+                Err(err) => Some(Err(err)),
+            },
+        }
+    }
     one_arg_op!(op_lt, StoredData, &StoredData);
     one_arg_op!(op_gt, StoredData, &StoredData);
     no_arg_op!(is_null, BoolLive);

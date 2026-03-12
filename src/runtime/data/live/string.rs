@@ -36,7 +36,7 @@ impl LiveData for StringLive {
     fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
             StoredData::StringStored(rhs) => Some(Ok(StoredData::BoolStored(*self == *rhs))),
-            StoredData::NullStored => self.is_null().map(|r| Ok(StoredData::BoolStored(r?))),
+            StoredData::NullStored => Some(Ok(StoredData::BoolStored(false))),
             _ => {
                 let cast_result: Option<ExecResult<StringLive>> = rhs.as_live().as_string();
 

@@ -59,7 +59,7 @@ impl LiveData for BoolLive {
     fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
             StoredData::BoolStored(rhs) => Some(Ok(StoredData::BoolStored(*self == *rhs))),
-            StoredData::NullStored => self.is_null().map(|r| Ok(StoredData::BoolStored(r?))),
+            StoredData::NullStored => Some(Ok(StoredData::BoolStored(false))),
             _ => {
                 let cast_result: Option<ExecResult<BoolLive>> = rhs.as_live().as_bool();
 
