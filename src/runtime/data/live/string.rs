@@ -21,6 +21,14 @@ impl LiveData for StringLive {
         Some(Ok(self.clone()))
     }
 
+    fn as_bool(&self) -> Option<ExecResult<BoolLive>> {
+        match self.to_ascii_lowercase().as_str() {
+            "true" => Some(Ok(true)),
+            "false" => Some(Ok(false)),
+            _ => Some(Err("Error parsing bool from string".to_string())),
+        }
+    }
+
     fn is_null(&self) -> Option<ExecResult<BoolLive>> {
         Some(Ok(BoolLive::from(false)))
     }
@@ -51,6 +59,25 @@ impl LiveData for StringLive {
                 })
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod string_bool_tests {
+    use crate::runtime::data::live::LiveData;
+
+    #[test]
+    fn parse_bool_from_canonical_string_values_case_insensitively() {
+        assert!("true".to_string().as_bool().unwrap().unwrap());
+        assert!(!"false".to_string().as_bool().unwrap().unwrap());
+        assert!("TRUE".to_string().as_bool().unwrap().unwrap());
+        assert!(!"False".to_string().as_bool().unwrap().unwrap());
+    }
+
+    #[test]
+    fn parse_bool_from_invalid_string_reports_error() {
+        let err = "hello".to_string().as_bool().unwrap().unwrap_err();
+        assert!(err.contains("Error parsing bool from string"));
     }
 }
 

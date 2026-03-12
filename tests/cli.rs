@@ -400,6 +400,73 @@ fn imports_example_accepts_user_visible_root_symbol_in_import_path() {
 }
 
 #[test]
+fn as_bool_accepts_canonical_string_values_case_insensitively() {
+    let program_path = std::env::temp_dir().join("graphyne-as-bool-true-false.json");
+    std::fs::write(
+        &program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [["upper_true", "TRUE"], ["mixed_false", "False"], "out_true", "out_false"],
+        "ops": [
+          ["AsBool", ["upper_true"], ["out_true"]],
+          ["AsBool", ["mixed_false"], ["out_false"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["out_true", "out_false"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await for string bool casts");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("out | 0: true"));
+    assert!(stdout.contains("out | 1: false"));
+}
+
+#[test]
+fn as_bool_reports_clean_error_for_invalid_string_values() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-as-bool-invalid-string.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [["value", "hello"], "out"],
+        "ops": [["AsBool", ["value"], ["out"]]],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await for invalid string bool cast");
+
+    assert!(!output.status.success(), "expected non-zero exit status for runtime error");
+    assert!(output.stdout.is_empty(), "unexpected stdout: {}", String::from_utf8_lossy(&output.stdout));
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Error parsing bool from string"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn object_person_example_runs_successfully() {
     let output = Command::new(binary_path())
         .args(["await", "-i", "examples/intermediate/object_person.json"])
