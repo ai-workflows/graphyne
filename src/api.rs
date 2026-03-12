@@ -832,6 +832,47 @@ mod tests {
     }
 
     #[test]
+    fn bind_rejects_imported_filter_target_with_non_bool_constant_output() {
+        let json_collection = r#"{
+            "collections": {
+                "lib": {
+                    "functions": {
+                        "always_one": {
+                            "graph": {
+                                "values": ["x", ["value", 1]],
+                                "ops": [],
+                                "input_vals": ["x"],
+                                "output_vals": ["value"]
+                            }
+                        }
+                    }
+                }
+            },
+            "imports": {
+                "always_one": ["lib", "always_one"]
+            },
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["always_one", ["items", [1, 2]], "out"],
+                        "ops": [
+                            ["Static", ["always_one"], ["always_one"]],
+                            ["Filter", ["always_one", "items"], ["out"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let err = bind(collection, Some("root".to_string())).err().unwrap();
+        assert!(err.contains("Filter target 'always_one'"));
+        assert!(err.contains("must produce a bool output"));
+    }
+
+    #[test]
     fn bind_supports_root_relative_custom_type_references() {
         let json_collection = r#"{
             "types": {
