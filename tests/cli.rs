@@ -538,6 +538,96 @@ fn negative_list_indices_report_clean_runtime_errors() {
 }
 
 #[test]
+fn equality_against_null_returns_false_for_non_null_values() {
+    let program_path = std::env::temp_dir().join("graphyne-null-equality-non-null-values.json");
+    std::fs::write(
+        &program_path,
+        r#"{
+  "constants": {
+    "truth": true,
+    "items": [1, 2],
+    "obj": {"a": 1},
+    "num": 1,
+    "nothing": null
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["truth", "items", "obj", "num", "nothing", "truth_eq", "items_eq", "obj_eq", "num_eq"],
+        "ops": [
+          ["Static", ["truth"], ["truth"]],
+          ["Static", ["items"], ["items"]],
+          ["Static", ["obj"], ["obj"]],
+          ["Static", ["num"], ["num"]],
+          ["Static", ["nothing"], ["nothing"]],
+          ["Equal", ["truth", "nothing"], ["truth_eq"]],
+          ["Equal", ["items", "nothing"], ["items_eq"]],
+          ["Equal", ["obj", "nothing"], ["obj_eq"]],
+          ["Equal", ["num", "nothing"], ["num_eq"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["truth_eq", "items_eq", "obj_eq", "num_eq"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await for null equality against non-null values");
+
+    assert!(output.status.success(), "expected successful execution");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("out | 0: false"));
+    assert!(stdout.contains("out | 1: false"));
+    assert!(stdout.contains("out | 2: false"));
+    assert!(stdout.contains("out | 3: false"));
+}
+
+#[test]
+fn equality_against_null_returns_false_for_static_references() {
+    let program_path = std::env::temp_dir().join("graphyne-null-equality-static-ref.json");
+    std::fs::write(
+        &program_path,
+        r#"{
+  "constants": {
+    "truth": true,
+    "nothing": null
+  },
+  "functions": {
+    "main": {
+      "graph": {
+        "values": ["truth", "nothing", "truth_ref", "eq1", "eq2"],
+        "ops": [
+          ["Static", ["truth"], ["truth_ref"]],
+          ["Static", ["nothing"], ["nothing"]],
+          ["Equal", ["truth_ref", "nothing"], ["eq1"]],
+          ["Equal", ["nothing", "truth_ref"], ["eq2"]]
+        ],
+        "input_vals": [],
+        "output_vals": ["eq1", "eq2"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await for null equality against static references");
+
+    assert!(output.status.success(), "expected successful execution");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("out | 0: false"));
+    assert!(stdout.contains("out | 1: false"));
+}
+
+#[test]
 fn object_person_example_runs_successfully() {
     let output = Command::new(binary_path())
         .args(["await", "-i", "examples/intermediate/object_person.json"])

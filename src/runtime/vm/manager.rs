@@ -337,6 +337,96 @@ mod tests {
         assert!((out - 0.5).abs() < 1e-9);
     }
 
+    #[test]
+    fn equality_against_null_returns_false_for_non_null_values() {
+        let json_collection = r#"{
+            "constants": {
+                "truth": true,
+                "items": [1, 2],
+                "obj": {"a": 1},
+                "num": 1,
+                "nothing": null
+            },
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["truth", "items", "obj", "num", "nothing", "truth_eq", "items_eq", "obj_eq", "num_eq"],
+                        "ops": [
+                            ["Static", ["truth"], ["truth"]],
+                            ["Static", ["items"], ["items"]],
+                            ["Static", ["obj"], ["obj"]],
+                            ["Static", ["num"], ["num"]],
+                            ["Static", ["nothing"], ["nothing"]],
+                            ["Equal", ["truth", "nothing"], ["truth_eq"]],
+                            ["Equal", ["items", "nothing"], ["items_eq"]],
+                            ["Equal", ["obj", "nothing"], ["obj_eq"]],
+                            ["Equal", ["num", "nothing"], ["num_eq"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["truth_eq", "items_eq", "obj_eq", "num_eq"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
+        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
+
+        let outputs = try_init_await_call(
+            vec!["my_collection".to_string(), "main".to_string()],
+            vec![],
+            static_state,
+            worker_pool,
+        ).unwrap();
+
+        assert_eq!(outputs.len(), 4);
+        for output in outputs {
+            assert!(!(*output.stored_as_bool().unwrap()));
+        }
+    }
+
+    #[test]
+    fn equality_against_null_returns_false_for_static_references() {
+        let json_collection = r#"{
+            "constants": {
+                "truth": true,
+                "nothing": null
+            },
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": ["truth", "nothing", "truth_ref", "eq1", "eq2"],
+                        "ops": [
+                            ["Static", ["truth"], ["truth_ref"]],
+                            ["Static", ["nothing"], ["nothing"]],
+                            ["Equal", ["truth_ref", "nothing"], ["eq1"]],
+                            ["Equal", ["nothing", "truth_ref"], ["eq2"]]
+                        ],
+                        "input_vals": [],
+                        "output_vals": ["eq1", "eq2"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
+        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
+
+        let outputs = try_init_await_call(
+            vec!["my_collection".to_string(), "main".to_string()],
+            vec![],
+            static_state,
+            worker_pool,
+        ).unwrap();
+
+        assert_eq!(outputs.len(), 2);
+        for output in outputs {
+            assert!(!(*output.stored_as_bool().unwrap()));
+        }
+    }
+
 
     #[test]
     fn test_start_call_simple() {

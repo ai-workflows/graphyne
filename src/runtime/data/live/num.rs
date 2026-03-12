@@ -45,7 +45,7 @@ impl LiveData for IntLive {
     fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
             StoredData::IntStored(rhs) => Some(Ok(StoredData::BoolStored(*self == *rhs))),
-            StoredData::NullStored => self.is_null().map(|r| Ok(StoredData::BoolStored(r?))),
+            StoredData::NullStored => Some(Ok(StoredData::BoolStored(false))),
             _ => {
                 let cast_result: Option<ExecResult<IntLive>> = rhs.as_live().as_int();
 
@@ -177,7 +177,7 @@ impl LiveData for FloatLive {
     fn op_eq(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
             StoredData::FloatStored(rhs) => Some(Ok(StoredData::BoolStored(*self == *rhs))),
-            StoredData::NullStored => self.is_null().map(|r| Ok(StoredData::BoolStored(r?))),
+            StoredData::NullStored => Some(Ok(StoredData::BoolStored(false))),
             _ => {
                 let cast_result: Option<ExecResult<FloatLive>> = rhs.as_live().as_float();
 

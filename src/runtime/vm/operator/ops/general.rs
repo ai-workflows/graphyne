@@ -45,6 +45,21 @@ pub fn execute_or(lhs: PointerLive, rhs: PointerLive) -> ExecResult<Vec<PointerL
 }
 
 pub fn execute_equal(lhs: PointerLive, rhs: PointerLive) -> ExecResult<Vec<PointerLive>> {
+    let lhs_value: &StoredData = lhs.as_ref();
+    let rhs_value: &StoredData = rhs.as_ref();
+
+    if lhs_value.is_nullish() {
+        let result = rhs_value.as_live().op_eq(&StoredData::NullStored)
+            .ok_or_else(|| handle_op_null_result(rhs_value, "op_eq").unwrap_err())?;
+        return handle_op_result(result);
+    }
+
+    if rhs_value.is_nullish() {
+        let result = lhs_value.as_live().op_eq(&StoredData::NullStored)
+            .ok_or_else(|| handle_op_null_result(lhs_value, "op_eq").unwrap_err())?;
+        return handle_op_result(result);
+    }
+
     execute_two_arg_op!(op_eq, lhs, rhs, handle_op_null_result, handle_op_result)
 }
 
