@@ -109,17 +109,15 @@ impl LiveData for IntLive {
                 })
             }
             _ => {
-                let cast_result: Option<ExecResult<IntLive>> = rhs.as_live().as_int();
+                let cast_result: Option<ExecResult<FloatLive>> = rhs.as_live().as_float();
 
                 cast_result.map(|rhs| {
                     let rhs = rhs?;
-                    if rhs < 0 {
-                        return Err("Negative integer exponent not supported".to_string());
-                    }
-
-                    match self.checked_pow(rhs as u32) {
-                        Some(value) => Ok(StoredData::IntStored(value)),
-                        None => Err("Overflow Error".to_string()),
+                    let value = (*self as FloatLive).powf(rhs);
+                    if value.is_finite() {
+                        Ok(StoredData::FloatStored(value))
+                    } else {
+                        Err("Overflow Error".to_string())
                     }
                 })
             }

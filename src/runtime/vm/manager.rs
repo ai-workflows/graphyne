@@ -231,14 +231,16 @@ mod tests {
         let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
         let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
 
-        let err = try_init_await_call(
+        let outputs = try_init_await_call(
             vec!["my_collection".to_string(), "main".to_string()],
             vec![],
             static_state,
             worker_pool,
-        ).unwrap_err();
+        ).unwrap();
 
-        assert!(err.contains("Negative integer exponent not supported"));
+        assert_eq!(outputs.len(), 1);
+        let out = outputs[0].stored_as_float().unwrap();
+        assert!((out - 0.5).abs() < 1e-9);
     }
 
     #[test]
@@ -260,14 +262,79 @@ mod tests {
         let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
         let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
 
-        let err = try_init_await_call(
+        let outputs = try_init_await_call(
             vec!["my_collection".to_string(), "main".to_string()],
             vec![],
             static_state,
             worker_pool,
-        ).unwrap_err();
+        ).unwrap();
 
-        assert!(err.contains("Overflow Error"));
+        assert_eq!(outputs.len(), 1);
+        let out = outputs[0].stored_as_float().unwrap();
+        assert!(out.is_finite());
+        assert!(*out > 9.0e18);
+    }
+
+    #[test]
+    fn try_init_await_call_supports_fractional_float_pow_exponents() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": [["base", 9.0], ["exp", 0.5], "out"],
+                        "ops": [["Pow", ["base", "exp"], ["out"]]],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
+        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
+
+        let outputs = try_init_await_call(
+            vec!["my_collection".to_string(), "main".to_string()],
+            vec![],
+            static_state,
+            worker_pool,
+        ).unwrap();
+
+        assert_eq!(outputs.len(), 1);
+        let out = outputs[0].stored_as_float().unwrap();
+        assert!((out - 3.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn try_init_await_call_supports_negative_float_pow_exponents() {
+        let json_collection = r#"{
+            "functions": {
+                "main": {
+                    "graph": {
+                        "values": [["base", 2.0], ["exp", -1.0], "out"],
+                        "ops": [["Pow", ["base", "exp"], ["out"]]],
+                        "input_vals": [],
+                        "output_vals": ["out"]
+                    }
+                }
+            }
+        }"#;
+
+        let collection: Collection = serde_json::from_str(json_collection).unwrap();
+        let static_state: Arc<StaticState> = bind(collection, Some("my_collection".to_string())).unwrap();
+        let worker_pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
+
+        let outputs = try_init_await_call(
+            vec!["my_collection".to_string(), "main".to_string()],
+            vec![],
+            static_state,
+            worker_pool,
+        ).unwrap();
+
+        assert_eq!(outputs.len(), 1);
+        let out = outputs[0].stored_as_float().unwrap();
+        assert!((out - 0.5).abs() < 1e-9);
     }
 
     #[test]
