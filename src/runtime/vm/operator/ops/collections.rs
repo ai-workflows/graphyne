@@ -56,7 +56,7 @@ pub fn execute_remove(list: PointerLive, index: PointerLive) -> ExecResult<Vec<P
 
 #[cfg(test)]
 mod tests {
-    use super::execute_set_item;
+    use super::{execute_get_item, execute_remove, execute_set_item};
     use crate::runtime::data::stored::StoredData;
 
     #[test]
@@ -70,5 +70,42 @@ mod tests {
         let error = result.expect_err("expected set_item on int to fail");
         assert!(error.contains("set_item"));
         assert!(!error.contains("$op"));
+    }
+
+    #[test]
+    fn get_item_rejects_negative_list_indices_clearly() {
+        let result = execute_get_item(
+            std::sync::Arc::new(StoredData::ListStored(vec![])),
+            std::sync::Arc::new(StoredData::IntStored(-1)),
+        );
+
+        let error = result.expect_err("expected get_item with negative index to fail");
+        assert!(error.contains("must be non-negative"));
+        assert!(error.contains("-1"));
+    }
+
+    #[test]
+    fn set_item_rejects_negative_list_indices_clearly() {
+        let result = execute_set_item(
+            std::sync::Arc::new(StoredData::ListStored(vec![])),
+            std::sync::Arc::new(StoredData::IntStored(-1)),
+            std::sync::Arc::new(StoredData::IntStored(1)),
+        );
+
+        let error = result.expect_err("expected set_item with negative index to fail");
+        assert!(error.contains("must be non-negative"));
+        assert!(error.contains("-1"));
+    }
+
+    #[test]
+    fn remove_rejects_negative_list_indices_clearly() {
+        let result = execute_remove(
+            std::sync::Arc::new(StoredData::ListStored(vec![])),
+            std::sync::Arc::new(StoredData::IntStored(-1)),
+        );
+
+        let error = result.expect_err("expected remove with negative index to fail");
+        assert!(error.contains("must be non-negative"));
+        assert!(error.contains("-1"));
     }
 }

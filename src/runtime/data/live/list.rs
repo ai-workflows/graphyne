@@ -31,9 +31,15 @@ impl LiveData for ListLive {
 
     fn op_get_item(&self, index: &StoredData) -> Option<ExecResult<StoredData>> {
         let index = match index.as_live().as_int() {
-            Some(Ok(index)) => index as usize,
+            Some(Ok(index)) => index,
             _ => return Some(Err(format!("Index ({}) for list must be an integer", index.as_live().as_string().unwrap().unwrap()))),
         };
+
+        if index < 0 {
+            return Some(Err(format!("Index ({}) for list must be non-negative", index)));
+        }
+
+        let index = index as usize;
 
         if index >= self.len() {
             return Some(Err(format!("Index ({}) for list out of bounds", index)));
@@ -50,9 +56,15 @@ impl LiveData for ListLive {
         let mut list = self.clone();
 
         let index = match index.as_live().as_int() {
-            Some(Ok(index)) => index as usize,
+            Some(Ok(index)) => index,
             _ => return Some(Err(format!("Index ({}) for list must be an integer", index.as_live().as_string().unwrap().unwrap())))
         };
+
+        if index < 0 {
+            return Some(Err(format!("Index ({}) for list must be non-negative", index)));
+        }
+
+        let index = index as usize;
 
         // get the pointer at the index
         match list.get(index) {
@@ -77,9 +89,15 @@ impl LiveData for ListLive {
         let mut list = self.clone();
 
         let index = match index.as_live().as_int() {
-            Some(Ok(index)) => index as usize,
+            Some(Ok(index)) => index,
             _ => return Some(Err(format!("Index ({}) for list must be an integer", index.as_live().as_string().unwrap().unwrap())))
         };
+
+        if index < 0 {
+            return Some(Err(format!("Index ({}) for list must be non-negative", index)));
+        }
+
+        let index = index as usize;
 
         // get the pointer at the index
         match list.get(index) {
