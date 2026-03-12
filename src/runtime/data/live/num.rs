@@ -125,20 +125,32 @@ impl LiveData for IntLive {
     }
 }
 
+fn float_binary_result(value: FloatLive, op_name: &str) -> ExecResult<StoredData> {
+    if value.is_finite() {
+        Ok(StoredData::FloatStored(value))
+    } else {
+        Err(match op_name {
+            "div" => "Divide by zero".to_string(),
+            "mod" => "Modulo by zero".to_string(),
+            _ => "Float overflow".to_string(),
+        })
+    }
+}
+
 macro_rules! checked_arithmetic_float_op {
-    ($self:ident, $rhs:ident, $op:tt) => {
+    ($self:ident, $rhs:ident, $op:tt, $op_name:literal) => {
         match $rhs {
             StoredData::FloatStored(rhs) => {
-                // Using direct arithmetic operators
                 let value = $self $op rhs;
-                Some(Ok(StoredData::FloatStored(value)))
+                Some(float_binary_result(value, $op_name))
             }
             _ => {
                 let cast_result: Option<ExecResult<FloatLive>> = $rhs.as_live().as_float();
 
                 cast_result.map(|rhs| {
-                    let value = $self $op rhs?;
-                    Ok(StoredData::FloatStored(value))
+                    let rhs = rhs?;
+                    let value = $self $op rhs;
+                    float_binary_result(value, $op_name)
                 })
             }
         }
@@ -203,38 +215,37 @@ impl LiveData for FloatLive {
     }
 
     fn op_add(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
-        checked_arithmetic_float_op!(self, rhs, +)
+        checked_arithmetic_float_op!(self, rhs, +, "add")
     }
 
     fn op_sub(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
-        checked_arithmetic_float_op!(self, rhs, -)
+        checked_arithmetic_float_op!(self, rhs, -, "sub")
     }
 
     fn op_mul(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
-        checked_arithmetic_float_op!(self, rhs, *)
+        checked_arithmetic_float_op!(self, rhs, *, "mul")
     }
 
     fn op_div(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
-        checked_arithmetic_float_op!(self, rhs, /)
+        checked_arithmetic_float_op!(self, rhs, /, "div")
     }
 
     fn op_mod(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
-        checked_arithmetic_float_op!(self, rhs, %)
+        checked_arithmetic_float_op!(self, rhs, %, "mod")
     }
 
     fn op_pow(&self, rhs: &StoredData) -> Option<ExecResult<StoredData>> {
         match rhs {
             StoredData::FloatStored(rhs) => {
-                // Using direct arithmetic operators
                 let value = self.powf(*rhs);
-                Some(Ok(StoredData::FloatStored(value)))
+                Some(float_binary_result(value, "pow"))
             }
             _ => {
                 let cast_result: Option<ExecResult<FloatLive>> = rhs.as_live().as_float();
 
                 cast_result.map(|rhs| {
                     let value = self.powf(rhs?);
-                    Ok(StoredData::FloatStored(value))
+                    float_binary_result(value, "pow")
                 })
             }
         }
