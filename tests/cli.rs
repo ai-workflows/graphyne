@@ -504,6 +504,40 @@ fn numeric_and_boolean_string_casts_ignore_surrounding_whitespace() {
 }
 
 #[test]
+fn negative_list_indices_report_clean_runtime_errors() {
+    let invalid_program_path = std::env::temp_dir().join("graphyne-negative-list-index.json");
+    std::fs::write(
+        &invalid_program_path,
+        r#"{
+  "functions": {
+    "main": {
+      "graph": {
+        "values": [["items", [1, 2]], ["idx", -1], "out"],
+        "ops": [["Get", ["items", "idx"], ["out"]]],
+        "input_vals": [],
+        "output_vals": ["out"]
+      }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(binary_path())
+        .args(["await", "-i", invalid_program_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run graphyne await with negative list index");
+
+    assert!(!output.status.success(), "expected non-zero exit status for runtime error");
+    assert!(output.stdout.is_empty(), "unexpected stdout: {}", String::from_utf8_lossy(&output.stdout));
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Index (-1) for list must be non-negative"));
+    assert!(!stderr.contains("18446744073709551615"));
+    assert!(!stderr.contains("panicked at"));
+}
+
+#[test]
 fn object_person_example_runs_successfully() {
     let output = Command::new(binary_path())
         .args(["await", "-i", "examples/intermediate/object_person.json"])
